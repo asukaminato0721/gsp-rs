@@ -90,7 +90,8 @@ use super::scene::{
 pub(crate) use self::build::build_scene_checked;
 pub(super) use self::build::payload_debug_source;
 pub(crate) use self::decode::{
-    find_indexed_path, is_circle_group_kind, try_decode_bbox_rect_raw, try_decode_group_label_text,
+    GraphObjectCircleMeasurementKind, find_indexed_path, graph_object_circle_measurement_kind,
+    is_circle_group_kind, try_decode_bbox_rect_raw, try_decode_group_label_text,
     try_decode_group_rich_text, try_decode_link_button_url,
     try_decode_parameter_control_value_for_group, try_decode_payload_anchor_point,
     try_find_indexed_path,

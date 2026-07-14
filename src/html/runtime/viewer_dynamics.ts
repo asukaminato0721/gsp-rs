@@ -837,6 +837,23 @@
   }
 
 
+  function updatePolarTransformPoint(
+    point: RuntimeScenePointJson,
+    source: Point | null,
+    parameters: Map<string, number>,
+    yUp: boolean,
+  ) {
+    if (!source || point.binding?.kind !== "polar-transform") return;
+    const distance = evaluateExpr(point.binding.distanceExpr, 0, parameters);
+    const angle = evaluateExpr(point.binding.angleExpr, 0, parameters);
+    if (!isFiniteNumber(distance) || !isFiniteNumber(angle)) return;
+    const scaledDistance = distance * point.binding.distanceScale;
+    const radians = angle * point.binding.angleDegreesScale * Math.PI / 180;
+    point.x = source.x + scaledDistance * Math.cos(radians);
+    point.y = source.y + (yUp ? 1 : -1) * scaledDistance * Math.sin(radians);
+  }
+
+
   function updateConstraintParameterizedPoint(point: RuntimeScenePointJson, scene: ViewerSceneData, value: number) {
     if (!Number.isFinite(value)) return;
     applyNormalizedParameterToPoint(point, scene, value);
@@ -1089,6 +1106,12 @@
 
 
   const DERIVED_POINT_BINDING_REFRESHERS = {
+    "payload-alias"(env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson) {
+      const source = resolveScenePointInScene(env, scene, point.binding.sourceIndex);
+      if (!source) return;
+      point.x = source.x;
+      point.y = source.y;
+    },
     "directed-angle-anchor"(env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson) {
       if (point.binding.kind !== "directed-angle-anchor") return;
       const resolved = directedAngleAnchorPoint(
@@ -1148,6 +1171,14 @@
     },
     "polar-offset"(env: ViewerEnv, _scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       updatePolarOffsetPoint(point, env.resolveScenePoint(point.binding.sourceIndex), parameters);
+    },
+    "polar-transform"(env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
+      updatePolarTransformPoint(
+        point,
+        env.resolveScenePoint(point.binding.sourceIndex),
+        parameters,
+        scene.yUp === true,
+      );
     },
     "boundary-length-offset"(env: ViewerEnv, scene: ViewerSceneData, point: RuntimeScenePointJson) {
       const source = resolveScenePointInScene(env, scene, point.binding.sourceIndex);
@@ -1516,6 +1547,12 @@
 
 
   const SYNC_DYNAMIC_POINT_BINDING_UPDATERS = {
+    "payload-alias"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson) {
+      const source = draft.points[point.binding.sourceIndex];
+      if (!source) return;
+      point.x = source.x;
+      point.y = source.y;
+    },
     "directed-angle-anchor"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson) {
       if (point.binding.kind !== "directed-angle-anchor") return;
       const resolved = directedAngleAnchorPoint(
@@ -1543,6 +1580,14 @@
     },
     "polar-offset"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       updatePolarOffsetPoint(point, draft.points[point.binding.sourceIndex], parameters);
+    },
+    "polar-transform"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
+      updatePolarTransformPoint(
+        point,
+        draft.points[point.binding.sourceIndex],
+        parameters,
+        draft.yUp === true,
+      );
     },
     "custom-transform"(_env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, parameters: Map<string, number>) {
       updateCustomTransformPoint(point, parameters, (index: number) => draft.points[index], draft);
@@ -1624,6 +1669,7 @@
     scaleByThreePointRatio,
     updateConstraintParameterizedPoint,
     updateCustomTransformPoint,
+    updatePolarTransformPoint,
   });
   const LINE_BINDING_REFRESHERS = {
     segment({ scene }: LineBindingRefreshContext, line: RuntimeLineJson) {

@@ -442,6 +442,14 @@ impl Collector<'_> {
             CircularConstraint::TranslateCircle { source, .. } => {
                 self.circular_constraint(deps, source)
             }
+            CircularConstraint::VectorTranslateCircle {
+                source,
+                vector_start_index,
+                vector_end_index,
+            } => {
+                self.circular_constraint(deps, source);
+                self.points(deps, [*vector_start_index, *vector_end_index]);
+            }
             CircularConstraint::ReflectCircle {
                 source,
                 line_start_index,
@@ -567,6 +575,9 @@ impl Collector<'_> {
     fn point_binding(&self, deps: &mut Dependencies, binding: &ScenePointBinding) {
         match binding {
             ScenePointBinding::GraphCalibration => {}
+            ScenePointBinding::PayloadAlias { parent_indices, .. } => {
+                self.points(deps, parent_indices.iter().copied())
+            }
             ScenePointBinding::Parameter { name } => self.parameter(deps, Some(name)),
             ScenePointBinding::DerivedParameter {
                 source_index,
@@ -732,6 +743,16 @@ impl Collector<'_> {
                 self.point(deps, Some(*source_index));
                 self.expr(deps, distance_expr);
             }
+            ScenePointBinding::PolarTransform {
+                source_index,
+                distance_expr,
+                angle_expr,
+                ..
+            } => {
+                self.point(deps, Some(*source_index));
+                self.expr(deps, distance_expr);
+                self.expr(deps, angle_expr);
+            }
             ScenePointBinding::RadiusOffset {
                 source_index,
                 circle,
@@ -837,6 +858,14 @@ impl Collector<'_> {
                 line, point_index, ..
             } => {
                 self.line_constraint(deps, line);
+                self.point(deps, Some(*point_index));
+            }
+            ScenePointConstraint::CircularTraceIntersection {
+                circle,
+                point_index,
+                ..
+            } => {
+                self.circular_constraint(deps, circle);
                 self.point(deps, Some(*point_index));
             }
             ScenePointConstraint::LineFunctionIntersection { line, expr, .. } => {

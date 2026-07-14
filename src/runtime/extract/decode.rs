@@ -302,7 +302,7 @@ pub(crate) fn measured_radius_segment_group_indices(
     radius_group: &ObjectGroup,
 ) -> Option<(usize, usize)> {
     if radius_group.header.kind() == GroupKind::GraphObject40 {
-        if !is_legacy_radius_value(file, radius_group) {
+        if !is_graph_object_radius_value(file, radius_group) {
             return None;
         }
         let radius_path = find_indexed_path(file, radius_group)?;
@@ -349,15 +349,46 @@ pub(crate) fn measured_radius_segment_group_indices(
     ))
 }
 
-fn is_legacy_radius_value(file: &GspFile, group: &ObjectGroup) -> bool {
-    group.header.kind() == GroupKind::GraphObject40
-        && group.records.iter().any(|record| {
-            record.record_type == crate::runtime::payload_consts::RECORD_ACTION_AUX
-                && record
-                    .payload(&file.data)
-                    .windows(b"<0>\0MR".len())
-                    .any(|window| window == b"<0>\0MR")
-        })
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GraphObjectCircleMeasurementKind {
+    Radius,
+    Circumference,
+}
+
+pub(crate) fn graph_object_circle_measurement_kind(
+    file: &GspFile,
+    group: &ObjectGroup,
+) -> Option<GraphObjectCircleMeasurementKind> {
+    if group.header.kind() != GroupKind::GraphObject40 {
+        return None;
+    }
+    group.records.iter().find_map(|record| {
+        if record.record_type != crate::runtime::payload_consts::RECORD_ACTION_AUX {
+            return None;
+        }
+        let payload = record.payload(&file.data);
+        let class = (payload.len() >= 16).then(|| read_u16(payload, 14));
+        match class {
+            Some(crate::runtime::payload_consts::GRAPH_OBJECT_RADIUS_CLASS) => {
+                Some(GraphObjectCircleMeasurementKind::Radius)
+            }
+            Some(crate::runtime::payload_consts::GRAPH_OBJECT_CIRCUMFERENCE_CLASS) => {
+                Some(GraphObjectCircleMeasurementKind::Circumference)
+            }
+            _ if payload
+                .windows(b"<0>\0MR".len())
+                .any(|window| window == b"<0>\0MR") =>
+            {
+                Some(GraphObjectCircleMeasurementKind::Radius)
+            }
+            _ => None,
+        }
+    })
+}
+
+pub(crate) fn is_graph_object_radius_value(file: &GspFile, group: &ObjectGroup) -> bool {
+    graph_object_circle_measurement_kind(file, group)
+        == Some(GraphObjectCircleMeasurementKind::Radius)
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]

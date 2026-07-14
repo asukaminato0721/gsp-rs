@@ -2,14 +2,28 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use gsp_rs::pipeline::compile_file_to_scene_json;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug)]
+const WORKER_PATH_ENV: &str = "GSP_OBJECT_GRAPH_AUDIT_WORKER_PATH";
+const WORKER_REPORT_ENV: &str = "GSP_OBJECT_GRAPH_AUDIT_WORKER_REPORT";
+
+#[derive(Debug, Serialize, Deserialize)]
 struct PendingExample {
     path: PathBuf,
     operation: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct FileAuditReport {
+    compile_failures: Vec<String>,
+    pending_counts: BTreeMap<String, usize>,
+    pending_examples: BTreeMap<String, Vec<PendingExample>>,
 }
 
 fn collect_gsp_files(root: &Path, output: &mut Vec<PathBuf>) {
@@ -105,6 +119,136 @@ fn pending_object_group_kind<'a>(scene: &'a Value, operation: &str) -> Option<&'
         .as_str()
 }
 
+fn audit_file(path: &Path) -> FileAuditReport {
+    let mut report = FileAuditReport::default();
+    let compiled = catch_unwind(AssertUnwindSafe(|| {
+        compile_file_to_scene_json(path, 960, 640)
+    }));
+    let Ok(compiled) = compiled else {
+        report
+            .compile_failures
+            .push(format!("{}: compiler panicked", path.display()));
+        return report;
+    };
+    match compiled {
+        Ok(json) => match serde_json::from_str::<Value>(&json) {
+            Ok(scene) => visit_object_graphs(
+                &scene,
+                path,
+                &mut report.pending_counts,
+                &mut report.pending_examples,
+            ),
+            Err(error) => report
+                .compile_failures
+                .push(format!("{}: invalid scene JSON: {error}", path.display())),
+        },
+        Err(error) => report
+            .compile_failures
+            .push(format!("{}: {error:#}", path.display())),
+    }
+    report
+}
+
+fn merge_report(
+    report: FileAuditReport,
+    compile_failures: &mut Vec<String>,
+    pending_counts: &mut BTreeMap<String, usize>,
+    pending_examples: &mut BTreeMap<String, Vec<PendingExample>>,
+) {
+    compile_failures.extend(report.compile_failures);
+    for (category, count) in report.pending_counts {
+        *pending_counts.entry(category).or_default() += count;
+    }
+    for (category, examples) in report.pending_examples {
+        let merged = pending_examples.entry(category).or_default();
+        for example in examples {
+            if merged.len() >= 5 {
+                break;
+            }
+            if !merged.iter().any(|existing| existing.path == example.path) {
+                merged.push(example);
+            }
+        }
+    }
+}
+
+fn audit_file_in_worker(path: &Path, timeout: Duration, worker_index: usize) -> FileAuditReport {
+    let report_path = std::env::temp_dir().join(format!(
+        "gsp-object-graph-audit-{}-{worker_index}.json",
+        std::process::id()
+    ));
+    let mut child = match Command::new(std::env::current_exe().expect("resolve audit test binary"))
+        .args([
+            "--exact",
+            "object_graph_audit_single_file_worker",
+            "--ignored",
+            "--nocapture",
+        ])
+        .env(WORKER_PATH_ENV, path)
+        .env(WORKER_REPORT_ENV, &report_path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(error) => {
+            return FileAuditReport {
+                compile_failures: vec![format!(
+                    "{}: failed to start audit worker: {error}",
+                    path.display()
+                )],
+                ..FileAuditReport::default()
+            };
+        }
+    };
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+            Err(_) => break None,
+        }
+    };
+    let report = if status.is_some_and(|status| status.success()) {
+        fs::read(&report_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+    } else {
+        None
+    };
+    let _ = fs::remove_file(&report_path);
+    report.unwrap_or_else(|| FileAuditReport {
+        compile_failures: vec![if status.is_none() {
+            format!(
+                "{}: compiler timed out after {} ms",
+                path.display(),
+                timeout.as_millis()
+            )
+        } else {
+            format!("{}: audit worker failed", path.display())
+        }],
+        ..FileAuditReport::default()
+    })
+}
+
+#[test]
+#[ignore = "internal subprocess for the full corpus audit"]
+fn object_graph_audit_single_file_worker() {
+    let Some(path) = std::env::var_os(WORKER_PATH_ENV).map(PathBuf::from) else {
+        return;
+    };
+    let report_path = std::env::var_os(WORKER_REPORT_ENV)
+        .map(PathBuf::from)
+        .expect("audit worker report path");
+    let report = audit_file(&path);
+    fs::write(report_path, serde_json::to_vec(&report).unwrap()).unwrap();
+}
+
 #[test]
 #[ignore = "full corpus migration gate; run explicitly while ObjectGraph coverage is incomplete"]
 fn every_test_gsp_has_a_complete_object_graph() {
@@ -147,29 +291,27 @@ fn every_test_gsp_has_a_complete_object_graph() {
     let mut compile_failures = Vec::new();
     let mut pending_counts = BTreeMap::new();
     let mut pending_examples = BTreeMap::new();
+    let worker_timeout = std::env::var("GSP_OBJECT_GRAPH_AUDIT_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|milliseconds| *milliseconds > 0)
+        .map(Duration::from_millis);
     let panic_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     for (index, path) in paths.iter().enumerate() {
         if index % 25 == 0 || paths.len() <= 25 {
             eprintln!("audited {index}/{}: {}", paths.len(), path.display());
         }
-        let compiled = catch_unwind(AssertUnwindSafe(|| {
-            compile_file_to_scene_json(path, 960, 640)
-        }));
-        let Ok(compiled) = compiled else {
-            compile_failures.push(format!("{}: compiler panicked", path.display()));
-            continue;
-        };
-        match compiled {
-            Ok(json) => match serde_json::from_str::<Value>(&json) {
-                Ok(scene) => {
-                    visit_object_graphs(&scene, path, &mut pending_counts, &mut pending_examples)
-                }
-                Err(error) => compile_failures
-                    .push(format!("{}: invalid scene JSON: {error}", path.display())),
-            },
-            Err(error) => compile_failures.push(format!("{}: {error:#}", path.display())),
-        }
+        let report = worker_timeout.map_or_else(
+            || audit_file(path),
+            |timeout| audit_file_in_worker(path, timeout, index),
+        );
+        merge_report(
+            report,
+            &mut compile_failures,
+            &mut pending_counts,
+            &mut pending_examples,
+        );
     }
     std::panic::set_hook(panic_hook);
 

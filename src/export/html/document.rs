@@ -227,6 +227,7 @@ mod tests {
             iteration_tables: Vec::new(),
             buttons: Vec::new(),
             parameters: Vec::new(),
+            scalars: Vec::new(),
             functions: Vec::new(),
             function_definitions: Vec::new(),
         }

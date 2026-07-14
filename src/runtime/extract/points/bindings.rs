@@ -33,7 +33,8 @@ pub(crate) use remap::{
 };
 pub(crate) use visible_points::{
     collect_standalone_parameter_points, collect_visible_points_checked,
-    collect_visible_points_checked_with_context, scene_point_from_parameter_controlled,
+    collect_visible_points_checked_with_context, refresh_visible_points_checked_with_context,
+    scene_point_from_parameter_controlled,
 };
 
 pub(crate) struct TransformBinding {

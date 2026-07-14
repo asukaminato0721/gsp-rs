@@ -819,6 +819,12 @@ type RuntimeDynamicsGeometryDependencies = {
     resolvePointAt: (pointIndex: number) => Point | null,
     parameterSourceScene: ViewerSceneData,
   ) => void;
+  updatePolarTransformPoint: (
+    point: RuntimeScenePointJson,
+    source: Point | null,
+    parameters: Map<string, number>,
+    yUp: boolean,
+  ) => void;
 };
 
 type ViewerDynamicsGeometryModule = {

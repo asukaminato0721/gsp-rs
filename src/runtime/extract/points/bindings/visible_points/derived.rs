@@ -201,6 +201,52 @@ fn scene_point_from_intersection(
         ));
     }
 
+    if let (Some(circle), Some((trace_key, point_index, x_min, x_max, sample_count))) = (
+        resolve_circular_constraint(file, groups, left_group, group_to_point_index),
+        decode_trace_constraint(file, groups, right_group, group_to_point_index),
+    ) {
+        return Some(scene_point(
+            position,
+            group_color(group),
+            visible,
+            true,
+            ScenePointConstraint::CircularTraceIntersection {
+                circle,
+                trace_key,
+                point_index,
+                x_min,
+                x_max,
+                sample_count,
+                variant: trace_intersection_variant(file, group),
+                sample_hint: intersection_sample_hint(file, group),
+            },
+            None,
+        ));
+    }
+
+    if let (Some((trace_key, point_index, x_min, x_max, sample_count)), Some(circle)) = (
+        decode_trace_constraint(file, groups, left_group, group_to_point_index),
+        resolve_circular_constraint(file, groups, right_group, group_to_point_index),
+    ) {
+        return Some(scene_point(
+            position,
+            group_color(group),
+            visible,
+            true,
+            ScenePointConstraint::CircularTraceIntersection {
+                circle,
+                trace_key,
+                point_index,
+                x_min,
+                x_max,
+                sample_count,
+                variant: trace_intersection_variant(file, group),
+                sample_hint: intersection_sample_hint(file, group),
+            },
+            None,
+        ));
+    }
+
     if let (Some(line), Some((function_key, expr, descriptor))) = (
         resolve_intersection_line_constraint(file, groups, left_group, anchors, group_to_point_index),
         decode_function_plot_constraint(file, groups, right_group),
@@ -925,6 +971,25 @@ fn resolve_circular_constraint(
                 source: Box::new(source),
                 dx: constraint.dx,
                 dy: constraint.dy,
+            })
+        }
+        crate::format::GroupKind::Translation => {
+            if path.refs.len() < 3 {
+                return None;
+            }
+            let source_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let source =
+                resolve_circular_constraint(file, groups, source_group, group_to_point_index)?;
+            Some(CircularConstraint::VectorTranslateCircle {
+                source: Box::new(source),
+                vector_start_index: mapped_point_index(
+                    group_to_point_index,
+                    path.refs[1].checked_sub(1)?,
+                )?,
+                vector_end_index: mapped_point_index(
+                    group_to_point_index,
+                    path.refs[2].checked_sub(1)?,
+                )?,
             })
         }
         crate::format::GroupKind::Reflection => {

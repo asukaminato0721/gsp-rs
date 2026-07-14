@@ -103,6 +103,37 @@ fn arc_shape_raw(
     result
 }
 
+fn reflection_axis_binding(
+    file: &GspFile,
+    axis_group: &ObjectGroup,
+    axis_group_index: usize,
+) -> AxisBinding {
+    if matches!(
+        axis_group.header.kind(),
+        crate::format::GroupKind::Segment
+            | crate::format::GroupKind::Line
+            | crate::format::GroupKind::Ray
+            | crate::format::GroupKind::MeasurementLine
+            | crate::format::GroupKind::GraphMeasurementSegment
+    ) && let Some(path) = find_indexed_path(file, axis_group)
+        && let (Some(start_index), Some(end_index)) = (
+            path.refs.first().and_then(|ordinal| ordinal.checked_sub(1)),
+            path.refs.get(1).and_then(|ordinal| ordinal.checked_sub(1)),
+        )
+    {
+        return AxisBinding {
+            line_start_index: Some(start_index),
+            line_end_index: Some(end_index),
+            line_index: None,
+        };
+    }
+    AxisBinding {
+        line_start_index: None,
+        line_end_index: None,
+        line_index: Some(axis_group_index),
+    }
+}
+
 pub(crate) fn collect_reflected_arc_shapes(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -126,6 +157,7 @@ pub(crate) fn collect_reflected_arc_shapes(
                 return None;
             }
             let line_group_index = context.path_ref_group_index(path, 1)?;
+            let line_group = context.path_ref_group(path, 1)?;
             let (points, center, counterclockwise) =
                 arc_shape_raw(file, groups, anchors, group, &mut Vec::new())?;
             Some(ArcShape {
@@ -136,11 +168,11 @@ pub(crate) fn collect_reflected_arc_shapes(
                 visible: !group.header.is_hidden(),
                 binding: Some(ArcBinding::DerivedTransform {
                     source_index: source_group_index,
-                    transform: ShapeTransformBinding::Reflect(AxisBinding {
-                        line_start_index: None,
-                        line_end_index: None,
-                        line_index: Some(line_group_index),
-                    }),
+                    transform: ShapeTransformBinding::Reflect(reflection_axis_binding(
+                        file,
+                        line_group,
+                        line_group_index,
+                    )),
                 }),
                 debug: Some(payload_debug_source(group)),
             })
@@ -708,11 +740,11 @@ pub(crate) fn collect_reflected_circle_shapes(
                 center,
                 radius_point,
                 source_fill,
-                ShapeTransformBinding::Reflect(AxisBinding {
-                    line_start_index: None,
-                    line_end_index: None,
-                    line_index: Some(line_group_index),
-                }),
+                ShapeTransformBinding::Reflect(reflection_axis_binding(
+                    file,
+                    line_group,
+                    line_group_index,
+                )),
             ))
         })
         .collect()
@@ -743,11 +775,11 @@ pub(crate) fn collect_reflected_polygon_shapes(
                 group,
                 source_group_index,
                 points,
-                ShapeTransformBinding::Reflect(AxisBinding {
-                    line_start_index: None,
-                    line_end_index: None,
-                    line_index: Some(line_group_index),
-                }),
+                ShapeTransformBinding::Reflect(reflection_axis_binding(
+                    file,
+                    line_group,
+                    line_group_index,
+                )),
             )
         })
         .collect()

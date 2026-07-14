@@ -18,9 +18,10 @@ use super::{
 use crate::format::GroupKind;
 use crate::format::{read_u16, read_u32};
 use crate::runtime::functions::{
-    BinaryOp, FunctionAst, FunctionExpr, evaluate_expr_with_parameters, function_expr_ast,
-    function_parameter_group_ordinals, try_decode_function_expr,
-    try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
+    BinaryOp, FunctionAst, FunctionExpr, UnaryFunction, evaluate_expr_with_parameters,
+    evaluate_function_group_with_overrides, function_expr_ast, function_parameter_group_ordinals,
+    try_decode_function_expr, try_decode_function_expr_with_inlined_refs,
+    try_decode_function_plot_descriptor,
 };
 use crate::runtime::geometry::{
     GraphTransform, angle_degrees_from_points, arc_on_circle_control_points, from_core_point,
@@ -31,8 +32,8 @@ use crate::runtime::payload_consts::RECORD_ITERATION_DEFINITION;
 use crate::runtime::payload_consts::{
     EXPRESSION_TRANSFORM_CALCULATED_ROTATE_CLASS, EXPRESSION_TRANSFORM_CALCULATED_SCALE_CLASS,
     EXPRESSION_TRANSFORM_FUNCTION_ROTATE_CLASS, EXPRESSION_TRANSFORM_LABELED_ROTATE_CLASS,
-    EXPRESSION_TRANSFORM_MARKED_SCALE_CLASS, EXPRESSION_TRANSFORM_ROTATE_CLASS,
-    EXPRESSION_TRANSFORM_SCALE_CLASS,
+    EXPRESSION_TRANSFORM_MARKED_SCALE_CLASS, EXPRESSION_TRANSFORM_PARAMETER_ROTATE_CLASS,
+    EXPRESSION_TRANSFORM_ROTATE_CLASS, EXPRESSION_TRANSFORM_SCALE_CLASS,
 };
 use crate::runtime::scene::LineLikeKind;
 
@@ -161,7 +162,7 @@ enum ExpressionTransformKind {
     Scale,
 }
 
-pub(crate) fn expression_value_class(file: &GspFile, group: &ObjectGroup) -> Option<u16> {
+fn expression_value_class(file: &GspFile, group: &ObjectGroup) -> Option<u16> {
     group
         .records
         .iter()
@@ -183,18 +184,32 @@ fn expression_transform_kind(
     let value_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
     let transform_class = expression_value_class(file, group);
     let value_class = expression_value_class(file, value_group);
-    match (
-        transform_class.unwrap_or(EXPRESSION_TRANSFORM_SCALE_CLASS),
-        value_class,
-    ) {
+    match (transform_class, value_class) {
         (
-            EXPRESSION_TRANSFORM_SCALE_CLASS,
+            Some(EXPRESSION_TRANSFORM_SCALE_CLASS),
             Some(
                 EXPRESSION_TRANSFORM_CALCULATED_ROTATE_CLASS
                 | EXPRESSION_TRANSFORM_FUNCTION_ROTATE_CLASS,
             ),
-        ) => return Some(ExpressionTransformKind::Rotate),
+        )
+        | (None, Some(EXPRESSION_TRANSFORM_FUNCTION_ROTATE_CLASS)) => {
+            return Some(ExpressionTransformKind::Rotate);
+        }
         _ => {}
+    }
+    if transform_class.is_none()
+        && value_class == Some(EXPRESSION_TRANSFORM_CALCULATED_ROTATE_CLASS)
+    {
+        return Some(
+            if group.records.iter().any(|record| {
+                record.record_type
+                    == crate::runtime::payload_consts::RECORD_EXPRESSION_ROTATION_MARKER
+            }) {
+                ExpressionTransformKind::Rotate
+            } else {
+                ExpressionTransformKind::Scale
+            },
+        );
     }
     if matches!(
         transform_class,
@@ -212,6 +227,7 @@ fn expression_transform_kind(
         | EXPRESSION_TRANSFORM_CALCULATED_SCALE_CLASS => Some(ExpressionTransformKind::Scale),
         EXPRESSION_TRANSFORM_ROTATE_CLASS
         | EXPRESSION_TRANSFORM_CALCULATED_ROTATE_CLASS
+        | EXPRESSION_TRANSFORM_PARAMETER_ROTATE_CLASS
         | EXPRESSION_TRANSFORM_LABELED_ROTATE_CLASS => Some(ExpressionTransformKind::Rotate),
         _ => None,
     }
@@ -668,8 +684,8 @@ pub(crate) fn decode_expression_rotation_binding(
             } else {
                 scale_angle_expr_to_degrees(angle_expr)
             };
-        let angle_degrees =
-            evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters).or_else(|| {
+        let angle_degrees = evaluate_expr_with_parameters(&angle_expr, 0.0, &parameters)
+            .or_else(|| {
                 let value = crate::runtime::functions::evaluate_function_group_with_overrides(
                     file,
                     groups,
@@ -685,7 +701,9 @@ pub(crate) fn decode_expression_rotation_binding(
                         value.to_degrees()
                     },
                 )
-            })?;
+            })
+            .filter(|value| value.is_finite())
+            .unwrap_or(0.0);
         (angle_expr, angle_degrees, parameter_name)
     } else if expr_group.header.kind() == GroupKind::Point {
         let parameter_name = editable_non_graph_parameter_name_for_group(file, groups, expr_group)
@@ -760,7 +778,17 @@ pub(crate) fn decode_expression_scale_binding(
     {
         let (factor_expr, parameters, parameter_name) =
             expression_runtime_context(file, groups, expr_group, anchors)?;
-        let factor = evaluate_expr_with_parameters(&factor_expr, 0.0, &parameters)?;
+        let factor_expr = if expression_value_class(file, group).is_none()
+            && expression_value_class(file, expr_group)
+                == Some(EXPRESSION_TRANSFORM_CALCULATED_ROTATE_CLASS)
+        {
+            marked_ratio_trig_expr(factor_expr)
+        } else {
+            factor_expr
+        };
+        let factor = evaluate_expr_with_parameters(&factor_expr, 0.0, &parameters)
+            .filter(|value| value.is_finite())
+            .unwrap_or(1.0);
         (factor_expr, factor, parameter_name)
     } else if expr_group.header.kind() == GroupKind::Point
         && decode_angle_parameter_value_for_group(file, expr_group).is_none()
@@ -795,6 +823,67 @@ pub(crate) fn decode_expression_scale_binding(
             file, groups, expr_group,
         ),
     })
+}
+
+fn marked_ratio_trig_expr(expr: FunctionExpr) -> FunctionExpr {
+    fn contains_angle_constant(expr: &FunctionAst) -> bool {
+        match expr {
+            FunctionAst::PiConstant | FunctionAst::PiAngle => true,
+            FunctionAst::Unary { expr, .. } => contains_angle_constant(expr),
+            FunctionAst::Binary { lhs, rhs, .. } => {
+                contains_angle_constant(lhs) || contains_angle_constant(rhs)
+            }
+            FunctionAst::Variable
+            | FunctionAst::Constant(_)
+            | FunctionAst::EulerConstant
+            | FunctionAst::Parameter(_, _) => false,
+        }
+    }
+
+    fn convert(expr: FunctionAst) -> FunctionAst {
+        match expr {
+            FunctionAst::Unary { op, expr }
+                if matches!(
+                    op,
+                    UnaryFunction::Sin | UnaryFunction::Cos | UnaryFunction::Tan
+                ) =>
+            {
+                let expr = convert(*expr);
+                let expr = if contains_angle_constant(&expr) {
+                    expr
+                } else {
+                    FunctionAst::Binary {
+                        lhs: Box::new(FunctionAst::Binary {
+                            lhs: Box::new(FunctionAst::PiConstant),
+                            op: BinaryOp::Div,
+                            rhs: Box::new(FunctionAst::Constant(180.0)),
+                        }),
+                        op: BinaryOp::Mul,
+                        rhs: Box::new(expr),
+                    }
+                };
+                FunctionAst::Unary {
+                    op,
+                    expr: Box::new(expr),
+                }
+            }
+            FunctionAst::Unary { op, expr } => FunctionAst::Unary {
+                op,
+                expr: Box::new(convert(*expr)),
+            },
+            FunctionAst::Binary { lhs, op, rhs } => FunctionAst::Binary {
+                lhs: Box::new(convert(*lhs)),
+                op,
+                rhs: Box::new(convert(*rhs)),
+            },
+            other => other,
+        }
+    }
+
+    match expr {
+        FunctionExpr::Parsed(ast) => FunctionExpr::Parsed(convert(ast)),
+        other => other,
+    }
 }
 
 pub(crate) fn decode_expression_ratio_scale_binding(
@@ -1749,6 +1838,56 @@ pub(crate) fn resolve_circle_like_raw(
                 }),
             }
         }
+        crate::format::GroupKind::Translation => {
+            if path.refs.len() < 3 {
+                return None;
+            }
+            let source_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let vector_start = anchors.get(path.refs[1].checked_sub(1)?)?.clone()?;
+            let vector_end = anchors.get(path.refs[2].checked_sub(1)?)?.clone()?;
+            let dx = vector_end.x - vector_start.x;
+            let dy = vector_end.y - vector_start.y;
+            match resolve_circle_like_raw(file, groups, anchors, source_group)? {
+                CircularConstraintRaw::Circle { center, radius } => {
+                    Some(CircularConstraintRaw::Circle {
+                        center: PointRecord {
+                            x: center.x + dx,
+                            y: center.y + dy,
+                        },
+                        radius,
+                    })
+                }
+                CircularConstraintRaw::ThreePointArc {
+                    start,
+                    mid,
+                    end,
+                    center,
+                    radius,
+                    ccw_span,
+                    ccw_mid,
+                } => Some(CircularConstraintRaw::ThreePointArc {
+                    start: PointRecord {
+                        x: start.x + dx,
+                        y: start.y + dy,
+                    },
+                    mid: PointRecord {
+                        x: mid.x + dx,
+                        y: mid.y + dy,
+                    },
+                    end: PointRecord {
+                        x: end.x + dx,
+                        y: end.y + dy,
+                    },
+                    center: PointRecord {
+                        x: center.x + dx,
+                        y: center.y + dy,
+                    },
+                    radius,
+                    ccw_span,
+                    ccw_mid,
+                }),
+            }
+        }
         crate::format::GroupKind::Scale => {
             let binding = try_decode_transform_binding(file, group).ok()?;
             let center = anchors.get(binding.center_group_index)?.clone()?;
@@ -2129,13 +2268,35 @@ pub(crate) fn decode_custom_transform_anchor_raw(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
     anchors: &[Option<PointRecord>],
+    graph: Option<&GraphTransform>,
 ) -> Option<PointRecord> {
     if (group.header.kind()) != crate::format::GroupKind::CustomTransformPoint {
         return None;
     }
-    let binding = decode_custom_transform_binding(file, groups, group.ordinal)?;
-    let t = decode_custom_transform_parameter(file, groups, binding.source_group_index, anchors)?;
-    resolve_custom_transform_point(anchors, &binding, t)
+    if let Some(binding) = decode_custom_transform_binding(file, groups, group.ordinal) {
+        let t =
+            decode_custom_transform_parameter(file, groups, binding.source_group_index, anchors)?;
+        return resolve_custom_transform_point(anchors, &binding, t);
+    }
+
+    let path = find_indexed_path(file, group)?;
+    let source = anchors.get(path.refs.first()?.checked_sub(1)?)?.as_ref()?;
+    let angle_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
+    let distance_group = groups.get(path.refs.get(2)?.checked_sub(1)?)?;
+    let angle_degrees =
+        evaluate_function_group_with_overrides(file, groups, angle_group, &BTreeMap::new())?
+            * decode_custom_transform_angle_scale(file, angle_group)?;
+    let distance =
+        evaluate_function_group_with_overrides(file, groups, distance_group, &BTreeMap::new())?
+            * graph.map_or_else(
+                || decode_custom_transform_distance_scale(file, distance_group),
+                |transform| Some(transform.raw_per_unit),
+            )?;
+    let angle = angle_degrees.to_radians();
+    Some(PointRecord {
+        x: source.x + distance * angle.cos(),
+        y: source.y - distance * angle.sin(),
+    })
 }
 
 pub(crate) fn decode_custom_transform_binding(

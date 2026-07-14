@@ -970,6 +970,37 @@ pub(crate) fn try_decode_parameter_controlled_point(
                 source_group_ordinal: source_group.ordinal,
             })
         }
+        kind if is_circle_group_kind(kind) => {
+            let circle = resolve_circle_like_raw(file, groups, anchors, host_group)
+                .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
+            let angle = std::f64::consts::TAU * wrap_unit_interval(parameter_value);
+            let unit_x = angle.cos();
+            let unit_y = angle.sin();
+            let center = circle.center();
+            let radius = circle.radius();
+            Ok(ParameterControlledPoint {
+                position: PointRecord {
+                    x: center.x + radius * unit_x,
+                    y: center.y - radius * unit_y,
+                },
+                constraint: RawPointConstraint::Circular(PointOnCircularConstraint {
+                    circle_group_index: host_group
+                        .ordinal
+                        .checked_sub(1)
+                        .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?,
+                    unit_x,
+                    unit_y,
+                }),
+                parameter_name,
+                source_point_group_index,
+                source_parameter_segment_group_indices,
+                source_ratio_group_indices,
+                source_expr: source_expr.clone(),
+                source_expr_absolute_parameter,
+                source_parameters: source_parameters.clone(),
+                source_group_ordinal: source_group.ordinal,
+            })
+        }
         crate::format::GroupKind::ThreePointArc => {
             let host_path = find_indexed_path(file, host_group)
                 .ok_or(ParameterControlledPointDecodeError::InvalidHostGeometry)?;
@@ -1448,6 +1479,7 @@ pub(crate) fn decode_coordinate_point(
             | crate::format::GroupKind::GraphFunctionPoint
             | crate::format::GroupKind::GraphValuePoint
             | crate::format::GroupKind::LegacyCoordinateParameterHelper
+            | crate::format::GroupKind::LegacyCoordinatePointHelper
             | crate::format::GroupKind::CoordinateExpressionPointPair
     ) {
         return None;
@@ -1726,6 +1758,36 @@ pub(crate) fn decode_coordinate_point(
                     source_group_index,
                     parameter_name,
                     axis: crate::runtime::scene::CoordinateAxis::Vertical,
+                },
+                expr,
+            })
+        }
+        crate::format::GroupKind::LegacyCoordinatePointHelper => {
+            let parameter_group = groups.get(path.refs[0].checked_sub(1)?)?;
+            let axis_group = groups.get(path.refs[1].checked_sub(1)?)?;
+            let (parameter_name, parameter_value, expr) =
+                coordinate_parameter_binding(file, groups, parameter_group, anchors)?;
+            let axis_path = find_indexed_path(file, axis_group)?;
+            let origin_measurement_group = groups.get(axis_path.refs.first()?.checked_sub(1)?)?;
+            let origin_measurement_path = find_indexed_path(file, origin_measurement_group)?;
+            let source_group_index = origin_measurement_path.refs.first()?.checked_sub(1)?;
+            let source_position = anchors.get(source_group_index)?.clone()?;
+            let source_world = to_world(&source_position, graph);
+            let world = PointRecord {
+                x: source_world.x + parameter_value,
+                y: source_world.y,
+            };
+            let position = if let Some(transform) = graph {
+                to_raw_from_world(&world, transform)
+            } else {
+                world
+            };
+            Some(CoordinatePoint {
+                position,
+                source: CoordinatePointSource::SourcePoint {
+                    source_group_index,
+                    parameter_name,
+                    axis: crate::runtime::scene::CoordinateAxis::Horizontal,
                 },
                 expr,
             })
@@ -2090,6 +2152,13 @@ fn coordinate_parameter_binding(
         ));
     }
 
+    if let Ok(expr) = try_decode_function_expr(file, groups, parameter_group) {
+        let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new()).unwrap_or(0.0);
+        let name = decode_label_name(file, parameter_group)
+            .unwrap_or_else(|| crate::runtime::functions::function_expr_label(expr.clone()));
+        return Some((name, value, expr));
+    }
+
     if let Ok(parameter_point) =
         try_decode_parameter_controlled_point(file, groups, parameter_group, anchors)
         && !parameter_point.parameter_name.is_empty()
@@ -2104,13 +2173,6 @@ fn coordinate_parameter_binding(
             value,
             FunctionExpr::Parsed(FunctionAst::Parameter(name, value)),
         ));
-    }
-
-    if let Ok(expr) = try_decode_function_expr(file, groups, parameter_group) {
-        let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())?;
-        let name = decode_label_name(file, parameter_group)
-            .unwrap_or_else(|| crate::runtime::functions::function_expr_label(expr.clone()));
-        return Some((name, value, expr));
     }
 
     None

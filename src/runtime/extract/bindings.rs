@@ -6,6 +6,7 @@ pub(super) struct BindingMaps {
     pub(super) circle_group_to_index: Vec<Option<usize>>,
     pub(super) polygon_group_to_index: Vec<Option<usize>>,
     pub(super) line_group_to_index: Vec<Option<usize>>,
+    pub(super) arc_group_to_index: Vec<Option<usize>>,
 }
 
 fn circle_group_to_index_map(
@@ -184,6 +185,7 @@ pub(super) fn remap_scene_bindings(
             circle_group_to_index,
             polygon_group_to_index,
             line_group_to_index,
+            arc_group_to_index,
         },
         line_iterations,
         polygon_iterations,

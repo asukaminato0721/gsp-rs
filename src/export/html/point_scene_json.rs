@@ -42,6 +42,11 @@ impl ScenePointJson {
 enum PointBindingJson {
     #[serde(rename = "graph-calibration")]
     GraphCalibration,
+    #[serde(rename = "payload-alias")]
+    PayloadAlias {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+    },
     #[serde(rename = "parameter")]
     Parameter { name: String },
     #[serde(rename = "derived-parameter")]
@@ -170,6 +175,19 @@ enum PointBindingJson {
         x_scale: f64,
         #[serde(rename = "yScale")]
         y_scale: f64,
+    },
+    #[serde(rename = "polar-transform")]
+    PolarTransform {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "distanceExpr")]
+        distance_expr: FunctionExprJson,
+        #[serde(rename = "distanceScale")]
+        distance_scale: f64,
+        #[serde(rename = "angleExpr")]
+        angle_expr: FunctionExprJson,
+        #[serde(rename = "angleDegreesScale")]
+        angle_degrees_scale: f64,
     },
     #[serde(rename = "boundary-length-offset")]
     BoundaryLengthOffset {
@@ -303,6 +321,12 @@ impl PointBindingJson {
     fn from_binding(binding: &ScenePointBinding) -> Self {
         match binding {
             ScenePointBinding::GraphCalibration => Self::GraphCalibration,
+            ScenePointBinding::PayloadAlias {
+                parent_indices,
+                source_parent,
+            } => Self::PayloadAlias {
+                source_index: parent_indices[*source_parent],
+            },
             ScenePointBinding::Parameter { name } => Self::Parameter { name: name.clone() },
             ScenePointBinding::DerivedParameter {
                 source_index,
@@ -511,6 +535,20 @@ impl PointBindingJson {
                 x_scale: *x_scale,
                 y_scale: *y_scale,
             },
+            ScenePointBinding::PolarTransform {
+                source_index,
+                distance_expr,
+                distance_scale,
+                angle_expr,
+                angle_degrees_scale,
+                ..
+            } => Self::PolarTransform {
+                source_index: *source_index,
+                distance_expr: FunctionExprJson::from_expr(distance_expr),
+                distance_scale: *distance_scale,
+                angle_expr: FunctionExprJson::from_expr(angle_expr),
+                angle_degrees_scale: *angle_degrees_scale,
+            },
             ScenePointBinding::RadiusOffset {
                 source_index,
                 radius,
@@ -689,6 +727,23 @@ enum PointConstraintJson {
         #[serde(rename = "sampleCount")]
         sample_count: usize,
         variant: usize,
+    },
+    #[serde(rename = "circular-trace-intersection")]
+    CircularTraceIntersection {
+        circle: CircularConstraintJson,
+        #[serde(rename = "traceKey")]
+        trace_key: usize,
+        #[serde(rename = "pointIndex")]
+        point_index: usize,
+        #[serde(rename = "xMin")]
+        x_min: f64,
+        #[serde(rename = "xMax")]
+        x_max: f64,
+        #[serde(rename = "sampleCount")]
+        sample_count: usize,
+        variant: usize,
+        #[serde(rename = "sampleHint", skip_serializing_if = "Option::is_none")]
+        sample_hint: Option<usize>,
     },
     #[serde(rename = "line-function-intersection")]
     LineFunctionIntersection {
@@ -907,6 +962,25 @@ impl PointConstraintJson {
                 x_max: *x_max,
                 sample_count: *sample_count,
                 variant: *variant,
+            }),
+            ScenePointConstraint::CircularTraceIntersection {
+                circle,
+                trace_key,
+                point_index,
+                x_min,
+                x_max,
+                sample_count,
+                variant,
+                sample_hint,
+            } => Some(Self::CircularTraceIntersection {
+                circle: CircularConstraintJson::from_constraint(circle),
+                trace_key: *trace_key,
+                point_index: *point_index,
+                x_min: *x_min,
+                x_max: *x_max,
+                sample_count: *sample_count,
+                variant: *variant,
+                sample_hint: *sample_hint,
             }),
             ScenePointConstraint::LineFunctionIntersection {
                 line,
@@ -1174,6 +1248,17 @@ impl CircularConstraintJson {
             CircularConstraint::TranslateCircle { source, dx, dy } => Self::Derived {
                 source: Box::new(Self::from_constraint(source)),
                 transform: TransformJson::translate_delta(*dx, *dy),
+            },
+            CircularConstraint::VectorTranslateCircle {
+                source,
+                vector_start_index,
+                vector_end_index,
+            } => Self::Derived {
+                source: Box::new(Self::from_constraint(source)),
+                transform: TransformJson::Translate {
+                    vector_start_index: *vector_start_index,
+                    vector_end_index: *vector_end_index,
+                },
             },
             CircularConstraint::ReflectCircle {
                 source,

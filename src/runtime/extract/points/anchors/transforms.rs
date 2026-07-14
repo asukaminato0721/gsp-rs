@@ -82,14 +82,20 @@ pub(crate) fn decode_custom_transform_parameter(
     }
 }
 
-fn decode_custom_transform_distance_scale(file: &GspFile, expr_group: &ObjectGroup) -> Option<f64> {
+pub(crate) fn decode_custom_transform_distance_scale(
+    file: &GspFile,
+    expr_group: &ObjectGroup,
+) -> Option<f64> {
     Some(match custom_transform_suffix(file, expr_group)? {
         0x0201 => PX_PER_CM,
         _ => 1.0,
     })
 }
 
-fn decode_custom_transform_angle_scale(file: &GspFile, expr_group: &ObjectGroup) -> Option<f64> {
+pub(crate) fn decode_custom_transform_angle_scale(
+    file: &GspFile,
+    expr_group: &ObjectGroup,
+) -> Option<f64> {
     Some(match custom_transform_suffix(file, expr_group)? {
         0x0101 => 100.0,
         _ => 1.0,

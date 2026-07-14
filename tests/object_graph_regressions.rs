@@ -39,6 +39,149 @@ fn assert_no_graph_validation_errors(scene: &Value) {
 }
 
 #[test]
+fn payload_alias_point_keeps_every_ordered_parent_in_the_object_graph() {
+    let document = compile_fixture("tests/Samples/个人专栏/况永胜作品/正方体的展开（3D效果）.gsp");
+    let scene = document
+        .get("pages")
+        .and_then(Value::as_array)
+        .and_then(|pages| pages.first())
+        .and_then(|page| page.get("scene"))
+        .unwrap_or(&document);
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+
+    let alias = object_id_for_group(scene, "points", "point", 23);
+    let parent = |ordinal| object_id_for_group(scene, "points", "point", ordinal);
+    let node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == alias)
+        .expect("payload alias node");
+    assert_eq!(node["definition"]["op"]["kind"], "select-parent");
+    assert_eq!(node["definition"]["op"]["index"], 0);
+    assert_eq!(
+        node["definition"]["parents"],
+        serde_json::json!([parent(15), parent(22), parent(10), parent(11), parent(15),])
+    );
+}
+
+#[test]
+fn sliding_polygon_circular_trace_chain_is_table_driven() {
+    let document =
+        compile_fixture("tests/Samples/个人专栏/方小庆作品/多边形沿两定点滑动(inRm).gsp");
+    let scene = &document["pages"][2]["scene"];
+    let intersection = object_id_for_group(scene, "points", "point", 31);
+    let trace = object_id_for_group(scene, "lines", "line", 21);
+    let translated = object_id_for_group(scene, "points", "point", 34);
+    let traced = object_id_for_group(scene, "lines", "line", 37);
+    assert_eq!(
+        operation_kind(scene, &intersection),
+        Some("circular-polyline-intersection")
+    );
+    let intersection_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == intersection)
+        .expect("circular trace intersection node");
+    assert_eq!(
+        intersection_node["definition"]["parents"],
+        serde_json::json!([format!("domain:{intersection}:circle"), trace])
+    );
+    assert_eq!(operation_kind(scene, &translated), Some("translate-point"));
+    assert_eq!(operation_kind(scene, &traced), Some("point-trace"));
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+    assert_eq!(
+        scene["objectGraph"]["pendingOperations"],
+        serde_json::json!([])
+    );
+}
+
+#[test]
+fn colorized_spectrum_lines_are_table_driven_from_the_trace() {
+    let scene =
+        compile_fixture("tests/Samples/个人专栏/贺基旭作品/20171231抛物线的光学性质_hjx4882.gsp");
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+    assert_eq!(
+        scene["objectGraph"]["pendingOperations"],
+        serde_json::json!([])
+    );
+    let line = object_id_for_group(&scene, "lines", "line", 30);
+    assert_eq!(
+        operation_kind(&scene, &line),
+        Some("colorized-spectrum-line")
+    );
+    let node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == line)
+        .expect("colorized spectrum line node");
+    assert_eq!(node["definition"]["op"]["step_index"], 0);
+    assert_eq!(node["definition"]["parents"][0], "line:1");
+    assert_eq!(node["definition"]["parents"][1], "line:12");
+    assert_eq!(node["definition"]["parents"][3], "parameter:N");
+}
+
+#[test]
+fn ellipse_trace_intersection_chain_is_table_driven() {
+    let scene = compile_fixture("tests/Samples/个人专栏/向忠作品/椭圆的判定实验.gsp");
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+    assert_eq!(
+        scene["objectGraph"]["pendingOperations"],
+        serde_json::json!([])
+    );
+
+    let rotation = object_id_for_group(&scene, "points", "point", 105);
+    let first_intersection = object_id_for_group(&scene, "points", "point", 119);
+    let arc_intersection = object_id_for_group(&scene, "points", "point", 138);
+    let undefined_initial_scale = object_id_for_group(&scene, "points", "point", 162);
+    assert_eq!(
+        operation_kind(&scene, &rotation),
+        Some("rotate-point-degrees")
+    );
+    assert_eq!(
+        operation_kind(&scene, &first_intersection),
+        Some("line-polyline-intersection")
+    );
+    assert_eq!(
+        operation_kind(&scene, &arc_intersection),
+        Some("circular-polyline-intersection")
+    );
+    assert_eq!(
+        operation_kind(&scene, &undefined_initial_scale),
+        Some("scale-point-by-scalar")
+    );
+
+    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
+    let node = |id: &str| {
+        nodes
+            .iter()
+            .find(|node| node["id"] == id)
+            .unwrap_or_else(|| panic!("missing object graph node {id}"))
+    };
+    let first_trace = object_id_for_group(&scene, "lines", "line", 103);
+    assert_eq!(
+        node(&first_intersection)["definition"]["parents"][1],
+        first_trace
+    );
+    assert_eq!(
+        node(&arc_intersection)["definition"]["parents"][1],
+        first_trace
+    );
+
+    let second_trace = object_id_for_group(&scene, "lines", "line", 163);
+    for ordinal in [164, 170] {
+        let point = object_id_for_group(&scene, "points", "point", ordinal);
+        assert_eq!(
+            operation_kind(&scene, &point),
+            Some("line-polyline-intersection")
+        );
+        assert_eq!(node(&point)["definition"]["parents"][1], second_trace);
+    }
+}
+
+#[test]
 fn parameter_controlled_locus_point_uses_its_payload_expression_parents() {
     let document = compile_fixture("tests/Samples/个人专栏/孟令岩作品/勾股定理小题.gsp");
     let scene = &document["pages"][0]["scene"];
@@ -79,9 +222,97 @@ fn parameter_controlled_locus_point_uses_its_payload_expression_parents() {
         .iter()
         .find(|node| node["id"] == source_parameter)
         .expect("the F parent is derived from the locus point");
+    let source_trace = object_id_for_group(scene, "lines", "line", 21);
+    assert_eq!(
+        source_parameter_node["definition"]["op"]["kind"],
+        "polyline-parameter-from-point"
+    );
     assert_eq!(
         source_parameter_node["definition"]["parents"],
-        serde_json::json!([format!("control:{source}:t")])
+        serde_json::json!([source_trace, source])
+    );
+}
+
+#[test]
+fn polygon_parameter_point_uses_the_exact_anchor_scalar_parent() {
+    let scene = compile_fixture("tests/Samples/个人专栏/侯仰顺作品/10福建宁德26题2(蚂蚁).gsp");
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+
+    let point = object_id_for_group(&scene, "points", "point", 17);
+    let anchor_point = object_id_for_group(&scene, "points", "point", 3);
+    let segment_start = object_id_for_group(&scene, "points", "point", 11);
+    let segment_end = object_id_for_group(&scene, "points", "point", 9);
+    let anchor_scalar = object_id_for_group(&scene, "labels", "scalar:label", 14);
+    assert_eq!(
+        operation_kind(&scene, &point),
+        Some("point-on-polygon-boundary")
+    );
+    assert_eq!(
+        operation_kind(&scene, &anchor_scalar),
+        Some("point-line-parameter")
+    );
+    let anchor_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == anchor_scalar)
+        .unwrap();
+    assert_eq!(
+        anchor_node["definition"]["parents"],
+        serde_json::json!([anchor_point, segment_start, segment_end])
+    );
+
+    let parameter_scalar = format!("scalar:{point}:constraint-parameter");
+    let parameter_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == parameter_scalar)
+        .unwrap();
+    assert_eq!(
+        parameter_node["definition"]["parents"],
+        serde_json::json!([anchor_scalar])
+    );
+}
+
+#[test]
+fn parameter_angle_expression_keeps_the_refraction_intersection_live() {
+    let scene = compile_fixture("tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).gsp");
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+
+    let rotated = object_id_for_group(&scene, "points", "point", 62);
+    let translated = object_id_for_group(&scene, "points", "point", 63);
+    let intersection = object_id_for_group(&scene, "points", "point", 66);
+    let source = object_id_for_group(&scene, "points", "point", 36);
+    let center = object_id_for_group(&scene, "points", "point", 40);
+    let translated_source = object_id_for_group(&scene, "points", "point", 20);
+    let refractive_index = object_id_for_group(&scene, "labels", "scalar:label", 18);
+    let angle = format!("scalar:{rotated}:rotation-degrees");
+
+    assert_eq!(
+        operation_kind(&scene, &rotated),
+        Some("rotate-point-degrees")
+    );
+    assert_eq!(operation_kind(&scene, &translated), Some("translate-point"));
+    assert_eq!(
+        operation_kind(&scene, &intersection),
+        Some("line-circle-intersection")
+    );
+    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
+    let angle_node = nodes.iter().find(|node| node["id"] == angle).unwrap();
+    assert_eq!(
+        angle_node["definition"]["parents"],
+        serde_json::json!([refractive_index])
+    );
+    let rotated_node = nodes.iter().find(|node| node["id"] == rotated).unwrap();
+    assert_eq!(
+        rotated_node["definition"]["parents"],
+        serde_json::json!([source, center, angle])
+    );
+    let translated_node = nodes.iter().find(|node| node["id"] == translated).unwrap();
+    assert_eq!(
+        translated_node["definition"]["parents"],
+        serde_json::json!([translated_source, rotated, center])
     );
 }
 
@@ -178,6 +409,119 @@ fn angle_rotated_segment_intersects_legacy_radius_circle() {
         operation_kind(scene, &angle_scalar_id),
         Some("measured-rotation-degrees")
     );
+}
+
+#[test]
+fn legacy_coordinate_helpers_keep_piecewise_star_intersections_live() {
+    let scene = compile_fixture("tests/Samples/个人专栏/孟令岩作品/mly习作-五角星出水导函数.gsp");
+    assert_eq!(
+        scene["objectGraph"]["pendingOperations"],
+        serde_json::json!([])
+    );
+
+    let helper = object_id_for_group(&scene, "points", "point", 245);
+    let intersection = object_id_for_group(&scene, "points", "point", 248);
+    assert_eq!(operation_kind(&scene, &helper), Some("point-scaled-offset"));
+    assert_eq!(
+        operation_kind(&scene, &intersection),
+        Some("line-circle-intersection")
+    );
+
+    let parameter_scalar = "scalar:group:142";
+    assert_eq!(
+        operation_kind(&scene, parameter_scalar),
+        Some("point-line-parameter")
+    );
+    let parameter_point = object_id_for_group(&scene, "points", "point", 141);
+    let parameter_start = object_id_for_group(&scene, "points", "point", 138);
+    let parameter_end = object_id_for_group(&scene, "points", "point", 139);
+    let parameter_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == parameter_scalar)
+        .expect("parameter anchor scalar");
+    assert_eq!(
+        parameter_node["definition"]["parents"],
+        serde_json::json!([parameter_point, parameter_start, parameter_end])
+    );
+
+    let expression = object_id_for_group(&scene, "labels", "scalar:label", 244);
+    let nested_expression = object_id_for_group(&scene, "labels", "scalar:label", 233);
+    let expression_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == expression)
+        .expect("piecewise helper expression");
+    assert_eq!(
+        expression_node["definition"]["op"]["parameter_names"],
+        serde_json::json!(["__param_anchor_142", "__ratio_value_231*__param_anchor_107"])
+    );
+    assert_eq!(
+        expression_node["definition"]["parents"],
+        serde_json::json!([parameter_scalar, nested_expression])
+    );
+
+    let ratio = object_id_for_group(&scene, "labels", "scalar:label", 231);
+    let ratio_origin = object_id_for_group(&scene, "points", "point", 170);
+    let ratio_denominator = object_id_for_group(&scene, "points", "point", 230);
+    let ratio_numerator = object_id_for_group(&scene, "points", "point", 180);
+    assert_eq!(operation_kind(&scene, &ratio), Some("point-distance-ratio"));
+    let ratio_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == ratio)
+        .expect("ratio scalar");
+    assert_eq!(
+        ratio_node["definition"]["parents"],
+        serde_json::json!([ratio_origin, ratio_denominator, ratio_numerator])
+    );
+}
+
+#[test]
+fn circle_intersection_parameter_anchors_are_graph_scalars() {
+    let scene = compile_fixture("tests/Samples/个人专栏/侯仰顺作品/滑块(蚂蚁).gsp");
+    assert_eq!(
+        scene["objectGraph"]["pendingOperations"],
+        serde_json::json!([])
+    );
+
+    let scalar = "scalar:group:25";
+    let circle = format!("domain:{scalar}:circle");
+    let point = object_id_for_group(&scene, "points", "point", 23);
+    let center = object_id_for_group(&scene, "points", "point", 9);
+    let radius = object_id_for_group(&scene, "points", "point", 13);
+    assert_eq!(operation_kind(&scene, scalar), Some("circle-parameter"));
+    assert_eq!(operation_kind(&scene, &circle), Some("circle-by-points"));
+
+    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
+    let circle_node = nodes
+        .iter()
+        .find(|node| node["id"] == circle)
+        .expect("parameter host circle");
+    assert_eq!(
+        circle_node["definition"]["parents"],
+        serde_json::json!([center, radius])
+    );
+    let scalar_node = nodes
+        .iter()
+        .find(|node| node["id"] == scalar)
+        .expect("circle parameter scalar");
+    assert_eq!(
+        scalar_node["definition"]["parents"],
+        serde_json::json!([point, circle])
+    );
+
+    let expression = object_id_for_group(&scene, "labels", "scalar:label", 27);
+    let expression_node = nodes
+        .iter()
+        .find(|node| node["id"] == expression)
+        .expect("parameter-controlled circle expression");
+    let parents = expression_node["definition"]["parents"].as_array().unwrap();
+    assert!(parents.contains(&Value::String(scalar.to_string())));
+    assert!(parents.contains(&Value::String("scalar:group:26".to_string())));
 }
 
 #[test]
@@ -444,6 +788,25 @@ fn non_graph_coordinate_trace_drives_points_lines_and_intersections() {
     assert_eq!(
         operation_kind(scene, &intersection_id),
         Some("line-polyline-intersection")
+    );
+
+    let measurement_parameter = "scalar:group:128";
+    assert_eq!(
+        operation_kind(scene, measurement_parameter),
+        Some("point-line-parameter")
+    );
+    let parameter_point = object_id_for_group(scene, "points", "point", 114);
+    let measurement_origin = object_id_for_group(scene, "points", "point", 13);
+    let measurement_end = object_id_for_group(scene, "points", "point", 122);
+    let parameter_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == measurement_parameter)
+        .unwrap();
+    assert_eq!(
+        parameter_node["definition"]["parents"],
+        serde_json::json!([parameter_point, measurement_origin, measurement_end])
     );
 }
 
@@ -723,6 +1086,23 @@ fn custom_transform_trace_runs_the_payload_target_dependency_program() {
         .unwrap();
     assert_eq!(trace["definition"]["op"]["program"]["targetId"], target_id);
     assert_eq!(trace["definition"]["op"]["driver"]["kind"], "circle");
+
+    let trace_parameter = "scalar:group:88";
+    assert_eq!(
+        operation_kind(&scene, trace_parameter),
+        Some("polyline-parameter-from-point")
+    );
+    let parameter_point = object_id_for_group(&scene, "points", "point", 87);
+    let parameter_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == trace_parameter)
+        .unwrap();
+    assert_eq!(
+        parameter_node["definition"]["parents"],
+        serde_json::json!([trace_id, parameter_point])
+    );
 }
 
 #[test]
@@ -866,6 +1246,151 @@ fn function_rotation_chain_keeps_its_center_arc_live() {
 }
 
 #[test]
+fn circle_measurement_function_rotations_keep_center_arcs_table_driven() {
+    let document = compile_fixture(
+        "tests/Samples/个人专栏/孟令岩作品/※圆柱、圆锥、圆台的展开与形成20131012（孟令岩）.gsp",
+    );
+    let scene = &document["pages"][3]["scene"];
+    let point = |ordinal| object_id_for_group(scene, "points", "point", ordinal);
+    let arc = |ordinal| object_id_for_group(scene, "arcs", "arc", ordinal);
+    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
+    let node = |id: &str| {
+        nodes
+            .iter()
+            .find(|node| node["id"] == id)
+            .unwrap_or_else(|| panic!("missing object graph node {id}"))
+    };
+
+    for ordinal in [13, 15, 30] {
+        assert_eq!(
+            operation_kind(scene, &point(ordinal)),
+            Some("rotate-point-degrees")
+        );
+    }
+    assert_eq!(operation_kind(scene, &point(17)), Some("point-on-arc"));
+
+    let expression_rotation = point(13);
+    let expression_scalar = format!("scalar:{expression_rotation}:rotation-degrees");
+    assert_eq!(
+        operation_kind(scene, &expression_scalar),
+        Some("evaluate-expression")
+    );
+    assert_eq!(
+        node(&expression_scalar)["definition"]["parents"]
+            .as_array()
+            .expect("expression parents")
+            .len(),
+        2,
+        "the radius and distance payload helpers must both remain live parents"
+    );
+
+    let measured_rotation = point(30);
+    let measured_scalar = format!("scalar:{measured_rotation}:rotation-degrees");
+    assert_eq!(
+        operation_kind(scene, &measured_scalar),
+        Some("measured-rotation-degrees")
+    );
+    assert_eq!(
+        node(&measured_scalar)["definition"]["parents"],
+        serde_json::json!([point(1), point(6), point(17)])
+    );
+
+    for (arc_ordinal, center, start, end) in [(16, 6, 14, 15), (18, 6, 1, 13), (38, 6, 20, 30)] {
+        let arc_id = arc(arc_ordinal);
+        assert_eq!(operation_kind(scene, &arc_id), Some("center-arc"));
+        assert_eq!(
+            node(&arc_id)["definition"]["parents"],
+            serde_json::json!([point(center), point(start), point(end)])
+        );
+    }
+
+    for id in [
+        point(13),
+        point(15),
+        point(17),
+        point(30),
+        arc(16),
+        arc(18),
+        arc(38),
+    ] {
+        assert!(
+            scene["objectGraph"]["pendingOperations"]
+                .as_array()
+                .expect("pending operations")
+                .iter()
+                .all(|pending| !pending
+                    .as_str()
+                    .is_some_and(|pending| pending.starts_with(&id))),
+            "{id} must not fall back to a pending source"
+        );
+    }
+
+    let scene = &document["pages"][4]["scene"];
+    let point = |ordinal| object_id_for_group(scene, "points", "point", ordinal);
+    let arc = |ordinal| object_id_for_group(scene, "arcs", "arc", ordinal);
+    let circle = |ordinal| object_id_for_group(scene, "circles", "circle", ordinal);
+    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
+    let node = |id: &str| {
+        nodes
+            .iter()
+            .find(|node| node["id"] == id)
+            .unwrap_or_else(|| panic!("missing object graph node {id}"))
+    };
+
+    let circumference = "scalar:group:44";
+    let radius = "scalar:group:44:radius";
+    assert_eq!(operation_kind(scene, circumference), Some("scale-scalar"));
+    assert_eq!(operation_kind(scene, radius), Some("circular-radius"));
+    assert_eq!(
+        node(radius)["definition"]["parents"],
+        serde_json::json!([circle(37)])
+    );
+
+    for (ordinal, kind) in [
+        (46, "rotate-point-degrees"),
+        (49, "point-on-arc"),
+        (55, "rotate-point-degrees"),
+        (104, "rotate-point-degrees"),
+        (106, "point-on-arc"),
+        (111, "rotate-point-degrees"),
+    ] {
+        assert_eq!(operation_kind(scene, &point(ordinal)), Some(kind));
+    }
+    let angle = format!("scalar:{}:rotation-degrees", point(46));
+    assert_eq!(operation_kind(scene, &angle), Some("evaluate-expression"));
+    assert!(
+        node(&angle)["definition"]["parents"]
+            .as_array()
+            .expect("sector angle parents")
+            .iter()
+            .any(|parent| parent == circumference)
+    );
+
+    for (arc_ordinal, center, start, end) in [
+        (48, 39, 1, 46),
+        (56, 49, 55, 53),
+        (105, 39, 87, 104),
+        (112, 106, 111, 109),
+    ] {
+        let arc_id = arc(arc_ordinal);
+        assert_eq!(operation_kind(scene, &arc_id), Some("center-arc"));
+        assert_eq!(
+            node(&arc_id)["definition"]["parents"],
+            serde_json::json!([point(center), point(start), point(end)])
+        );
+    }
+    assert!(
+        scene["objectGraph"]["pendingOperations"]
+            .as_array()
+            .expect("pending operations")
+            .iter()
+            .all(|pending| !pending
+                .as_str()
+                .is_some_and(|pending| pending.starts_with("arc:")))
+    );
+}
+
+#[test]
 fn parameterized_point_iterations_run_typed_dependency_programs() {
     let scene =
         compile_fixture("tests/Samples/个人专栏/李章博作品/动画演示立体几何轨迹形成（李章博）.gsp");
@@ -953,7 +1478,7 @@ fn unnamed_parameter_anchors_keep_the_payload_expression_dependency() {
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|parent| parent == &format!("{scalar_id}:source:1"))
+                .any(|parent| parent == &format!("scalar:group:{anchor_ordinal}"))
         );
     }
 }
@@ -1196,10 +1721,9 @@ fn rolling_circle_all_pages_have_typed_arcs() {
         let scene = &page["scene"];
         if scene["objectGraph"]["geometryComplete"] != true {
             eprintln!(
-                "page {} pending={} arcs={}",
+                "page {} pending={}",
                 page_index + 1,
                 scene["objectGraph"]["pendingOperations"],
-                scene["arcs"]
             );
         }
         assert_eq!(scene["objectGraph"]["geometryComplete"], true);
@@ -1223,6 +1747,23 @@ fn rolling_circle_all_pages_have_typed_arcs() {
     assert_eq!(operation_kind(sixth, &expression_arc), Some("center-arc"));
 
     let eighth = &document["pages"][7]["scene"];
+    let polygon_parameter = "scalar:group:46";
+    assert_eq!(
+        operation_kind(eighth, polygon_parameter),
+        Some("polygon-boundary-parameter-from-point")
+    );
+    let polygon_parameter_node = eighth["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == polygon_parameter)
+        .unwrap();
+    let polygon_parameter_parents =
+        [13, 12, 11, 10, 12].map(|ordinal| object_id_for_group(eighth, "points", "point", ordinal));
+    assert_eq!(
+        polygon_parameter_node["definition"]["parents"],
+        serde_json::json!(polygon_parameter_parents)
+    );
     let angle_a = object_id_for_group(eighth, "labels", "scalar:label", 21);
     let alias_a = object_id_for_group(eighth, "labels", "scalar:label", 23);
     let normalized_a = object_id_for_group(eighth, "labels", "scalar:label", 29);
@@ -1395,4 +1936,315 @@ fn rotor_expressions_with_the_same_display_name_use_exact_payload_parents() {
         let arc_id = object_id_for_group(&scene, "arcs", "arc", ordinal);
         assert_eq!(operation_kind(&scene, &arc_id), Some("center-arc"));
     }
+}
+
+#[test]
+fn direct_polar_transform_drives_the_circle_arc_construction() {
+    let scene = compile_fixture("tests/Samples/个人专栏/方小庆作品/化圆为方详解(inRm).gsp");
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+    assert_eq!(
+        scene["objectGraph"]["pendingOperations"],
+        serde_json::json!([])
+    );
+
+    let source = object_id_for_group(&scene, "points", "point", 35);
+    let transformed = object_id_for_group(&scene, "points", "point", 42);
+    let midpoint = object_id_for_group(&scene, "points", "point", 44);
+    let intersection = object_id_for_group(&scene, "points", "point", 47);
+    let arc = object_id_for_group(&scene, "arcs", "arc", 49);
+    let distance = format!("scalar:{transformed}:distance");
+    let angle = format!("scalar:{transformed}:angle");
+    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
+    let node = |id: &str| {
+        nodes
+            .iter()
+            .find(|node| node["id"] == id)
+            .unwrap_or_else(|| panic!("missing object graph node {id}"))
+    };
+
+    assert_eq!(
+        operation_kind(&scene, &transformed),
+        Some("point-polar-offset")
+    );
+    assert_eq!(
+        node(&transformed)["definition"]["parents"],
+        serde_json::json!([source, distance, angle])
+    );
+    assert_eq!(
+        operation_kind(&scene, &distance),
+        Some("evaluate-expression")
+    );
+    assert_eq!(operation_kind(&scene, &angle), Some("evaluate-expression"));
+    assert_eq!(operation_kind(&scene, &midpoint), Some("midpoint"));
+    assert_eq!(
+        operation_kind(&scene, &intersection),
+        Some("line-circle-intersection")
+    );
+    assert_eq!(operation_kind(&scene, &arc), Some("circle-arc"));
+
+    let point = |ordinal: u64| {
+        scene["points"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|point| point["debug"]["groupOrdinal"].as_u64() == Some(ordinal))
+            .unwrap_or_else(|| panic!("missing scene point for group #{ordinal}"))
+    };
+    let source_point = point(35);
+    let transformed_point = point(42);
+    let dx = transformed_point["x"].as_f64().unwrap() - source_point["x"].as_f64().unwrap();
+    let dy = transformed_point["y"].as_f64().unwrap() - source_point["y"].as_f64().unwrap();
+    assert!(
+        (dx - 1.820_933_542_503_012_9).abs() < 1e-12,
+        "unexpected direct polar x offset: {dx}"
+    );
+    assert!(dy.abs() < 1e-12, "unexpected direct polar y offset: {dy}");
+}
+
+#[test]
+fn parameter_rotated_endpoints_keep_the_involute_center_arc_live() {
+    let scene =
+        compile_fixture("tests/Samples/个人专栏/周维波作品/正n边形的渐开线（雪山飞狐）.gsp");
+    let point_ordinals = scene["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|point| point["debug"]["groupOrdinal"].as_u64())
+        .collect::<Vec<_>>();
+    assert!(
+        [21, 26]
+            .iter()
+            .all(|ordinal| point_ordinals.contains(ordinal)),
+        "missing parameter-rotation endpoints: {point_ordinals:?}"
+    );
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+    let arc = object_id_for_group(&scene, "arcs", "arc", 27);
+    assert_eq!(operation_kind(&scene, &arc), Some("center-arc"));
+}
+
+#[test]
+fn square_wheel_boundary_intersection_drives_its_point_trace() {
+    let scene = compile_fixture("tests/Samples/个人专栏/侯仰顺作品/方形车轮(蚂蚁).gsp");
+    let point_ordinals = scene["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|point| point["debug"]["groupOrdinal"].as_u64())
+        .collect::<Vec<_>>();
+    assert!(
+        [12, 13, 14, 15, 23]
+            .iter()
+            .all(|ordinal| point_ordinals.contains(ordinal)),
+        "missing square-wheel dependency points: {point_ordinals:?}"
+    );
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+    let intersection = object_id_for_group(&scene, "points", "point", 23);
+    let trace = object_id_for_group(&scene, "lines", "line", 24);
+    assert_eq!(
+        operation_kind(&scene, &intersection),
+        Some("line-polyline-intersection")
+    );
+    assert_eq!(operation_kind(&scene, &trace), Some("point-trace"));
+}
+
+#[test]
+fn clock_time_scalars_use_their_exact_arc_angle_parents() {
+    let scene = compile_fixture("tests/Samples/个人专栏/侯仰顺作品/时钟(蚂蚁制作).gsp");
+    let reflected_arc = object_id_for_group(&scene, "arcs", "arc", 355);
+    assert_eq!(
+        operation_kind(&scene, &reflected_arc),
+        Some("reflect-shape-across-line")
+    );
+
+    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
+    for (source_group, result_group) in [(95, 100), (97, 101), (99, 102)] {
+        let source = format!("scalar:group:{source_group}");
+        let result = object_id_for_group(&scene, "labels", "scalar:label", result_group);
+        assert_eq!(operation_kind(&scene, &source), Some("arc-angle-degrees"));
+        let result_node = nodes.iter().find(|node| node["id"] == result).unwrap();
+        assert_eq!(
+            result_node["definition"]["parents"],
+            serde_json::json!([source]),
+            "clock result group #{result_group} must use arc-angle group #{source_group}"
+        );
+    }
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+}
+
+#[test]
+fn meng_clock_iterations_are_table_driven() {
+    let document = compile_fixture("tests/Samples/个人专栏/孟令岩作品/时钟.gsp");
+    for (page_index, page) in document["pages"].as_array().unwrap().iter().enumerate() {
+        let scene = &page["scene"];
+        if scene["objectGraph"]["geometryComplete"] != true {
+            eprintln!(
+                "page={} pending={}",
+                page_index + 1,
+                scene["objectGraph"]["pendingOperations"],
+            );
+        }
+        assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+    }
+
+    let second = &document["pages"][1]["scene"];
+    assert_eq!(
+        operation_kind(second, "line-iteration:0"),
+        Some("line-affine-iteration")
+    );
+    let iteration = second["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == "line-iteration:0")
+        .unwrap();
+    assert_eq!(
+        iteration["definition"]["op"]["target_handles"],
+        serde_json::json!([
+            { "kind": "fixed", "point": { "x": 507.0, "y": 60.00000000000006 } },
+            { "kind": "parent-point" },
+            { "kind": "parent-point" }
+        ])
+    );
+    assert_eq!(
+        iteration["definition"]["parents"].as_array().unwrap().len(),
+        8
+    );
+}
+
+#[test]
+fn li_circle_to_square_keeps_the_payload_colors_and_iteration_origins() {
+    let document = compile_fixture("tests/Samples/个人专栏/李章博作品/割圆为方（李章博）.gsp");
+    let scene = document
+        .get("pages")
+        .and_then(Value::as_array)
+        .and_then(|pages| pages.first())
+        .map(|page| &page["scene"])
+        .unwrap_or(&document);
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+
+    let polygons = scene["polygons"].as_array().unwrap();
+    assert_eq!(
+        polygons
+            .iter()
+            .take(4)
+            .map(|polygon| polygon["color"].clone())
+            .collect::<Vec<_>>(),
+        vec![
+            serde_json::json!([255, 0, 0, 127]),
+            serde_json::json!([0, 128, 0, 127]),
+            serde_json::json!([0, 128, 0, 127]),
+            serde_json::json!([255, 0, 0, 127]),
+        ]
+    );
+
+    let iterations = scene["polygonIterations"].as_array().unwrap();
+    assert_eq!(iterations.len(), 4);
+    assert_eq!(
+        iterations
+            .iter()
+            .map(|family| (
+                family["sourceIndex"].as_u64().unwrap(),
+                family["inverse"].as_bool().unwrap(),
+                family["color"].clone(),
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            (1, true, serde_json::json!([0, 128, 0, 127])),
+            (2, false, serde_json::json!([0, 128, 0, 127])),
+            (3, true, serde_json::json!([255, 0, 0, 127])),
+            (0, false, serde_json::json!([255, 0, 0, 127])),
+        ]
+    );
+    for (index, family) in iterations.iter().enumerate() {
+        assert_eq!(family["depth"], 9);
+        assert_eq!(family["sourceStartIndex"], 7);
+        assert_eq!(family["sourceEndIndex"], 8);
+        assert_eq!(family["targetStartIndex"], 9);
+        assert_eq!(family["targetEndIndex"], 11);
+        assert_eq!(
+            operation_kind(scene, &format!("polygon-iteration:{index}")),
+            Some("similarity-polygon-iteration")
+        );
+        let depth = format!("scalar:polygon-iteration:{index}:depth");
+        assert_eq!(operation_kind(scene, &depth), Some("evaluate-expression"));
+        let depth_node = scene["objectGraph"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == depth)
+            .unwrap();
+        assert_eq!(
+            depth_node["definition"]["parents"],
+            serde_json::json!(["parameter:n"])
+        );
+    }
+}
+
+#[test]
+fn translated_point_uses_its_exact_payload_parent_chain() {
+    let document = compile_fixture("tests/Samples/个人专栏/潘建平作品/40牛潘建平老师.gsp");
+    let scene = &document["pages"][0]["scene"];
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+    assert_eq!(
+        scene["objectGraph"]["pendingOperations"],
+        serde_json::json!([])
+    );
+
+    let rotated = object_id_for_group(scene, "points", "point", 12);
+    let translated = object_id_for_group(scene, "points", "point", 14);
+    let source = object_id_for_group(scene, "points", "point", 11);
+    let vector_start = object_id_for_group(scene, "points", "point", 1);
+    let vector_end = object_id_for_group(scene, "points", "point", 13);
+    assert_eq!(
+        operation_kind(scene, &rotated),
+        Some("rotate-point-degrees")
+    );
+    assert_eq!(operation_kind(scene, &translated), Some("translate-point"));
+    let translated_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == translated)
+        .expect("translated point graph node");
+    assert_eq!(
+        translated_node["definition"]["parents"],
+        serde_json::json!([rotated, vector_start, vector_end])
+    );
+    let rotated_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == rotated)
+        .expect("rotated source graph node");
+    assert_eq!(rotated_node["definition"]["parents"][0], source);
+}
+
+#[test]
+fn vector_translated_circle_keeps_both_vector_points_as_graph_parents() {
+    let scene = compile_fixture("tests/Samples/个人专栏/钮炳坤作品/椭球（钮炳坤老师）.gsp");
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+    assert_eq!(
+        scene["objectGraph"]["pendingOperations"],
+        serde_json::json!([])
+    );
+
+    let constrained_point = object_id_for_group(&scene, "points", "point", 13);
+    let vector_start = object_id_for_group(&scene, "points", "point", 6);
+    let vector_end = object_id_for_group(&scene, "points", "point", 5);
+    let domain = format!("domain:{constrained_point}");
+    assert_eq!(
+        operation_kind(&scene, &constrained_point),
+        Some("point-on-circle")
+    );
+    assert_eq!(operation_kind(&scene, &domain), Some("translate-shape"));
+    let domain_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == domain)
+        .expect("translated circle domain node");
+    assert_eq!(
+        domain_node["definition"]["parents"],
+        serde_json::json!([format!("{domain}:source"), vector_start, vector_end,])
+    );
 }

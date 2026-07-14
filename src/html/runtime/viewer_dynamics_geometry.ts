@@ -25,6 +25,7 @@
       scaleByThreePointRatio,
       updateConstraintParameterizedPoint,
       updateCustomTransformPoint,
+      updatePolarTransformPoint,
     } = dependencies;
 
   function resolveHostLinePoints(scene: ViewerSceneData, binding: HostLineBinding) {
@@ -281,6 +282,13 @@
         const dy = evaluateExpr(point.binding.yExpr, 0, exprParameters);
         if (source && dx !== null && dy !== null) {
           resolved = { x: source.x + dx, y: source.y + dy };
+        }
+      } else if (point.binding?.kind === "polar-transform") {
+        const source = resolveTracePoint(points, point.binding.sourceIndex, visiting);
+        const derived = { ...point };
+        updatePolarTransformPoint(derived, source, baseParameters, scene.yUp === true);
+        if (Number.isFinite(derived.x) && Number.isFinite(derived.y)) {
+          resolved = { x: derived.x, y: derived.y };
         }
       } else if (point.binding?.kind === "constraint-parameter-expr") {
         const value = evaluateExpr(point.binding.expr, 0, baseParameters);

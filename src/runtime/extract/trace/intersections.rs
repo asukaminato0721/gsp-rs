@@ -403,6 +403,56 @@ fn resolve_trace_circular_constraint(
                 }),
             }
         }
+        CircularConstraint::VectorTranslateCircle {
+            source,
+            vector_start_index,
+            vector_end_index,
+        } => {
+            let start = resolve_trace_point(points, *vector_start_index, visiting)?;
+            let end = resolve_trace_point(points, *vector_end_index, visiting)?;
+            let dx = end.x - start.x;
+            let dy = end.y - start.y;
+            let source = resolve_trace_circular_constraint(points, source, visiting)?;
+            match source {
+                TraceCircularConstraint::Circle { center, radius } => {
+                    Some(TraceCircularConstraint::Circle {
+                        center: PointRecord {
+                            x: center.x + dx,
+                            y: center.y + dy,
+                        },
+                        radius,
+                    })
+                }
+                TraceCircularConstraint::ThreePointArc {
+                    start,
+                    end,
+                    center,
+                    radius,
+                    start_angle,
+                    end_angle,
+                    ccw_span,
+                    ccw_mid,
+                } => Some(TraceCircularConstraint::ThreePointArc {
+                    start: PointRecord {
+                        x: start.x + dx,
+                        y: start.y + dy,
+                    },
+                    end: PointRecord {
+                        x: end.x + dx,
+                        y: end.y + dy,
+                    },
+                    center: PointRecord {
+                        x: center.x + dx,
+                        y: center.y + dy,
+                    },
+                    radius,
+                    start_angle,
+                    end_angle,
+                    ccw_span,
+                    ccw_mid,
+                }),
+            }
+        }
         CircularConstraint::ReflectCircle {
             source,
             line_start_index,

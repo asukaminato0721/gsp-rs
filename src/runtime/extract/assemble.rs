@@ -5,7 +5,7 @@ use crate::runtime::scene::{
     CircleIterationFamily, CircularConstraint, LabelIterationFamily, LineConstraint,
     LineIterationFamily, LineShape, PointIterationFamily, PolygonIterationFamily, PolygonShape,
     Scene, SceneArc, SceneCircle, SceneImage, ScenePoint, ScenePointBinding, ScenePointConstraint,
-    ShapeBinding, TextLabel, TextLabelBinding,
+    SceneScalar, ShapeBinding, TextLabel, TextLabelBinding,
 };
 
 use super::analysis::{BoundsData, CollectedShapes, SceneAnalysis, WorldData};
@@ -21,6 +21,7 @@ pub(super) struct SceneAssemblyArtifacts {
     pub(super) buttons: Vec<crate::runtime::scene::SceneButton>,
     pub(super) images: Vec<SceneImage>,
     pub(super) parameters: Vec<crate::runtime::scene::SceneParameter>,
+    pub(super) scalars: Vec<SceneScalar>,
     pub(super) functions: Vec<crate::runtime::scene::SceneFunction>,
     pub(super) function_definitions: Vec<crate::runtime::scene::SceneFunctionDefinition>,
 }
@@ -222,6 +223,25 @@ pub(super) fn build_world_data(
                     sample_count: *sample_count,
                     variant: *variant,
                 },
+                ScenePointConstraint::CircularTraceIntersection {
+                    circle,
+                    trace_key,
+                    point_index,
+                    x_min,
+                    x_max,
+                    sample_count,
+                    variant,
+                    sample_hint,
+                } => ScenePointConstraint::CircularTraceIntersection {
+                    circle: clone_circular_constraint(circle),
+                    trace_key: *trace_key,
+                    point_index: *point_index,
+                    x_min: *x_min,
+                    x_max: *x_max,
+                    sample_count: *sample_count,
+                    variant: *variant,
+                    sample_hint: *sample_hint,
+                },
                 ScenePointConstraint::LineFunctionIntersection {
                     line,
                     function_key,
@@ -311,6 +331,28 @@ pub(super) fn build_world_data(
                         .as_ref()
                         .map_or(*distance, |transform| distance / transform.raw_per_unit),
                     parameter: *parameter,
+                }),
+                Some(ScenePointBinding::PolarTransform {
+                    source_index,
+                    distance_expr,
+                    distance_parameter_group_ordinals,
+                    distance_scale,
+                    angle_expr,
+                    angle_parameter_group_ordinals,
+                    angle_degrees_scale,
+                }) => Some(ScenePointBinding::PolarTransform {
+                    source_index: *source_index,
+                    distance_expr: distance_expr.clone(),
+                    distance_parameter_group_ordinals: distance_parameter_group_ordinals.clone(),
+                    distance_scale: analysis
+                        .graph_ref
+                        .as_ref()
+                        .map_or(*distance_scale, |transform| {
+                            distance_scale / transform.raw_per_unit
+                        }),
+                    angle_expr: angle_expr.clone(),
+                    angle_parameter_group_ordinals: angle_parameter_group_ordinals.clone(),
+                    angle_degrees_scale: *angle_degrees_scale,
                 }),
                 binding => binding.clone(),
             },
@@ -542,6 +584,15 @@ fn clone_circular_constraint(constraint: &CircularConstraint) -> CircularConstra
                 dy: *dy,
             }
         }
+        CircularConstraint::VectorTranslateCircle {
+            source,
+            vector_start_index,
+            vector_end_index,
+        } => CircularConstraint::VectorTranslateCircle {
+            source: Box::new(clone_circular_constraint(source)),
+            vector_start_index: *vector_start_index,
+            vector_end_index: *vector_end_index,
+        },
         CircularConstraint::ReflectCircle {
             source,
             line_start_index,
@@ -889,6 +940,7 @@ pub(super) fn assemble_scene(
         iteration_tables: artifacts.iteration_tables,
         buttons: artifacts.buttons,
         parameters: artifacts.parameters,
+        scalars: artifacts.scalars,
         functions,
         function_definitions: artifacts.function_definitions,
     }

@@ -61,6 +61,14 @@ pub enum TraceDriver {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum AffineTargetHandle {
+    ParentPoint,
+    ParentLinePoint { segment_index: usize, t: f64 },
+    Fixed { point: Point },
+}
+
 pub fn evaluate_object_graph_json(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let input = serde_json::from_slice::<ObjectGraphEvaluationInput>(bytes)
         .map_err(|error| format!("invalid object graph input: {error}"))?;
@@ -183,6 +191,9 @@ impl ObjectValue {
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ObjectOp {
     Copy,
+    SelectParent {
+        index: usize,
+    },
     PointOffset {
         dx: f64,
         dy: f64,
@@ -190,6 +201,11 @@ pub enum ObjectOp {
     PointScaledOffset {
         x_scale: f64,
         y_scale: f64,
+    },
+    PointPolarOffset {
+        invert_y: bool,
+        distance_scale: f64,
+        angle_degrees_scale: f64,
     },
     PointOffsetByScalars,
     PointFromScalars,
@@ -314,6 +330,17 @@ pub enum ObjectOp {
         variant: usize,
         sample_hint: Option<f64>,
     },
+    CircularPolylineIntersection {
+        variant: usize,
+        sample_hint: Option<f64>,
+    },
+    ColorizedSpectrumLine {
+        trace_endpoint_index: usize,
+        step_index: usize,
+        ray: bool,
+        reflected: bool,
+        sampled_reflection_axis: bool,
+    },
     CircleByPoints,
     CircleBySegmentRadius,
     CircleByRadius,
@@ -335,6 +362,7 @@ pub enum ObjectOp {
         y_up: bool,
     },
     ArcLength,
+    ArcAngleDegrees,
     CircularRadius,
     Polygon,
     SimilarityPolygonIteration {
@@ -361,7 +389,9 @@ pub enum ObjectOp {
         vector_from_parents: bool,
     },
     LineRotateIteration,
-    LineAffineIteration,
+    LineAffineIteration {
+        target_handles: [AffineTargetHandle; 3],
+    },
     TranslatePolygonIteration {
         vertex_count: usize,
         dx: f64,
@@ -398,6 +428,7 @@ pub enum ObjectOp {
     PointLineParameter {
         line_kind: LineKind,
     },
+    PolylineParameterFromPoint,
     CircleParameter {
         invert_y: bool,
     },
@@ -653,6 +684,12 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                 expect_arity("copy", parents, 1)?;
                 Ok(parents[0].clone())
             }
+            ObjectOp::SelectParent { index } => parents
+                .get(*index)
+                .map(|value| (*value).clone())
+                .ok_or(ObjectOpError::Degenerate {
+                    op: "select-parent",
+                }),
             ObjectOp::PointOffset { dx, dy } => {
                 expect_arity("point-offset", parents, 1)?;
                 let origin = expect_point("point-offset", parents, 0)?;
@@ -668,6 +705,22 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                 Ok(ObjectValue::point(Point {
                     x: source.x + distance * x_scale,
                     y: source.y + distance * y_scale,
+                }))
+            }
+            ObjectOp::PointPolarOffset {
+                invert_y,
+                distance_scale,
+                angle_degrees_scale,
+            } => {
+                expect_arity("point-polar-offset", parents, 3)?;
+                let source = expect_point("point-polar-offset", parents, 0)?;
+                let distance = expect_scalar("point-polar-offset", parents, 1)? * distance_scale;
+                let angle = (expect_scalar("point-polar-offset", parents, 2)?
+                    * angle_degrees_scale)
+                    .to_radians();
+                Ok(ObjectValue::point(Point {
+                    x: source.x + distance * angle.cos(),
+                    y: source.y + distance * angle.sin() * if *invert_y { -1.0 } else { 1.0 },
                 }))
             }
             ObjectOp::PointOffsetByScalars => {
@@ -1316,6 +1369,41 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                 })?;
                 Ok(ObjectValue::point(point))
             }
+            ObjectOp::CircularPolylineIntersection {
+                variant,
+                sample_hint,
+            } => {
+                expect_arity("circular-polyline-intersection", parents, 2)?;
+                let (center, radius) =
+                    circular_center_radius("circular-polyline-intersection", parents, 0)?;
+                let points = expect_points("circular-polyline-intersection", parents, 1)?;
+                let point = circular_polyline_intersection(
+                    parents[0],
+                    center,
+                    radius,
+                    points,
+                    *sample_hint,
+                    *variant,
+                )
+                .ok_or(ObjectOpError::Degenerate {
+                    op: "circular-polyline-intersection",
+                })?;
+                Ok(ObjectValue::point(point))
+            }
+            ObjectOp::ColorizedSpectrumLine {
+                trace_endpoint_index,
+                step_index,
+                ray,
+                reflected,
+                sampled_reflection_axis,
+            } => colorized_spectrum_line(
+                parents,
+                *trace_endpoint_index,
+                *step_index,
+                *ray,
+                *reflected,
+                *sampled_reflection_axis,
+            ),
             ObjectOp::CircleByPoints => {
                 expect_arity("circle-by-points", parents, 2)?;
                 Ok(ObjectValue::Circle {
@@ -1470,6 +1558,29 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                 };
                 Ok(ObjectValue::Scalar {
                     value: geometry.radius * span,
+                })
+            }
+            ObjectOp::ArcAngleDegrees => {
+                expect_arity("arc-angle-degrees", parents, 1)?;
+                let (start, mid, end, _, _, complement) =
+                    expect_arc("arc-angle-degrees", parents, 0)?;
+                let geometry =
+                    three_point_arc_geometry(start, mid, end).ok_or(ObjectOpError::Degenerate {
+                        op: "arc-angle-degrees",
+                    })?;
+                let contains_mid = geometry.ccw_mid <= geometry.ccw_span + 1e-9;
+                let span = if contains_mid {
+                    geometry.ccw_span
+                } else {
+                    std::f64::consts::TAU - geometry.ccw_span
+                };
+                let span = if complement {
+                    std::f64::consts::TAU - span
+                } else {
+                    span
+                };
+                Ok(ObjectValue::Scalar {
+                    value: span.to_degrees(),
                 })
             }
             ObjectOp::CircularRadius => {
@@ -1699,9 +1810,44 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                         .collect(),
                 })
             }
-            ObjectOp::LineAffineIteration => {
-                expect_arity("line-affine-iteration", parents, 9)?;
-                let depth = discrete_depth(expect_scalar("line-affine-iteration", parents, 8)?);
+            ObjectOp::LineAffineIteration { target_handles } => {
+                let dynamic_target_count = target_handles
+                    .iter()
+                    .filter(|handle| !matches!(handle, AffineTargetHandle::Fixed { .. }))
+                    .count();
+                expect_arity("line-affine-iteration", parents, 6 + dynamic_target_count)?;
+                let mut target_parent_index = 5;
+                let mut target_triangle = [Point { x: 0.0, y: 0.0 }; 3];
+                for (target_index, handle) in target_handles.iter().enumerate() {
+                    target_triangle[target_index] = match handle {
+                        AffineTargetHandle::ParentPoint => {
+                            let point = expect_point(
+                                "line-affine-iteration",
+                                parents,
+                                target_parent_index,
+                            )?;
+                            target_parent_index += 1;
+                            point
+                        }
+                        AffineTargetHandle::ParentLinePoint { segment_index, t } => {
+                            let point = point_on_parent_shape(
+                                "line-affine-iteration",
+                                parents,
+                                target_parent_index,
+                                *segment_index,
+                                *t,
+                            )?;
+                            target_parent_index += 1;
+                            point
+                        }
+                        AffineTargetHandle::Fixed { point } => *point,
+                    };
+                }
+                let depth = discrete_depth(expect_scalar(
+                    "line-affine-iteration",
+                    parents,
+                    target_parent_index,
+                )?);
                 let points = affine_iteration_segment(
                     expect_point("line-affine-iteration", parents, 0)?,
                     expect_point("line-affine-iteration", parents, 1)?,
@@ -1710,11 +1856,7 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                         expect_point("line-affine-iteration", parents, 3)?,
                         expect_point("line-affine-iteration", parents, 4)?,
                     ],
-                    [
-                        expect_point("line-affine-iteration", parents, 5)?,
-                        expect_point("line-affine-iteration", parents, 6)?,
-                        expect_point("line-affine-iteration", parents, 7)?,
-                    ],
+                    target_triangle,
                     depth,
                 )
                 .ok_or(ObjectOpError::Degenerate {
@@ -1955,6 +2097,45 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                 })?;
                 Ok(ObjectValue::Scalar {
                     value: projection.t,
+                })
+            }
+            ObjectOp::PolylineParameterFromPoint => {
+                expect_arity("polyline-parameter-from-point", parents, 2)?;
+                let points = expect_points("polyline-parameter-from-point", parents, 0)?;
+                let point = expect_point("polyline-parameter-from-point", parents, 1)?;
+                if points.len() < 2 {
+                    return Err(ObjectOpError::Degenerate {
+                        op: "polyline-parameter-from-point",
+                    });
+                }
+                let mut closest = None::<(f64, usize, f64)>;
+                for (segment_index, segment) in points.windows(2).enumerate() {
+                    let start = segment[0];
+                    let end = segment[1];
+                    let dx = end.x - start.x;
+                    let dy = end.y - start.y;
+                    let length_squared = dx * dx + dy * dy;
+                    if length_squared <= 1e-18 {
+                        continue;
+                    }
+                    let t = (((point.x - start.x) * dx + (point.y - start.y) * dy)
+                        / length_squared)
+                        .clamp(0.0, 1.0);
+                    let projected = Point {
+                        x: start.x + t * dx,
+                        y: start.y + t * dy,
+                    };
+                    let distance_squared =
+                        (point.x - projected.x).powi(2) + (point.y - projected.y).powi(2);
+                    if closest.is_none_or(|(best, _, _)| distance_squared < best) {
+                        closest = Some((distance_squared, segment_index, t));
+                    }
+                }
+                let (_, segment_index, t) = closest.ok_or(ObjectOpError::Degenerate {
+                    op: "polyline-parameter-from-point",
+                })?;
+                Ok(ObjectValue::Scalar {
+                    value: (segment_index as f64 + t) / (points.len() - 1) as f64,
                 })
             }
             ObjectOp::CircleParameter { invert_y } => {
@@ -2536,6 +2717,169 @@ fn point_lies_on_circular_value(point: Point, value: &ObjectValue) -> bool {
     if *complement { !on_arc } else { on_arc }
 }
 
+fn circular_polyline_intersection(
+    circular: &ObjectValue,
+    center: Point,
+    radius: f64,
+    points: &[Point],
+    sample_hint: Option<f64>,
+    variant: usize,
+) -> Option<Point> {
+    if points.len() < 2 {
+        return None;
+    }
+
+    let mut candidates = Vec::<(usize, Point)>::new();
+    for (segment_index, segment) in points.windows(2).enumerate() {
+        for hit in
+            line_circle_intersections(segment[0], segment[1], LineKind::Segment, center, radius)
+                .into_iter()
+                .filter(|point| point_lies_on_circular_value(*point, circular))
+        {
+            if !candidates
+                .iter()
+                .any(|(_, candidate)| (candidate.x - hit.x).hypot(candidate.y - hit.y) <= 1e-7)
+            {
+                candidates.push((segment_index, hit));
+            }
+        }
+    }
+
+    if let Some(sample_hint) = sample_hint.filter(|value| value.is_finite()) {
+        candidates.sort_by(|(left_index, _), (right_index, _)| {
+            (*left_index as f64 - sample_hint)
+                .abs()
+                .total_cmp(&(*right_index as f64 - sample_hint).abs())
+        });
+    }
+    candidates.get(variant).map(|(_, point)| *point)
+}
+
+fn colorized_spectrum_line(
+    parents: &[&ObjectValue],
+    trace_endpoint_index: usize,
+    step_index: usize,
+    ray: bool,
+    reflected: bool,
+    sampled_reflection_axis: bool,
+) -> Result<ObjectValue, ObjectOpError> {
+    let expected = 4 + usize::from(reflected) * 2 + usize::from(sampled_reflection_axis) * 2;
+    expect_arity("colorized-spectrum-line", parents, expected)?;
+    if sampled_reflection_axis && !reflected {
+        return Err(ObjectOpError::Degenerate {
+            op: "colorized-spectrum-line",
+        });
+    }
+    let (host_start, host_end) = expect_line_endpoints("colorized-spectrum-line", parents, 0)?;
+    let trace = expect_points("colorized-spectrum-line", parents, 1)?;
+    if trace.len() < 2 {
+        return Err(ObjectOpError::Degenerate {
+            op: "colorized-spectrum-line",
+        });
+    }
+    let base_parameter = expect_scalar("colorized-spectrum-line", parents, 2)?;
+    let depth = discrete_depth(expect_scalar("colorized-spectrum-line", parents, 3)?).max(1);
+    let parameter = (base_parameter + step_index as f64 / depth as f64).rem_euclid(1.0);
+    let scaled = parameter * (trace.len() - 1) as f64;
+    let segment_index = (scaled.floor() as usize).min(trace.len() - 2);
+    let sample = lerp_point(
+        trace[segment_index],
+        trace[segment_index + 1],
+        scaled - segment_index as f64,
+    );
+
+    let [host_start, mut host_end] = if trace_endpoint_index == 1 {
+        [host_end, host_start]
+    } else {
+        [host_start, host_end]
+    };
+    let mut ray_start = host_start;
+    let mut ray_end = host_end;
+    if reflected {
+        let source = expect_point("colorized-spectrum-line", parents, 4)?;
+        let (axis_start, axis_end) = if sampled_reflection_axis {
+            let focus = expect_point("colorized-spectrum-line", parents, 6)?;
+            let (directrix_start, directrix_end) =
+                expect_line_endpoints("colorized-spectrum-line", parents, 7)?;
+            let projection =
+                project_to_line_like(sample, directrix_start, directrix_end, LineKind::Line)
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "colorized-spectrum-line",
+                    })?
+                    .projected;
+            let normal = Point {
+                x: focus.x - projection.x,
+                y: focus.y - projection.y,
+            };
+            if normal.x.hypot(normal.y) <= 1e-9 {
+                return Err(ObjectOpError::Degenerate {
+                    op: "colorized-spectrum-line",
+                });
+            }
+            (
+                sample,
+                Point {
+                    x: sample.x - normal.y,
+                    y: sample.y + normal.x,
+                },
+            )
+        } else {
+            expect_line_endpoints("colorized-spectrum-line", parents, 5)?
+        };
+        let reflected_point =
+            reflect_across_line(source, axis_start, axis_end).ok_or(ObjectOpError::Degenerate {
+                op: "colorized-spectrum-line",
+            })?;
+        if sampled_reflection_axis && ray {
+            ray_start = reflected_point;
+            ray_end = sample;
+        } else {
+            ray_start = sample;
+            ray_end = reflected_point;
+        }
+        host_end = reflected_point;
+    }
+
+    if ray {
+        let direction = Point {
+            x: ray_end.x - ray_start.x,
+            y: ray_end.y - ray_start.y,
+        };
+        if direction.x.hypot(direction.y) <= 1e-9 {
+            return Err(ObjectOpError::Degenerate {
+                op: "colorized-spectrum-line",
+            });
+        }
+        return Ok(ObjectValue::Line {
+            line_kind: LineKind::Ray,
+            start: sample,
+            end: Point {
+                x: sample.x + direction.x,
+                y: sample.y + direction.y,
+            },
+        });
+    }
+    Ok(ObjectValue::Line {
+        line_kind: LineKind::Segment,
+        start: sample,
+        end: host_end,
+    })
+}
+
+fn expect_line_endpoints(
+    op: &'static str,
+    parents: &[&ObjectValue],
+    index: usize,
+) -> Result<(Point, Point), ObjectOpError> {
+    match parents.get(index).copied() {
+        Some(ObjectValue::Line { start, end, .. }) => Ok((*start, *end)),
+        Some(ObjectValue::Points { points }) if points.len() >= 2 => {
+            Ok((points[0], points[points.len() - 1]))
+        }
+        _ => Err(ObjectOpError::ExpectedLine { op, parent: index }),
+    }
+}
+
 fn expect_points<'a>(
     op: &'static str,
     parents: &'a [&ObjectValue],
@@ -2545,6 +2889,28 @@ fn expect_points<'a>(
         Some(ObjectValue::Points { points }) => Ok(points),
         _ => Err(ObjectOpError::ExpectedShape { op, parent: index }),
     }
+}
+
+fn point_on_parent_shape(
+    op: &'static str,
+    parents: &[&ObjectValue],
+    index: usize,
+    segment_index: usize,
+    t: f64,
+) -> Result<Point, ObjectOpError> {
+    let points = parents
+        .get(index)
+        .and_then(|value| value.as_points())
+        .ok_or(ObjectOpError::ExpectedShape { op, parent: index })?;
+    if points.len() < 2 {
+        return Err(ObjectOpError::Degenerate { op });
+    }
+    let segment_index = segment_index.min(points.len() - 2);
+    Ok(lerp_point(
+        points[segment_index],
+        points[segment_index + 1],
+        t,
+    ))
 }
 
 fn expect_arc(
@@ -2829,6 +3195,49 @@ mod tests {
     }
 
     #[test]
+    fn polyline_parameter_is_derived_from_the_nearest_live_segment() {
+        let polyline = ObjectValue::Points {
+            points: vec![
+                Point { x: 0.0, y: 0.0 },
+                Point { x: 10.0, y: 0.0 },
+                Point { x: 10.0, y: 10.0 },
+            ],
+        };
+        let point = ObjectValue::point(Point { x: 12.0, y: 5.0 });
+        let parameter = BuiltinOperationTable
+            .evaluate(
+                "polyline-parameter",
+                &ObjectOp::PolylineParameterFromPoint,
+                &[&polyline, &point],
+            )
+            .unwrap();
+        assert_eq!(parameter, ObjectValue::Scalar { value: 0.75 });
+    }
+
+    #[test]
+    fn polar_offset_is_derived_from_point_distance_and_angle() {
+        let source = ObjectValue::point(Point { x: 2.0, y: 3.0 });
+        let distance = ObjectValue::Scalar { value: 4.0 };
+        let angle = ObjectValue::Scalar { value: 45.0 };
+        let point = BuiltinOperationTable
+            .evaluate(
+                "polar-offset",
+                &ObjectOp::PointPolarOffset {
+                    invert_y: false,
+                    distance_scale: 0.5,
+                    angle_degrees_scale: 2.0,
+                },
+                &[&source, &distance, &angle],
+            )
+            .unwrap();
+        let ObjectValue::Point { x, y } = point else {
+            panic!("polar offset must return a point");
+        };
+        assert!((x - 2.0).abs() < 1e-12);
+        assert!((y - 5.0).abs() < 1e-12);
+    }
+
+    #[test]
     fn angle_marker_is_derived_from_three_parent_points() {
         let start = ObjectValue::point(Point { x: 20.0, y: 0.0 });
         let vertex = ObjectValue::point(Point { x: 0.0, y: 0.0 });
@@ -2945,6 +3354,71 @@ mod tests {
         assert_eq!(
             values.get(&graph, "hit"),
             Some(&ObjectValue::point(Point { x: 6.0, y: 0.0 }))
+        );
+    }
+
+    #[test]
+    fn circular_polyline_intersection_filters_to_the_arc_and_follows_the_trace() {
+        let arc = ObjectValue::Arc {
+            start: Point { x: 1.0, y: 0.0 },
+            mid: Point { x: 0.0, y: 1.0 },
+            end: Point { x: -1.0, y: 0.0 },
+            center: Some(Point { x: 0.0, y: 0.0 }),
+            counterclockwise: false,
+            complement: false,
+        };
+        let trace = ObjectValue::Points {
+            points: vec![Point { x: 0.5, y: -2.0 }, Point { x: 0.5, y: 2.0 }],
+        };
+        let hit = BuiltinOperationTable
+            .evaluate(
+                "hit",
+                &ObjectOp::CircularPolylineIntersection {
+                    variant: 0,
+                    sample_hint: None,
+                },
+                &[&arc, &trace],
+            )
+            .unwrap();
+        let ObjectValue::Point { x, y } = hit else {
+            panic!("intersection must be a point");
+        };
+        assert!((x - 0.5).abs() < 1e-9);
+        assert!((y - 0.75_f64.sqrt()).abs() < 1e-9);
+    }
+
+    #[test]
+    fn colorized_spectrum_line_uses_live_trace_parameter_and_depth() {
+        let host = ObjectValue::Line {
+            line_kind: LineKind::Segment,
+            start: Point { x: 0.0, y: 0.0 },
+            end: Point { x: 0.0, y: 10.0 },
+        };
+        let trace = ObjectValue::Points {
+            points: vec![Point { x: 0.0, y: 0.0 }, Point { x: 10.0, y: 0.0 }],
+        };
+        let parameter = ObjectValue::Scalar { value: 0.25 };
+        let depth = ObjectValue::Scalar { value: 4.0 };
+        let line = BuiltinOperationTable
+            .evaluate(
+                "spectrum",
+                &ObjectOp::ColorizedSpectrumLine {
+                    trace_endpoint_index: 0,
+                    step_index: 1,
+                    ray: false,
+                    reflected: false,
+                    sampled_reflection_axis: false,
+                },
+                &[&host, &trace, &parameter, &depth],
+            )
+            .unwrap();
+        assert_eq!(
+            line,
+            ObjectValue::Line {
+                line_kind: LineKind::Segment,
+                start: Point { x: 5.0, y: 0.0 },
+                end: Point { x: 0.0, y: 10.0 },
+            }
         );
     }
 
@@ -3086,6 +3560,12 @@ mod tests {
                 value: std::f64::consts::PI
             }
         );
+        assert_eq!(
+            BuiltinOperationTable
+                .evaluate("angle", &ObjectOp::ArcAngleDegrees, &[&arc])
+                .unwrap(),
+            ObjectValue::Scalar { value: 90.0 }
+        );
     }
 
     #[test]
@@ -3173,6 +3653,56 @@ mod tests {
                     vec![Point { x: 0.0, y: 0.0 }, Point { x: 2.0, y: 0.0 }],
                     vec![Point { x: 0.0, y: 0.0 }, Point { x: 4.0, y: 0.0 }],
                 ],
+            }
+        );
+    }
+
+    #[test]
+    fn affine_line_iteration_resolves_fixed_point_and_line_target_handles() {
+        let point = |x, y| ObjectValue::point(Point { x, y });
+        let start = point(0.0, 0.0);
+        let end = point(1.0, 0.0);
+        let source_a = point(0.0, 0.0);
+        let source_b = point(1.0, 0.0);
+        let source_c = point(0.0, 1.0);
+        let target_b = point(2.0, 1.0);
+        let target_c_line = ObjectValue::Line {
+            line_kind: LineKind::Segment,
+            start: Point { x: 1.0, y: 1.0 },
+            end: Point { x: 1.0, y: 3.0 },
+        };
+        let depth = ObjectValue::Scalar { value: 1.0 };
+        let value = BuiltinOperationTable
+            .evaluate(
+                "iteration",
+                &ObjectOp::LineAffineIteration {
+                    target_handles: [
+                        AffineTargetHandle::Fixed {
+                            point: Point { x: 1.0, y: 1.0 },
+                        },
+                        AffineTargetHandle::ParentPoint,
+                        AffineTargetHandle::ParentLinePoint {
+                            segment_index: 0,
+                            t: 0.5,
+                        },
+                    ],
+                },
+                &[
+                    &start,
+                    &end,
+                    &source_a,
+                    &source_b,
+                    &source_c,
+                    &target_b,
+                    &target_c_line,
+                    &depth,
+                ],
+            )
+            .unwrap();
+        assert_eq!(
+            value,
+            ObjectValue::Points {
+                points: vec![Point { x: 1.0, y: 1.0 }, Point { x: 2.0, y: 1.0 }]
             }
         );
     }
@@ -3296,6 +3826,21 @@ mod tests {
                 color: [255, 0, 0, 255],
             }
         );
+    }
+
+    #[test]
+    fn select_parent_preserves_the_full_dependency_list() {
+        let first = ObjectValue::point(Point { x: 2.0, y: 3.0 });
+        let control = ObjectValue::Scalar { value: 0.25 };
+        let last = ObjectValue::point(Point { x: 8.0, y: 9.0 });
+        let value = BuiltinOperationTable
+            .evaluate(
+                "alias",
+                &ObjectOp::SelectParent { index: 0 },
+                &[&first, &control, &last],
+            )
+            .unwrap();
+        assert_eq!(value, first);
     }
 
     #[test]

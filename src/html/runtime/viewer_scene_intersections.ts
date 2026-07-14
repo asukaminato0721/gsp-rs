@@ -38,6 +38,36 @@
     );
   }
 
+  function circularPolylineIntersection(
+    circle: { kind: string; center?: Point; radius?: number; ccwMid?: number; ccwSpan?: number; startAngle?: number; endAngle?: number },
+    points: Point[],
+    sampleHint: number | null | undefined,
+    variant: number,
+  ): Point | null {
+    if (!circle.center || !Number.isFinite(circle.radius) || points.length < 2) return null;
+    const radius = circle.radius as number;
+    const liesOn = scene._pointLiesOnCircularConstraint;
+    const candidates: Array<{ segmentIndex: number; point: Point }> = [];
+    for (let segmentIndex = 0; segmentIndex + 1 < points.length; segmentIndex += 1) {
+      for (const point of window.GspRuntimeCore.lineCircleIntersections(
+        points[segmentIndex],
+        points[segmentIndex + 1],
+        "segment",
+        circle.center,
+        radius,
+      )) {
+        if (typeof liesOn === "function" && !liesOn(point, circle)) continue;
+        if (candidates.some((candidate) => Math.hypot(candidate.point.x - point.x, candidate.point.y - point.y) <= 1e-7)) continue;
+        candidates.push({ segmentIndex, point });
+      }
+    }
+    if (typeof sampleHint === "number" && Number.isFinite(sampleHint)) {
+      candidates.sort((left, right) =>
+        Math.abs(left.segmentIndex - sampleHint) - Math.abs(right.segmentIndex - sampleHint));
+    }
+    return candidates[variant]?.point ?? null;
+  }
+
   
   function sampleFunctionIntersectionPoints(env: ViewerSceneResolverEnv | null, constraint: Extract<RuntimePointConstraintJson, { kind: "line-function-intersection" }>): Point[] | null {
     const currentScene = typeof env?.currentScene === "function" ? env.currentScene() : env?.sourceScene;
@@ -204,6 +234,18 @@
           null,
           constraint.variant,
         )
+      : null;
+  }));
+  scene.registerPointConstraintResolver("circular-trace-intersection", ((env: ViewerSceneResolverEnv | null, constraint, resolveFn) => {
+    const circleFromConstraint = scene._circleFromConstraint;
+    const circle = typeof circleFromConstraint === "function"
+      ? circleFromConstraint(env as ViewerEnv | null, constraint.circle, resolveFn)
+      : null;
+    const tracePoints = typeof scene.sampleCoordinateTracePoints === "function"
+      ? scene.sampleCoordinateTracePoints(env as ViewerEnv | null, constraint)
+      : null;
+    return circle && tracePoints
+      ? circularPolylineIntersection(circle, tracePoints, constraint.sampleHint, constraint.variant)
       : null;
   }));
   scene.registerPointConstraintResolver("line-function-intersection", ((env: ViewerSceneResolverEnv | null, constraint, resolveFn) => {

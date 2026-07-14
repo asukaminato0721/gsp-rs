@@ -1,7 +1,7 @@
 use gsp_runtime_core::object_graph::{ObjectDefinition, ObjectGraph, ObjectNode};
 use gsp_runtime_core::{
-    CoordinateTraceMode, FunctionAst, FunctionExpr, LineKind, ObjectExpression, ObjectOp,
-    ObjectProgram, ObjectValue, PlotMode, Point, TraceDriver, expression_parameter_names,
+    AffineTargetHandle, CoordinateTraceMode, FunctionAst, FunctionExpr, LineKind, ObjectExpression,
+    ObjectOp, ObjectProgram, ObjectValue, PlotMode, Point, TraceDriver, expression_parameter_names,
 };
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -14,7 +14,7 @@ use crate::runtime::scene::{
     ColorBinding, CoordinateAxis, IterationPointHandle, LineBinding, LineConstraint,
     LineIterationFamily, LineLikeKind, LineTransformBinding, PointIterationFamily,
     PolygonIterationFamily, RotationBinding, Scene, ScenePointBinding, ScenePointConstraint,
-    ShapeBinding, ShapeTransformBinding, TextLabelBinding,
+    SceneScalar, SceneScalarBinding, ShapeBinding, ShapeTransformBinding, TextLabelBinding,
 };
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -90,6 +90,11 @@ impl ObjectGraphJson {
             );
             builder.named_scalars.insert(parameter.name.clone(), id);
         }
+        for scalar in &scene.scalars {
+            builder
+                .group_scalars
+                .insert(scalar.group_ordinal, group_scalar_id(scalar.group_ordinal));
+        }
         let mut label_indices = (0..scene.labels.len()).collect::<Vec<_>>();
         label_indices.sort_by_key(|index| {
             scene.labels[*index]
@@ -154,13 +159,15 @@ impl ObjectGraphJson {
         for (index, family) in scene.point_iterations.iter().enumerate() {
             builder.point_iteration(index, family);
         }
+        for scalar in &scene.scalars {
+            let id = group_scalar_id(scalar.group_ordinal);
+            if builder.group_scalars.get(&scalar.group_ordinal) == Some(&id) {
+                builder.scene_scalar(id, scalar);
+            }
+        }
         let supported_line_iterations = scene.line_iterations.iter().all(|family| match family {
             LineIterationFamily::Translate { .. } | LineIterationFamily::Rotate { .. } => true,
-            LineIterationFamily::Affine {
-                target_triangle, ..
-            } => target_triangle
-                .iter()
-                .all(|handle| matches!(handle, IterationPointHandle::Point { .. })),
+            LineIterationFamily::Affine { .. } => true,
             LineIterationFamily::Branching { .. }
             | LineIterationFamily::ParameterizedPointTrace { .. } => false,
         });
@@ -178,22 +185,6 @@ impl ObjectGraphJson {
         let base_line_count = scene.lines.len().saturating_sub(generated_line_count);
         let base_lines = scene.lines.iter().take(base_line_count).enumerate();
         for (index, line) in base_lines.clone().filter(|(_, line)| !is_trace_line(line)) {
-            builder.line(index, line);
-        }
-        for (index, line) in base_lines.clone().filter(|(_, line)| {
-            is_trace_line(line)
-                && !is_segment_trace_line(line)
-                && !is_custom_transform_trace_line(line)
-        }) {
-            builder.line(index, line);
-        }
-        for (index, line) in base_lines
-            .clone()
-            .filter(|(_, line)| is_custom_transform_trace_line(line))
-        {
-            builder.line(index, line);
-        }
-        for (index, line) in base_lines.filter(|(_, line)| is_segment_trace_line(line)) {
             builder.line(index, line);
         }
         if supported_line_iterations {
@@ -496,6 +487,25 @@ impl ObjectGraphJson {
                 ),
             }
         }
+        // A trace embeds the complete operation program of its target point. Build every
+        // non-trace geometry node first so a point constrained to a circle, arc, or polygon
+        // can retain that exact parent in the embedded program.
+        for (index, line) in base_lines.clone().filter(|(_, line)| {
+            is_trace_line(line)
+                && !is_segment_trace_line(line)
+                && !is_custom_transform_trace_line(line)
+        }) {
+            builder.line(index, line);
+        }
+        for (index, line) in base_lines
+            .clone()
+            .filter(|(_, line)| is_custom_transform_trace_line(line))
+        {
+            builder.line(index, line);
+        }
+        for (index, line) in base_lines.filter(|(_, line)| is_segment_trace_line(line)) {
+            builder.line(index, line);
+        }
         if !supported_line_iterations || !supported_polygon_iterations {
             builder.pending("iteration-operations");
         }
@@ -543,6 +553,96 @@ struct Builder {
 }
 
 impl Builder {
+    fn scene_scalar(&mut self, id: String, scalar: &SceneScalar) {
+        match scalar.binding {
+            SceneScalarBinding::CircularMeasure {
+                circle_index,
+                value_scale,
+            } => {
+                if value_scale == 1.0 {
+                    self.derived(id, ObjectOp::CircularRadius, [circle_id(circle_index)]);
+                } else {
+                    let radius_id = format!("{id}:radius");
+                    self.derived(
+                        radius_id.clone(),
+                        ObjectOp::CircularRadius,
+                        [circle_id(circle_index)],
+                    );
+                    self.derived(
+                        id,
+                        ObjectOp::ScaleScalar {
+                            factor: value_scale,
+                        },
+                        [radius_id],
+                    );
+                }
+            }
+            SceneScalarBinding::ArcAngle { arc_index } => {
+                self.derived(id, ObjectOp::ArcAngleDegrees, [arc_id(arc_index)]);
+            }
+            SceneScalarBinding::PointParameter { point_index } => {
+                if !self.point_parameter(id.clone(), point_index) {
+                    self.pending_source(id, "scalar-binding", ObjectValue::Scalar { value: 0.0 });
+                }
+            }
+            SceneScalarBinding::PointLineParameter {
+                point_index,
+                start_index,
+                end_index,
+                line_kind,
+            } => self.derived(
+                id,
+                ObjectOp::PointLineParameter {
+                    line_kind: core_line_kind(line_kind),
+                },
+                [
+                    point_id(point_index),
+                    point_id(start_index),
+                    point_id(end_index),
+                ],
+            ),
+            SceneScalarBinding::PointCircleParameter {
+                point_index,
+                center_index,
+                radius_index,
+            } => {
+                let circle_id = format!("domain:{id}:circle");
+                self.derived(
+                    circle_id.clone(),
+                    ObjectOp::CircleByPoints,
+                    [point_id(center_index), point_id(radius_index)],
+                );
+                self.derived(
+                    id,
+                    ObjectOp::CircleParameter {
+                        invert_y: !self.y_up,
+                    },
+                    [point_id(point_index), circle_id],
+                );
+            }
+            SceneScalarBinding::PointPolylineParameter {
+                point_index,
+                line_index,
+            } => self.derived(
+                id,
+                ObjectOp::PolylineParameterFromPoint,
+                [line_id(line_index), point_id(point_index)],
+            ),
+            SceneScalarBinding::PointPolygonParameter {
+                point_index,
+                ref vertex_indices,
+            } => self.derived(
+                id,
+                ObjectOp::PolygonBoundaryParameterFromPoint,
+                vertex_indices
+                    .iter()
+                    .copied()
+                    .map(point_id)
+                    .chain(std::iter::once(point_id(point_index))),
+            ),
+        }
+    }
+
     fn label_binding_is_scalar(binding: Option<&TextLabelBinding>) -> bool {
         matches!(
             binding,
@@ -1097,17 +1197,6 @@ impl Builder {
                 depth,
                 ..
             } => {
-                let targets = target_triangle
-                    .iter()
-                    .filter_map(|handle| match handle {
-                        IterationPointHandle::Point { point_index } => Some(point_id(*point_index)),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-                if targets.len() != 3 {
-                    self.pending("iteration-operations");
-                    return;
-                }
                 let depth_id = format!("scalar:{id}:depth");
                 self.source(
                     depth_id.clone(),
@@ -1115,20 +1204,48 @@ impl Builder {
                         value: *depth as f64,
                     },
                 );
+                let mut target_handles = Vec::with_capacity(3);
+                let mut target_parents = Vec::with_capacity(3);
+                for handle in target_triangle {
+                    match handle {
+                        IterationPointHandle::Point { point_index } => {
+                            target_handles.push(AffineTargetHandle::ParentPoint);
+                            target_parents.push(point_id(*point_index));
+                        }
+                        IterationPointHandle::LinePoint {
+                            line_index,
+                            segment_index,
+                            t,
+                        } => {
+                            target_handles.push(AffineTargetHandle::ParentLinePoint {
+                                segment_index: *segment_index,
+                                t: *t,
+                            });
+                            target_parents.push(line_id(*line_index));
+                        }
+                        IterationPointHandle::Fixed(point) => {
+                            target_handles.push(AffineTargetHandle::Fixed {
+                                point: core_point(point),
+                            });
+                        }
+                    }
+                }
+                let target_handles: [AffineTargetHandle; 3] = target_handles
+                    .try_into()
+                    .expect("affine target triangle always has three handles");
+                let mut parents = vec![
+                    point_id(*start_index),
+                    point_id(*end_index),
+                    point_id(source_triangle_indices[0]),
+                    point_id(source_triangle_indices[1]),
+                    point_id(source_triangle_indices[2]),
+                ];
+                parents.extend(target_parents);
+                parents.push(depth_id);
                 self.derived(
                     id,
-                    ObjectOp::LineAffineIteration,
-                    [
-                        point_id(*start_index),
-                        point_id(*end_index),
-                        point_id(source_triangle_indices[0]),
-                        point_id(source_triangle_indices[1]),
-                        point_id(source_triangle_indices[2]),
-                        targets[0].clone(),
-                        targets[1].clone(),
-                        targets[2].clone(),
-                        depth_id,
-                    ],
+                    ObjectOp::LineAffineIteration { target_handles },
+                    parents,
                 );
             }
             LineIterationFamily::Branching { .. }
@@ -1268,6 +1385,16 @@ impl Builder {
                 ScenePointBinding::GraphCalibration | ScenePointBinding::Parameter { .. } => {
                     self.source(id, source_value);
                 }
+                ScenePointBinding::PayloadAlias {
+                    parent_indices,
+                    source_parent,
+                } => self.derived(
+                    id,
+                    ObjectOp::SelectParent {
+                        index: *source_parent,
+                    },
+                    parent_indices.iter().copied().map(point_id),
+                ),
                 ScenePointBinding::DerivedParameter {
                     source_index,
                     parameter_start_index,
@@ -1511,6 +1638,37 @@ impl Builder {
                             y_scale: *y_scale,
                         },
                         [point_id(*source_index), distance_id],
+                    );
+                }
+                ScenePointBinding::PolarTransform {
+                    source_index,
+                    distance_expr,
+                    distance_parameter_group_ordinals,
+                    distance_scale,
+                    angle_expr,
+                    angle_parameter_group_ordinals,
+                    angle_degrees_scale,
+                } => {
+                    let distance_id = format!("scalar:{id}:distance");
+                    let angle_id = format!("scalar:{id}:angle");
+                    self.expression_with_group_sources(
+                        distance_id.clone(),
+                        distance_expr,
+                        distance_parameter_group_ordinals,
+                    );
+                    self.expression_with_group_sources(
+                        angle_id.clone(),
+                        angle_expr,
+                        angle_parameter_group_ordinals,
+                    );
+                    self.derived(
+                        id,
+                        ObjectOp::PointPolarOffset {
+                            invert_y: !self.y_up,
+                            distance_scale: *distance_scale,
+                            angle_degrees_scale: *angle_degrees_scale,
+                        },
+                        [point_id(*source_index), distance_id, angle_id],
                     );
                 }
                 ScenePointBinding::RadiusOffset {
@@ -1963,6 +2121,37 @@ impl Builder {
                     self.pending_source(id, "point-constraint", source_value);
                 }
             }
+            ScenePointConstraint::CircularTraceIntersection {
+                circle,
+                trace_key,
+                variant,
+                sample_hint,
+                ..
+            } => {
+                let domain_circle_id = format!("domain:{id}:circle");
+                let matching_traces = self
+                    .line_group_ordinals
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(line_index, group_ordinal)| {
+                        (*group_ordinal == Some(*trace_key)).then_some(line_index)
+                    })
+                    .collect::<Vec<_>>();
+                if self.circular_constraint(domain_circle_id.clone(), circle)
+                    && let [trace_index] = matching_traces.as_slice()
+                {
+                    self.derived(
+                        id,
+                        ObjectOp::CircularPolylineIntersection {
+                            variant: *variant,
+                            sample_hint: sample_hint.map(|sample| sample as f64),
+                        },
+                        [domain_circle_id, line_id(*trace_index)],
+                    );
+                } else {
+                    self.pending_source(id, "point-constraint", source_value);
+                }
+            }
             ScenePointConstraint::LineFunctionIntersection {
                 line,
                 function_key,
@@ -2283,7 +2472,13 @@ impl Builder {
         let parameter_names = expression_parameter_names(expression);
         let mut parents = Vec::with_capacity(parameter_names.len());
         for name in &parameter_names {
-            if let Some(source) = sources.iter().find(|source| source.name == *name) {
+            if let Some(parent) = parameter_group_ordinals
+                .get(name)
+                .and_then(|ordinal| self.group_scalars.get(ordinal))
+                .cloned()
+            {
+                parents.push(parent);
+            } else if let Some(source) = sources.iter().find(|source| source.name == *name) {
                 let scalar_id = format!("{id}:source:{}", parents.len());
                 if let Some(circle) = &source.circle {
                     let circle_id = format!("{scalar_id}:circle");
@@ -2301,12 +2496,6 @@ impl Builder {
                     return false;
                 }
                 parents.push(scalar_id);
-            } else if let Some(parent) = parameter_group_ordinals
-                .get(name)
-                .and_then(|ordinal| self.group_scalars.get(ordinal))
-                .cloned()
-            {
-                parents.push(parent);
             } else if let Some(parent) = self.named_scalars.get(name).cloned() {
                 parents.push(parent);
             } else {
@@ -2989,6 +3178,25 @@ impl Builder {
                     [source_id],
                 );
             }
+            CircularConstraint::VectorTranslateCircle {
+                source,
+                vector_start_index,
+                vector_end_index,
+            } => {
+                let source_id = format!("{id}:source");
+                if !self.circular_constraint(source_id.clone(), source) {
+                    return false;
+                }
+                self.derived(
+                    id,
+                    ObjectOp::TranslateShape,
+                    [
+                        source_id,
+                        point_id(*vector_start_index),
+                        point_id(*vector_end_index),
+                    ],
+                );
+            }
             CircularConstraint::ReflectCircle {
                 source,
                 line_start_index,
@@ -3348,6 +3556,88 @@ impl Builder {
                     self.pending_source(id, "line-binding", value);
                 }
             }
+            Some(LineBinding::ColorizedSpectrum {
+                line_index,
+                trace_line_index,
+                point_index,
+                trace_endpoint_index,
+                reflection_source_index,
+                reflection_axis_line_index,
+                reflection_focus_index,
+                reflection_directrix_line_index,
+                step_index,
+                depth,
+                depth_parameter_name,
+                ray,
+            }) => {
+                let parameter_id = format!("scalar:{id}:trace-parameter");
+                if !self.point_parameter(parameter_id.clone(), *point_index) {
+                    self.pending_source(id, "line-binding", value);
+                    return;
+                }
+                let depth_id = if let Some(name) = depth_parameter_name {
+                    let Some(depth_id) = self.named_scalars.get(name).cloned() else {
+                        self.pending_source(id, "line-binding", value);
+                        return;
+                    };
+                    depth_id
+                } else {
+                    let depth_id = format!("scalar:{id}:depth");
+                    self.source(
+                        depth_id.clone(),
+                        ObjectValue::Scalar {
+                            value: *depth as f64,
+                        },
+                    );
+                    depth_id
+                };
+                let reflected = match (reflection_source_index, reflection_axis_line_index) {
+                    (Some(_), Some(_)) => true,
+                    (None, None) => false,
+                    _ => {
+                        self.pending_source(id, "line-binding", value);
+                        return;
+                    }
+                };
+                let sampled_reflection_axis =
+                    match (reflection_focus_index, reflection_directrix_line_index) {
+                        (Some(_), Some(_)) if reflected => true,
+                        (None, None) => false,
+                        _ => {
+                            self.pending_source(id, "line-binding", value);
+                            return;
+                        }
+                    };
+                let mut parents = vec![
+                    line_id(*line_index),
+                    line_id(*trace_line_index),
+                    parameter_id,
+                    depth_id,
+                ];
+                if let (Some(source_index), Some(axis_line_index)) =
+                    (reflection_source_index, reflection_axis_line_index)
+                {
+                    parents.push(point_id(*source_index));
+                    parents.push(line_id(*axis_line_index));
+                }
+                if let (Some(focus_index), Some(directrix_line_index)) =
+                    (reflection_focus_index, reflection_directrix_line_index)
+                {
+                    parents.push(point_id(*focus_index));
+                    parents.push(line_id(*directrix_line_index));
+                }
+                self.derived(
+                    id,
+                    ObjectOp::ColorizedSpectrumLine {
+                        trace_endpoint_index: *trace_endpoint_index,
+                        step_index: *step_index,
+                        ray: *ray,
+                        reflected,
+                        sampled_reflection_axis,
+                    },
+                    parents,
+                );
+            }
             Some(LineBinding::ParametricCurve {
                 x_expr,
                 y_expr,
@@ -3381,7 +3671,6 @@ impl Builder {
                 }
             }
             None => self.source(id, value),
-            Some(_) => self.pending_source(id, "line-binding", value),
         }
     }
 
@@ -4065,6 +4354,14 @@ fn point_id(index: usize) -> String {
     format!("point:{index}")
 }
 
+fn core_line_kind(kind: LineLikeKind) -> LineKind {
+    match kind {
+        LineLikeKind::Segment => LineKind::Segment,
+        LineLikeKind::Line => LineKind::Line,
+        LineLikeKind::Ray => LineKind::Ray,
+    }
+}
+
 fn fuse_generated_trace_points(nodes: &mut [ObjectNode<ObjectOp>]) {
     let traces = nodes
         .iter()
@@ -4195,6 +4492,10 @@ fn arc_id(index: usize) -> String {
 
 fn label_scalar_id(index: usize) -> String {
     format!("scalar:label:{index}")
+}
+
+fn group_scalar_id(group_ordinal: usize) -> String {
+    format!("scalar:group:{group_ordinal}")
 }
 
 fn core_point(point: &PointRecord) -> Point {

@@ -8,7 +8,8 @@ use crate::runtime::extract::points::{
 };
 use crate::runtime::extract::shapes::collect_raw_object_anchors;
 use crate::runtime::extract::{
-    decode_measurement_value, find_indexed_path, is_circle_group_kind,
+    GraphObjectCircleMeasurementKind, decode_measurement_value, find_indexed_path,
+    graph_object_circle_measurement_kind, is_circle_group_kind,
     try_decode_parameter_control_value_for_group,
 };
 use crate::runtime::functions::{evaluate_expr_with_parameters, function_expr_label};
@@ -47,7 +48,7 @@ thread_local! {
     static RESOLVING_MEASURED_VALUES: RefCell<BTreeSet<usize>> = RefCell::new(BTreeSet::new());
     static MEASURED_VALUE_ANCHORS_CACHE: RefCell<Option<Vec<Option<PointRecord>>>> = const { RefCell::new(None) };
     static RESOLVING_NUMERIC_HELPERS: RefCell<BTreeSet<usize>> = RefCell::new(BTreeSet::new());
-    static NUMERIC_HELPER_CACHE: RefCell<BTreeMap<usize, Option<FunctionExpr>>> = RefCell::new(BTreeMap::new());
+    static NUMERIC_HELPER_CACHE: RefCell<BTreeMap<usize, FunctionExpr>> = RefCell::new(BTreeMap::new());
 }
 
 pub(crate) fn with_numeric_helper_cache<T>(f: impl FnOnce() -> T) -> T {
@@ -370,8 +371,10 @@ fn decode_group_function_payload_expr(
     if let Some(expr) = function_ref_expr {
         return Ok(expr);
     }
-    if payload_uses_grouped_expression(payload) {
-        return decode_grouped_decimal_payload_function_expr(payload, &parameters);
+    if payload_uses_grouped_expression(payload)
+        && let Ok(expr) = decode_grouped_decimal_payload_function_expr(payload, &parameters)
+    {
+        return Ok(expr);
     }
 
     let decoded = match mode {
@@ -595,7 +598,7 @@ fn try_decode_numeric_helper_group(
     if let Some(cached) =
         NUMERIC_HELPER_CACHE.with(|cache| cache.borrow().get(&group.ordinal).cloned())
     {
-        return cached;
+        return Some(cached);
     }
     RESOLVING_NUMERIC_HELPERS.with(|resolving| {
         if !resolving.borrow_mut().insert(group.ordinal) {
@@ -603,9 +606,11 @@ fn try_decode_numeric_helper_group(
         }
         let result = try_decode_numeric_helper_group_inner(file, groups, group);
         resolving.borrow_mut().remove(&group.ordinal);
-        NUMERIC_HELPER_CACHE.with(|cache| {
-            cache.borrow_mut().insert(group.ordinal, result.clone());
-        });
+        if let Some(expr) = result.as_ref() {
+            NUMERIC_HELPER_CACHE.with(|cache| {
+                cache.borrow_mut().insert(group.ordinal, expr.clone());
+            });
+        }
         result
     })
 }
@@ -617,7 +622,8 @@ fn try_decode_numeric_helper_group_inner(
 ) -> Option<FunctionExpr> {
     if !matches!(
         group.header.kind(),
-        crate::format::GroupKind::DistanceValue
+        crate::format::GroupKind::GraphObject40
+            | crate::format::GroupKind::DistanceValue
             | crate::format::GroupKind::PointLineDistanceValue
             | crate::format::GroupKind::CoordinateXValue
             | crate::format::GroupKind::CoordinateYValue
@@ -658,6 +664,29 @@ fn try_decode_numeric_helper_group_inner(
         .as_ref()
         .map(|transform| (transform.origin_raw.clone(), transform.raw_per_unit));
     let value = match group.header.kind() {
+        crate::format::GroupKind::GraphObject40 => {
+            let measurement_kind = graph_object_circle_measurement_kind(file, group)?;
+            let source_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
+            let radius_raw = resolve_circle_like_raw(file, groups, &anchors, source_group)
+                .map(|circle| circle.radius())
+                .or_else(|| {
+                    if source_group.header.kind() != crate::format::GroupKind::CircleCenterRadius {
+                        return None;
+                    }
+                    let source_path = find_indexed_path(file, source_group)?;
+                    let radius_group = groups.get(source_path.refs.get(1)?.checked_sub(1)?)?;
+                    let expr = try_decode_function_expr(file, groups, radius_group).ok()?;
+                    evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new()).map(f64::abs)
+                })?;
+            let radius = normalize_graph_distance(
+                radius_raw,
+                graph.as_ref().map(|(_, raw_per_unit)| *raw_per_unit),
+            );
+            match measurement_kind {
+                GraphObjectCircleMeasurementKind::Radius => radius,
+                GraphObjectCircleMeasurementKind::Circumference => std::f64::consts::TAU * radius,
+            }
+        }
         crate::format::GroupKind::DistanceValue => {
             let left = anchors.get(path.refs.first()?.checked_sub(1)?)?.clone()?;
             let right = anchors.get(path.refs.get(1)?.checked_sub(1)?)?.clone()?;
@@ -1690,24 +1719,29 @@ fn evaluate_function_group_recursive(
             return decode_runtime_parameter_binding(file, groups, group, overrides, visiting)
                 .map(|binding| binding.value);
         }
-        let payload = group_function_payload(file, group).ok()?;
-        let mut parameters = BTreeMap::new();
-        if let Some(path) = find_indexed_path(file, group) {
-            for (index, ordinal) in path.refs.iter().copied().enumerate() {
-                let parameter_group = groups.get(ordinal.checked_sub(1)?)?;
-                let binding = decode_runtime_parameter_binding(
-                    file,
-                    groups,
-                    parameter_group,
-                    overrides,
-                    visiting,
-                );
-                let binding = binding?;
-                parameters.insert(index as u16, binding);
+        let runtime_value = (|| {
+            let payload = group_function_payload(file, group).ok()?;
+            let mut parameters = BTreeMap::new();
+            if let Some(path) = find_indexed_path(file, group) {
+                for (index, ordinal) in path.refs.iter().copied().enumerate() {
+                    let parameter_group = groups.get(ordinal.checked_sub(1)?)?;
+                    let binding = decode_runtime_parameter_binding(
+                        file,
+                        groups,
+                        parameter_group,
+                        overrides,
+                        visiting,
+                    )?;
+                    parameters.insert(index as u16, binding);
+                }
             }
-        }
-        let expr = decode_payload_function_expr(payload, &parameters).ok()?;
-        evaluate_expr_with_parameters(&expr, 0.0, overrides)
+            let expr = decode_payload_function_expr(payload, &parameters).ok()?;
+            evaluate_expr_with_parameters(&expr, 0.0, overrides)
+        })();
+        runtime_value.or_else(|| {
+            let expr = try_decode_function_expr(file, groups, group).ok()?;
+            evaluate_expr_with_parameters(&expr, 0.0, overrides)
+        })
     })();
     visiting.remove(&group.ordinal);
     result
@@ -1812,6 +1846,11 @@ fn decode_runtime_parameter_binding(
     overrides: &BTreeMap<String, f64>,
     visiting: &mut BTreeSet<usize>,
 ) -> Option<ParameterBinding> {
+    if let Some(expr) = try_decode_numeric_helper_group(file, groups, group) {
+        let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())?;
+        let name = group_name(file, groups, group).unwrap_or_else(|| function_expr_label(expr));
+        return Some(ParameterBinding::value(name, value));
+    }
     if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
         let binding = decode_parameter_anchor_binding(file, group, false)?;
         let value = overrides
@@ -1827,12 +1866,41 @@ fn decode_runtime_parameter_binding(
     if (group.header.kind()) == crate::format::GroupKind::MeasuredValue {
         return decode_measured_value_binding(file, groups, group);
     }
+    if group.header.kind() == crate::format::GroupKind::ParameterControlledPoint
+        && let Some(path) = find_indexed_path(file, group)
+        && let Some(source) = path
+            .refs
+            .first()
+            .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+    {
+        if !visiting.insert(group.ordinal) {
+            return None;
+        }
+        let binding = (|| {
+            let mut binding =
+                decode_runtime_parameter_binding(file, groups, source, overrides, visiting)?;
+            binding.name = group_name(file, groups, group).unwrap_or(binding.name);
+            if let Some(value) = overrides.get(&binding.name).copied() {
+                binding.value = value;
+                binding.expr = None;
+            }
+            Some(binding)
+        })();
+        visiting.remove(&group.ordinal);
+        return binding;
+    }
     if is_function_like_group(group) {
         let expr = decode_function_expr_recursive(file, groups, group, visiting).ok()?;
         let name =
             group_name(file, groups, group).unwrap_or_else(|| function_expr_label(expr.clone()));
         let value = evaluate_function_group_recursive(file, groups, group, overrides, visiting)?;
         return Some(ParameterBinding::value(name, value));
+    }
+
+    if group.header.kind() == crate::format::GroupKind::RatioValue {
+        let name = group_name(file, groups, group)
+            .unwrap_or_else(|| format!("__ratio_value_{}", group.ordinal));
+        return Some(ParameterBinding::value(name, 0.0));
     }
 
     let label_payload = group
@@ -1858,11 +1926,41 @@ fn decode_parameter_binding_recursive(
     inline_function_refs: bool,
     allow_constraint_anchor_bindings: bool,
 ) -> Option<ParameterBinding> {
+    if let Some(expr) = try_decode_numeric_helper_group(file, groups, group) {
+        let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())?;
+        let name = group_name(file, groups, group).unwrap_or_else(|| function_expr_label(expr));
+        return Some(ParameterBinding::value(name, value));
+    }
     if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
         return decode_parameter_anchor_binding(file, group, allow_constraint_anchor_bindings);
     }
     if (group.header.kind()) == crate::format::GroupKind::MeasuredValue {
         return decode_measured_value_binding(file, groups, group);
+    }
+    if group.header.kind() == crate::format::GroupKind::ParameterControlledPoint
+        && let Some(path) = find_indexed_path(file, group)
+        && let Some(source) = path
+            .refs
+            .first()
+            .and_then(|ordinal| groups.get(ordinal.saturating_sub(1)))
+    {
+        if !visiting.insert(group.ordinal) {
+            return None;
+        }
+        let binding = (|| {
+            let mut binding = decode_parameter_binding_recursive(
+                file,
+                groups,
+                source,
+                visiting,
+                inline_function_refs,
+                allow_constraint_anchor_bindings,
+            )?;
+            binding.name = group_name(file, groups, group).unwrap_or(binding.name);
+            Some(binding)
+        })();
+        visiting.remove(&group.ordinal);
+        return binding;
     }
     if is_function_like_group(group) {
         if let Ok(expr) = decode_function_expr_recursive(file, groups, group, visiting) {
@@ -1881,6 +1979,12 @@ fn decode_parameter_binding_recursive(
                 function_expr_ast(expr),
             ));
         }
+    }
+
+    if group.header.kind() == crate::format::GroupKind::RatioValue {
+        let name = group_name(file, groups, group)
+            .unwrap_or_else(|| format!("__ratio_value_{}", group.ordinal));
+        return Some(ParameterBinding::value(name, 0.0));
     }
 
     let label_payload = group

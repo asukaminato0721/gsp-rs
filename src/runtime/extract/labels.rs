@@ -1588,7 +1588,6 @@ pub(super) fn collect_coordinate_labels(
         } else if kind == crate::format::GroupKind::RatioValue
             && let Some(path) = find_indexed_path(file, group)
             && path.refs.len() >= 3
-            && let Some(value) = ratio_value(file, group, anchors)
             && let Some(anchor) = decode_label_anchor(file, group, anchors)
                 .or_else(|| try_decode_payload_anchor_point(file, group).ok().flatten())
         {
@@ -1596,6 +1595,7 @@ pub(super) fn collect_coordinate_labels(
                 .or_else(|| ratio_value_label_name(file, groups, &path))
                 .unwrap_or_else(|| "ratio".to_string());
             let clamp_to_unit = true;
+            let value = ratio_value(file, group, anchors).unwrap_or(0.0);
             let value = if clamp_to_unit { value.min(1.0) } else { value };
             let value_text = format_number(value);
             let text = format!("{name} = {value_text}");

@@ -19,9 +19,9 @@ pub use geometry::{
     scale_around, scale_by_three_point_ratio, three_point_arc_geometry,
 };
 pub use object_ops::{
-    BuiltinOperationTable, ObjectCircle, ObjectExpression, ObjectGraphEvaluationInput,
-    ObjectNodeValue, ObjectOp, ObjectOpError, ObjectProgram, ObjectSourceValue, ObjectValue,
-    TraceDriver, evaluate_object_graph_json,
+    AffineTargetHandle, BuiltinOperationTable, ObjectCircle, ObjectExpression,
+    ObjectGraphEvaluationInput, ObjectNodeValue, ObjectOp, ObjectOpError, ObjectProgram,
+    ObjectSourceValue, ObjectValue, TraceDriver, evaluate_object_graph_json,
 };
 pub use point_constraints::{
     inverse_point_transform_json, resolve_point_constraints_json, transform_points_json,

@@ -1,8 +1,194 @@
 use super::test_support::{fixture_bytes, fixture_log, fixture_scene, function_expr_has_parameter};
 use crate::runtime::scene::{
-    ButtonAction, LineBinding, LineConstraint, ScenePointBinding, ScenePointConstraint,
+    ArcBinding, ButtonAction, LineBinding, LineConstraint, ScenePointBinding, ScenePointConstraint,
     ShapeBinding, TextLabelBinding,
 };
+
+#[test]
+fn cylinder_family_center_arc_payload_parents_are_preserved() {
+    let file = crate::format::GspFile::parse(include_bytes!(
+        "../../../tests/Samples/个人专栏/孟令岩作品/※圆柱、圆锥、圆台的展开与形成20131012（孟令岩）.gsp"
+    ))
+    .expect("fixture parses");
+    let page = &file.page_files()[3];
+    let scene = super::build::build_scene_checked(page).expect("page builds");
+    let point_index = |ordinal| {
+        scene
+            .points
+            .iter()
+            .position(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("missing scene point for group #{ordinal}"))
+    };
+    let point = |ordinal| &scene.points[point_index(ordinal)];
+
+    assert!(matches!(
+        point(13).binding,
+        Some(ScenePointBinding::Rotate {
+            source_index,
+            center_index,
+            ref angle_expr,
+            ref angle_parameter_group_ordinals,
+            ..
+        }) if source_index == point_index(1)
+            && center_index == point_index(6)
+            && angle_expr.is_some()
+            && angle_parameter_group_ordinals.values().copied().collect::<Vec<_>>() == [10, 11]
+    ));
+    assert!(matches!(
+        point(15).binding,
+        Some(ScenePointBinding::Rotate {
+            source_index,
+            center_index,
+            angle_expr: None,
+            ..
+        }) if source_index == point_index(13) && center_index == point_index(6)
+    ));
+    assert!(matches!(
+        point(17).constraint,
+        ScenePointConstraint::OnCircleArc {
+            center_index,
+            start_index,
+            end_index,
+            ..
+        } if center_index == point_index(6)
+            && start_index == point_index(14)
+            && end_index == point_index(15)
+    ));
+    assert!(matches!(
+        point(30).binding,
+        Some(ScenePointBinding::Rotate {
+            source_index,
+            center_index,
+            angle_start_index: Some(angle_start_index),
+            angle_vertex_index: Some(angle_vertex_index),
+            angle_end_index: Some(angle_end_index),
+            ..
+        }) if source_index == point_index(20)
+            && center_index == point_index(6)
+            && angle_start_index == point_index(1)
+            && angle_vertex_index == point_index(6)
+            && angle_end_index == point_index(17)
+    ));
+
+    for (ordinal, center, start, end) in [(16, 6, 14, 15), (18, 6, 1, 13), (38, 6, 20, 30)] {
+        let arc = scene
+            .arcs
+            .iter()
+            .find(|arc| {
+                arc.debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("missing scene arc for group #{ordinal}"));
+        assert!(matches!(
+            arc.binding,
+            Some(ArcBinding::CenterArc {
+                center_index,
+                start_index,
+                end_index,
+            }) if center_index == point_index(center)
+                && start_index == point_index(start)
+                && end_index == point_index(end)
+        ));
+    }
+}
+
+#[test]
+fn cylinder_sector_angle_uses_circle_circumference_payload() {
+    let file = crate::format::GspFile::parse(include_bytes!(
+        "../../../tests/Samples/个人专栏/孟令岩作品/※圆柱、圆锥、圆台的展开与形成20131012（孟令岩）.gsp"
+    ))
+    .expect("fixture parses");
+    let page = &file.page_files()[4];
+    let groups = page.object_groups();
+    assert_eq!(
+        super::graph_object_circle_measurement_kind(page, &groups[43]),
+        Some(super::GraphObjectCircleMeasurementKind::Circumference)
+    );
+    let angle_expr =
+        crate::runtime::functions::try_decode_function_expr(page, &groups, &groups[44])
+            .expect("sector angle expression");
+    assert!(function_expr_has_parameter(&angle_expr, "11.47"));
+    assert!(function_expr_has_parameter(&angle_expr, "h"));
+    assert_eq!(
+        crate::runtime::functions::function_parameter_group_ordinals(page, &groups, &groups[44],),
+        std::collections::BTreeMap::from([("11.47".to_string(), 44), ("h".to_string(), 19)])
+    );
+
+    let scene = super::build::build_scene_checked(page).expect("page builds");
+    let point_index = |ordinal| {
+        scene
+            .points
+            .iter()
+            .position(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("missing scene point for group #{ordinal}"))
+    };
+    for ordinal in [46, 49, 55, 104, 106, 111] {
+        point_index(ordinal);
+    }
+    assert!(matches!(
+        scene.points[point_index(46)].binding,
+        Some(ScenePointBinding::Rotate {
+            source_index,
+            center_index,
+            ref angle_expr,
+            ref angle_parameter_group_ordinals,
+            ..
+        }) if source_index == point_index(1)
+            && center_index == point_index(39)
+            && angle_expr.is_some()
+            && angle_parameter_group_ordinals.get("11.47") == Some(&44)
+            && angle_parameter_group_ordinals.get("h") == Some(&19)
+    ));
+    assert!(matches!(
+        scene.points[point_index(49)].constraint,
+        ScenePointConstraint::OnCircleArc {
+            center_index,
+            start_index,
+            end_index,
+            ..
+        } if center_index == point_index(39)
+            && start_index == point_index(1)
+            && end_index == point_index(46)
+    ));
+
+    for (ordinal, center, start, end) in [
+        (48, 39, 1, 46),
+        (56, 49, 55, 53),
+        (105, 39, 87, 104),
+        (112, 106, 111, 109),
+    ] {
+        let arc = scene
+            .arcs
+            .iter()
+            .find(|arc| {
+                arc.debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("missing scene arc for group #{ordinal}"));
+        assert!(matches!(
+            arc.binding,
+            Some(ArcBinding::CenterArc {
+                center_index,
+                start_index,
+                end_index,
+            }) if center_index == point_index(center)
+                && start_index == point_index(start)
+                && end_index == point_index(end)
+        ));
+    }
+}
 
 #[test]
 fn derived_endpoint_accepts_the_exact_twenty_four_byte_payload() {

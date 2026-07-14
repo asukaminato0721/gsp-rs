@@ -1379,6 +1379,10 @@ fn resolve_trace_point(
 
     let point = points.get(index)?.clone();
     let resolved = match &point.binding {
+        Some(ScenePointBinding::PayloadAlias {
+            parent_indices,
+            source_parent,
+        }) => resolve_trace_point(points, *parent_indices.get(*source_parent)?, visiting),
         Some(ScenePointBinding::DirectedAngleAnchor {
             first_start_index,
             first_end_index,
@@ -1824,6 +1828,7 @@ fn resolve_trace_point(
                 .map(from_core_point)
             }
             ScenePointConstraint::LineTraceIntersection { .. }
+            | ScenePointConstraint::CircularTraceIntersection { .. }
             | ScenePointConstraint::LineFunctionIntersection { .. } => None,
             ScenePointConstraint::PointCircularTangent {
                 point_index,

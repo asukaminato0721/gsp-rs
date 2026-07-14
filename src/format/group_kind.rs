@@ -56,6 +56,7 @@ macro_rules! define_group_kinds {
                         | Self::FixedCoordinatePoint
                         | Self::LegacyCoordinateConstructPoint
                         | Self::LegacyCoordinateParameterHelper
+                        | Self::LegacyCoordinatePointHelper
                         | Self::CoordinateExpressionPointPair
                         | Self::CoordinateTrace
                 )

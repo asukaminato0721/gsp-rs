@@ -9,6 +9,9 @@ use super::assemble::{
 use super::bindings::{BindingMaps, apply_payload_color_bindings, remap_scene_bindings};
 use super::buttons::{ButtonIndexLookups, collect_buttons};
 use super::context::SceneContext;
+use super::decode::{
+    GraphObjectCircleMeasurementKind, find_indexed_path, graph_object_circle_measurement_kind,
+};
 use super::images::collect_scene_images;
 use super::labels::{
     HotspotIndexLookups, PendingLabelHotspot, bind_button_seed_expression_labels,
@@ -19,21 +22,23 @@ use super::payload_report::validate_scene_payloads;
 use super::points::{
     RawPointIterationFamily, collect_non_graph_parameters, collect_point_iteration_points,
     collect_point_objects, collect_standalone_parameter_points,
-    collect_visible_points_checked_with_context, remap_label_bindings,
+    collect_visible_points_checked_with_context, refresh_visible_points_checked_with_context,
+    remap_label_bindings,
 };
 use super::shapes::{collect_carried_circle_iteration_families, collect_scene_shapes};
 use super::trace::{
     bind_points_to_point_traces, collect_colorized_spectrum_lines, collect_point_traces,
     collect_segment_traces,
 };
-use crate::format::{GspFile, ObjectGroup, PointRecord, record_name};
+use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, record_name};
 use crate::runtime::functions::{
     collect_scene_functions, collect_scene_parameters, collect_standalone_function_definitions,
     with_numeric_helper_cache,
 };
 use crate::runtime::scene::{
     LabelIterationFamily, LineBinding, LineIterationFamily, LineShape, PayloadDebugSource,
-    PolygonIterationFamily, Scene, SceneParameter, ScenePoint, TextLabel,
+    PolygonIterationFamily, Scene, SceneParameter, ScenePoint, SceneScalar, SceneScalarBinding,
+    TextLabel,
 };
 
 struct PointStage {
@@ -148,6 +153,14 @@ fn build_scene_checked_inner(file: &GspFile) -> Result<Scene> {
     );
 
     let parameters = collect_parameters(file, &groups, &analysis, &mut label_stage.labels);
+    let scalars = collect_scene_scalars(
+        file,
+        &groups,
+        &point_stage.group_to_point_index,
+        &binding_stage.maps.line_group_to_index,
+        &binding_stage.maps.circle_group_to_index,
+        &binding_stage.maps.arc_group_to_index,
+    );
     let button_label_group_to_index = label_group_index_with_debug_ordinals(
         &label_stage.labels,
         &label_stage.label_group_to_index,
@@ -219,10 +232,163 @@ fn build_scene_checked_inner(file: &GspFile) -> Result<Scene> {
             buttons,
             images,
             parameters,
+            scalars,
             functions,
             function_definitions,
         },
     ))
+}
+
+fn collect_scene_scalars(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group_to_point_index: &[Option<usize>],
+    line_group_to_index: &[Option<usize>],
+    circle_group_to_index: &[Option<usize>],
+    arc_group_to_index: &[Option<usize>],
+) -> Vec<SceneScalar> {
+    groups
+        .iter()
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                GroupKind::ParameterAnchor
+                    | GroupKind::ParameterControlledPoint
+                    | GroupKind::ArcAngleValue
+                    | GroupKind::GraphObject40
+            )
+        })
+        .filter_map(|group| {
+            let path = find_indexed_path(file, group)?;
+            if group.header.kind() == GroupKind::GraphObject40 {
+                let measurement_kind = graph_object_circle_measurement_kind(file, group)?;
+                let circle_group_index = path.refs.first()?.checked_sub(1)?;
+                let circle_group = groups.get(circle_group_index)?;
+                if !matches!(
+                    circle_group.header.kind(),
+                    GroupKind::Circle | GroupKind::CircleCenterRadius
+                ) {
+                    return None;
+                }
+                return Some(SceneScalar {
+                    group_ordinal: group.ordinal,
+                    binding: SceneScalarBinding::CircularMeasure {
+                        circle_index: circle_group_to_index
+                            .get(circle_group_index)
+                            .copied()
+                            .flatten()?,
+                        value_scale: match measurement_kind {
+                            GraphObjectCircleMeasurementKind::Radius => 1.0,
+                            GraphObjectCircleMeasurementKind::Circumference => {
+                                std::f64::consts::TAU
+                            }
+                        },
+                    },
+                });
+            }
+            if group.header.kind() == GroupKind::ArcAngleValue {
+                let arc_group_index = path.refs.first()?.checked_sub(1)?;
+                let arc_index = arc_group_to_index.get(arc_group_index).copied().flatten()?;
+                return Some(SceneScalar {
+                    group_ordinal: group.ordinal,
+                    binding: SceneScalarBinding::ArcAngle { arc_index },
+                });
+            }
+            let point_group_index = path.refs.first()?.checked_sub(1)?;
+            let point_index = group_to_point_index
+                .get(point_group_index)
+                .copied()
+                .flatten()?;
+            let binding = scene_scalar_binding(
+                file,
+                groups,
+                &path,
+                point_index,
+                group_to_point_index,
+                line_group_to_index,
+            )
+            .unwrap_or(SceneScalarBinding::PointParameter { point_index });
+            Some(SceneScalar {
+                group_ordinal: group.ordinal,
+                binding,
+            })
+        })
+        .collect()
+}
+
+fn scene_scalar_binding(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    path: &crate::format::IndexedPathRecord,
+    point_index: usize,
+    group_to_point_index: &[Option<usize>],
+    line_group_to_index: &[Option<usize>],
+) -> Option<SceneScalarBinding> {
+    let host_group_index = path.refs.get(1)?.checked_sub(1)?;
+    let host = groups.get(host_group_index)?;
+    let host_path = find_indexed_path(file, host)?;
+    let point_index_for_group =
+        |group_index: usize| group_to_point_index.get(group_index).copied().flatten();
+
+    let line_kind = match host.header.kind() {
+        GroupKind::Segment | GroupKind::MeasurementLine | GroupKind::GraphMeasurementSegment => {
+            Some(crate::runtime::scene::LineLikeKind::Segment)
+        }
+        GroupKind::Line => Some(crate::runtime::scene::LineLikeKind::Line),
+        GroupKind::Ray => Some(crate::runtime::scene::LineLikeKind::Ray),
+        _ => None,
+    };
+    if let Some(line_kind) = line_kind {
+        let start_group_index = host_path.refs.first()?.checked_sub(1)?;
+        let end_group_index = if host.header.kind() == GroupKind::GraphMeasurementSegment {
+            let line = groups.get(host_path.refs.get(1)?.checked_sub(1)?)?;
+            let line_path = find_indexed_path(file, line)?;
+            let origin_ordinal = host_path.refs[0];
+            let end_ordinal = if line_path.refs.first().copied() == Some(origin_ordinal) {
+                *line_path.refs.get(1)?
+            } else {
+                *line_path.refs.first()?
+            };
+            end_ordinal.checked_sub(1)?
+        } else {
+            host_path.refs.get(1)?.checked_sub(1)?
+        };
+        return Some(SceneScalarBinding::PointLineParameter {
+            point_index,
+            start_index: point_index_for_group(start_group_index)?,
+            end_index: point_index_for_group(end_group_index)?,
+            line_kind,
+        });
+    }
+
+    if host.header.kind() == GroupKind::Circle {
+        return Some(SceneScalarBinding::PointCircleParameter {
+            point_index,
+            center_index: point_index_for_group(host_path.refs.first()?.checked_sub(1)?)?,
+            radius_index: point_index_for_group(host_path.refs.get(1)?.checked_sub(1)?)?,
+        });
+    }
+
+    if host.header.kind() == GroupKind::Polygon {
+        let vertex_indices = host_path
+            .refs
+            .iter()
+            .map(|ordinal| point_index_for_group(ordinal.checked_sub(1)?))
+            .collect::<Option<Vec<_>>>()?;
+        return (vertex_indices.len() >= 2).then_some(SceneScalarBinding::PointPolygonParameter {
+            point_index,
+            vertex_indices,
+        });
+    }
+
+    line_group_to_index
+        .get(host_group_index)
+        .copied()
+        .flatten()
+        .map(|line_index| SceneScalarBinding::PointPolylineParameter {
+            point_index,
+            line_index,
+        })
 }
 
 fn collect_label_stage(
@@ -362,6 +528,16 @@ fn collect_visible_points_and_traces(
         &mut group_to_point_index,
         &shapes.trace_lines,
     );
+    refresh_visible_points_checked_with_context(
+        file,
+        groups,
+        context,
+        point_map,
+        &analysis.raw_anchors,
+        &analysis.graph_ref,
+        &mut visible_points,
+        &mut group_to_point_index,
+    )?;
     let existing_point_trace_ordinals = shapes
         .trace_lines
         .iter()
@@ -389,6 +565,16 @@ fn collect_visible_points_and_traces(
         &mut group_to_point_index,
         &shapes.trace_lines,
     );
+    refresh_visible_points_checked_with_context(
+        file,
+        groups,
+        context,
+        point_map,
+        &analysis.raw_anchors,
+        &analysis.graph_ref,
+        &mut visible_points,
+        &mut group_to_point_index,
+    )?;
     shapes.trace_lines.extend(collect_segment_traces(
         file,
         groups,

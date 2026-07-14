@@ -36,8 +36,48 @@ pub(crate) struct Scene {
     pub(crate) iteration_tables: Vec<IterationTable>,
     pub(crate) buttons: Vec<SceneButton>,
     pub(crate) parameters: Vec<SceneParameter>,
+    pub(crate) scalars: Vec<SceneScalar>,
     pub(crate) functions: Vec<SceneFunction>,
     pub(crate) function_definitions: Vec<SceneFunctionDefinition>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SceneScalar {
+    pub(crate) group_ordinal: usize,
+    pub(crate) binding: SceneScalarBinding,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum SceneScalarBinding {
+    CircularMeasure {
+        circle_index: usize,
+        value_scale: f64,
+    },
+    ArcAngle {
+        arc_index: usize,
+    },
+    PointParameter {
+        point_index: usize,
+    },
+    PointLineParameter {
+        point_index: usize,
+        start_index: usize,
+        end_index: usize,
+        line_kind: LineLikeKind,
+    },
+    PointCircleParameter {
+        point_index: usize,
+        center_index: usize,
+        radius_index: usize,
+    },
+    PointPolylineParameter {
+        point_index: usize,
+        line_index: usize,
+    },
+    PointPolygonParameter {
+        point_index: usize,
+        vertex_indices: Vec<usize>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -536,6 +576,16 @@ pub(crate) enum ScenePointConstraint {
         sample_count: usize,
         variant: usize,
     },
+    CircularTraceIntersection {
+        circle: CircularConstraint,
+        trace_key: usize,
+        point_index: usize,
+        x_min: f64,
+        x_max: f64,
+        sample_count: usize,
+        variant: usize,
+        sample_hint: Option<usize>,
+    },
     LineFunctionIntersection {
         line: LineConstraint,
         function_key: usize,
@@ -626,6 +676,11 @@ pub(crate) enum CircularConstraint {
         source: Box<CircularConstraint>,
         dx: f64,
         dy: f64,
+    },
+    VectorTranslateCircle {
+        source: Box<CircularConstraint>,
+        vector_start_index: usize,
+        vector_end_index: usize,
     },
     ReflectCircle {
         source: Box<CircularConstraint>,
@@ -924,6 +979,10 @@ pub(crate) struct ScenePointParameterSource {
 #[derive(Debug, Clone)]
 pub(crate) enum ScenePointBinding {
     GraphCalibration,
+    PayloadAlias {
+        parent_indices: Vec<usize>,
+        source_parent: usize,
+    },
     Parameter {
         name: String,
     },
@@ -1040,6 +1099,15 @@ pub(crate) enum ScenePointBinding {
         distance_parameter_group_ordinals: BTreeMap<String, usize>,
         x_scale: f64,
         y_scale: f64,
+    },
+    PolarTransform {
+        source_index: usize,
+        distance_expr: FunctionExpr,
+        distance_parameter_group_ordinals: BTreeMap<String, usize>,
+        distance_scale: f64,
+        angle_expr: FunctionExpr,
+        angle_parameter_group_ordinals: BTreeMap<String, usize>,
+        angle_degrees_scale: f64,
     },
     RadiusOffset {
         source_index: usize,

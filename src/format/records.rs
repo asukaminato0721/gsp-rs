@@ -97,7 +97,7 @@ pub fn record_name(record_type: u32) -> &'static str {
         0x232b => "DISPLAY_SLOT_0x232b",
         0x232c => "BUILD_INFO_STRING",
         0x232d => "METADATA_0x232d",
-        0x232e => "METADATA_0x232e",
+        0x232e => "EXPRESSION_ROTATION_MARKER",
         0x232f => "TEXT_BLOB_0x232f",
         0x2330 => "BUILD_INFO_EXTRA",
         0x2331 => "METADATA_0x2331",

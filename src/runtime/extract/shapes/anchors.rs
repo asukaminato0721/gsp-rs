@@ -51,6 +51,7 @@ pub(crate) fn collect_raw_object_anchors(
                 | crate::format::GroupKind::GraphFunctionPoint
                 | crate::format::GroupKind::GraphValuePoint
                 | crate::format::GroupKind::LegacyCoordinateParameterHelper
+                | crate::format::GroupKind::LegacyCoordinatePointHelper
                 | crate::format::GroupKind::FixedCoordinatePoint
         ) {
             decode_coordinate_point(file, groups, group, &anchors, &graph.cloned())
@@ -58,6 +59,10 @@ pub(crate) fn collect_raw_object_anchors(
         } else if group.header.kind() == crate::format::GroupKind::LegacyCoordinateConstructPoint {
             decode_legacy_coordinate_construct_point(file, groups, group, &anchors)
                 .map(|point| point.position)
+        } else if let Some(anchor) =
+            decode_custom_transform_anchor_raw(file, groups, group, &anchors, graph)
+        {
+            Some(anchor)
         } else if let Some(anchor) =
             decode_point_constraint_anchor(file, groups, group, &anchors, graph)
         {
@@ -97,10 +102,6 @@ pub(crate) fn collect_raw_object_anchors(
             Some(anchor)
         } else if let Some(anchor) =
             decode_point_pair_translation_anchor_raw(file, groups, group, &anchors)
-        {
-            Some(anchor)
-        } else if let Some(anchor) =
-            decode_custom_transform_anchor_raw(file, groups, group, &anchors)
         {
             Some(anchor)
         } else if let Some(anchor) = decode_reflection_anchor_raw(file, groups, group, &anchors) {

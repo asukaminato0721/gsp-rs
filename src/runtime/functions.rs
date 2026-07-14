@@ -252,6 +252,55 @@ mod tests {
     }
 
     #[test]
+    fn decodes_legacy_coordinate_helper_expressions() {
+        let data =
+            include_bytes!("../../tests/Samples/个人专栏/孟令岩作品/mly习作-五角星出水导函数.gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+
+        for ordinal in [233, 235, 244, 252, 260, 269, 278, 326, 337, 346, 356] {
+            let group = &groups[ordinal - 1];
+            try_decode_function_expr(&file, &groups, group)
+                .unwrap_or_else(|error| panic!("expression #{ordinal}: {error:?}"));
+        }
+        assert_eq!(
+            function_parameter_group_ordinals(&file, &groups, &groups[243]),
+            BTreeMap::from([
+                ("__param_anchor_142".to_string(), 142),
+                ("__ratio_value_231*__param_anchor_107".to_string(), 233,),
+            ])
+        );
+    }
+
+    #[test]
+    fn evaluates_direct_polar_transform_expressions() {
+        let data = include_bytes!("../../tests/Samples/个人专栏/方小庆作品/化圆为方详解(inRm).gsp");
+        let file = GspFile::parse(data).expect("fixture parses");
+        let groups = file.object_groups();
+        let distance =
+            evaluate_function_group_with_overrides(&file, &groups, &groups[15], &BTreeMap::new())
+                .expect("distance expression #16");
+        let angle =
+            evaluate_function_group_with_overrides(&file, &groups, &groups[40], &BTreeMap::new())
+                .expect("angle expression #41");
+        assert!((distance - 1.8209335425030129).abs() < 1e-12);
+        assert!(angle.abs() < 1e-12);
+    }
+
+    #[test]
+    fn clock_display_expressions_keep_the_arc_angle_groups() {
+        let data = include_bytes!("../../tests/Samples/个人专栏/侯仰顺作品/时钟(蚂蚁制作).gsp");
+        let file = GspFile::parse(data).expect("clock fixture parses");
+        let groups = file.object_groups();
+        for (expression, angle, name) in [(100, 95, "时"), (101, 97, "分"), (102, 99, "秒")] {
+            assert_eq!(
+                function_parameter_group_ordinals(&file, &groups, &groups[expression - 1]),
+                BTreeMap::from([(name.to_string(), angle)])
+            );
+        }
+    }
+
+    #[test]
     fn decodes_marker_based_function_expr_with_structured_parser() {
         let payload = payload_from_words(&[0x0094, 0x0001, 0x2006, 0x000f, 0x000c, 0x1000, 0x0002]);
 
