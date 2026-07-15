@@ -373,19 +373,25 @@
       }
       return null;
     }
-    if (constraint.kind === "translated-polygon-boundary") {
-      const count = constraint.vertexIndices.length;
-      if (count < 2) return null;
-      const start = resolveFn(constraint.vertexIndices[((constraint.edgeIndex % count) + count) % count]);
-      const end = resolveFn(constraint.vertexIndices[(constraint.edgeIndex + 1 + count) % count]);
-      const vectorStart = resolveFn(constraint.vectorStartIndex);
-      const vectorEnd = resolveFn(constraint.vectorEndIndex);
-      if (!start || !end || !vectorStart || !vectorEnd) return null;
-      const base = lerpPoint(start, end, constraint.t);
-      return {
-        x: base.x + (vectorEnd.x - vectorStart.x),
-        y: base.y + (vectorEnd.y - vectorStart.y),
-      };
+    if (constraint.kind === "polygon-shape-boundary") {
+      const polygon = typeof env?.currentScene === "function"
+        ? env.currentScene().polygons?.[constraint.polygonIndex]
+        : env?.sourceScene?.polygons?.[constraint.polygonIndex];
+      const points = polygon?.points
+        .map((handle) => {
+          if (!hasPointIndexHandle(handle)) return hasLineIndexHandle(handle) ? null : handle;
+          const point = resolveFn(handle.pointIndex);
+          return point && {
+            x: point.x + (handle.dx || 0),
+            y: point.y + (handle.dy || 0),
+          };
+        })
+        .filter((point): point is Point => !!point) || [];
+      const count = points.length;
+      if (count < 2 || count !== polygon?.points.length) return null;
+      const start = points[((constraint.edgeIndex % count) + count) % count];
+      const end = points[(constraint.edgeIndex + 1 + count) % count];
+      return lerpPoint(start, end, constraint.t);
     }
     if (constraint.kind === "circular-constraint") {
       const circle = circleFromConstraint(env, constraint.circle, resolveFn);

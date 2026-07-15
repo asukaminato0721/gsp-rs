@@ -1,7 +1,7 @@
 use crate::runtime::extract::shapes::{ArcShape, CircleShape};
 use crate::runtime::scene::{
     ArcBinding, AxisBinding, GeometryTransformBinding, LineBinding, LineShape, PolygonShape,
-    ShapeBinding, TextLabel, TextLabelBinding,
+    ScenePoint, ScenePointConstraint, ShapeBinding, TextLabel, TextLabelBinding,
 };
 
 fn mapped_index(mapping: &[Option<usize>], index: usize) -> Option<usize> {
@@ -13,6 +13,28 @@ fn mapped_optional_index(mapping: &[Option<usize>], index: Option<usize>) -> Opt
         Some(index) => Some(Some(mapped_index(mapping, index)?)),
         None => Some(None),
     }
+}
+
+pub(crate) fn remap_point_polygon_constraints(
+    points: &mut [ScenePoint],
+    group_to_polygon_index: &[Option<usize>],
+) -> anyhow::Result<()> {
+    for point in points {
+        let ScenePointConstraint::OnPolygonShapeBoundary { polygon_index, .. } =
+            &mut point.constraint
+        else {
+            continue;
+        };
+        let polygon_group_index = *polygon_index;
+        *polygon_index =
+            mapped_index(group_to_polygon_index, polygon_group_index).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "polygon point constraint references unexported group #{}",
+                    polygon_group_index + 1
+                )
+            })?;
+    }
+    Ok(())
 }
 
 fn remap_axis_binding(
@@ -97,6 +119,32 @@ fn remap_geometry_transform(
                 return false;
             };
             binding.center_index = mapped_center_index;
+            true
+        }
+        GeometryTransformBinding::ScaleByRatio(binding) => {
+            let Some(center_index) = mapped_index(group_to_point_index, binding.center_index)
+            else {
+                return false;
+            };
+            let Some(ratio_origin_index) =
+                mapped_index(group_to_point_index, binding.ratio_origin_index)
+            else {
+                return false;
+            };
+            let Some(ratio_denominator_index) =
+                mapped_index(group_to_point_index, binding.ratio_denominator_index)
+            else {
+                return false;
+            };
+            let Some(ratio_numerator_index) =
+                mapped_index(group_to_point_index, binding.ratio_numerator_index)
+            else {
+                return false;
+            };
+            binding.center_index = center_index;
+            binding.ratio_origin_index = ratio_origin_index;
+            binding.ratio_denominator_index = ratio_denominator_index;
+            binding.ratio_numerator_index = ratio_numerator_index;
             true
         }
         GeometryTransformBinding::Reflect(axis) => {

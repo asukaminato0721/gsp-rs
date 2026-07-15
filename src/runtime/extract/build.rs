@@ -23,7 +23,7 @@ use super::points::{
     RawPointIterationFamily, collect_non_graph_parameters, collect_point_iteration_points,
     collect_point_objects, collect_standalone_parameter_points,
     collect_visible_points_checked_with_context, refresh_visible_points_checked_with_context,
-    remap_label_bindings,
+    remap_label_bindings, remap_point_polygon_constraints,
 };
 use super::shapes::{collect_carried_circle_iteration_families, collect_scene_shapes};
 use super::trace::{
@@ -97,7 +97,7 @@ fn build_scene_checked_inner(file: &GspFile) -> Result<Scene> {
     let mut shapes = collect_scene_shapes(file, &groups, &context, &analysis);
     let (images, image_group_to_index) = collect_scene_images(file, &groups, &analysis.graph_ref);
     let mut label_stage = collect_label_stage(file, &groups, &context, &analysis, &shapes);
-    let point_stage =
+    let mut point_stage =
         collect_point_stage(file, &groups, &context, &point_map, &analysis, &mut shapes)?;
     complete_label_stage(
         file,
@@ -121,6 +121,10 @@ fn build_scene_checked_inner(file: &GspFile) -> Result<Scene> {
         &point_stage.group_to_point_index,
         &mut shapes,
     );
+    remap_point_polygon_constraints(
+        &mut point_stage.visible_points,
+        &binding_stage.maps.polygon_group_to_index,
+    )?;
     apply_payload_color_bindings(
         file,
         &groups,

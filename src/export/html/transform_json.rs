@@ -38,6 +38,20 @@ pub(super) enum TransformJson {
         center_index: usize,
         factor: f64,
     },
+    #[serde(rename = "scale-by-ratio")]
+    ScaleByRatio {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "ratioOriginIndex")]
+        ratio_origin_index: usize,
+        #[serde(rename = "ratioDenominatorIndex")]
+        ratio_denominator_index: usize,
+        #[serde(rename = "ratioNumeratorIndex")]
+        ratio_numerator_index: usize,
+        signed: bool,
+        #[serde(rename = "clampToUnit")]
+        clamp_to_unit: bool,
+    },
     #[serde(rename = "reflect")]
     Reflect {
         #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
@@ -74,6 +88,14 @@ impl TransformJson {
             GeometryTransformBinding::Scale(binding) => Self::Scale {
                 center_index: binding.center_index,
                 factor: binding.factor,
+            },
+            GeometryTransformBinding::ScaleByRatio(binding) => Self::ScaleByRatio {
+                center_index: binding.center_index,
+                ratio_origin_index: binding.ratio_origin_index,
+                ratio_denominator_index: binding.ratio_denominator_index,
+                ratio_numerator_index: binding.ratio_numerator_index,
+                signed: binding.signed,
+                clamp_to_unit: binding.clamp_to_unit,
             },
             GeometryTransformBinding::Reflect(axis) => Self::from_axis(axis),
         }

@@ -2144,40 +2144,31 @@ impl Builder {
                     );
                 }
             }
-            ScenePointConstraint::OnTranslatedPolygonBoundary {
-                vertex_indices,
-                vector_start_index,
-                vector_end_index,
+            ScenePointConstraint::OnPolygonShapeBoundary {
+                polygon_index,
                 edge_index,
                 t,
             } => {
-                if vertex_indices.len() < 2 {
-                    self.pending_source(id, "point-constraint", source_value);
-                } else {
-                    let base_id = format!("domain:{id}:base");
-                    let domain_id = format!("domain:{id}");
-                    let start_index = vertex_indices[*edge_index % vertex_indices.len()];
-                    let end_index = vertex_indices[(*edge_index + 1) % vertex_indices.len()];
-                    self.derived(
-                        base_id.clone(),
-                        ObjectOp::Line {
-                            line_kind: LineKind::Segment,
-                        },
-                        [point_id(start_index), point_id(end_index)],
-                    );
-                    self.derived(
-                        domain_id.clone(),
-                        ObjectOp::TransformObject {
-                            transform: ObjectTransform::TranslateByVector,
-                        },
-                        [
-                            base_id,
-                            point_id(*vector_start_index),
-                            point_id(*vector_end_index),
-                        ],
-                    );
-                    self.point_on_domain_line(index, id, domain_id, *t);
-                }
+                let local_parameter_id = format!("control:{id}:t");
+                let boundary_parameter_id = format!("control:{id}:boundary");
+                self.point_control_source(
+                    local_parameter_id.clone(),
+                    *t,
+                    index,
+                    ScenePointControl::Parameter,
+                );
+                self.derived(
+                    boundary_parameter_id.clone(),
+                    ObjectOp::PolygonBoundaryParameter {
+                        edge_index: *edge_index,
+                    },
+                    [polygon_id(*polygon_index), local_parameter_id],
+                );
+                self.derived(
+                    id,
+                    ObjectOp::PointOnPolygonBoundary,
+                    [polygon_id(*polygon_index), boundary_parameter_id],
+                );
             }
             ScenePointConstraint::OnCircle {
                 center_index,
@@ -2802,27 +2793,11 @@ impl Builder {
                         .chain(std::iter::once(point_id(source_index))),
                 );
             }
-            ScenePointConstraint::OnTranslatedPolygonBoundary {
-                vertex_indices,
-                vector_start_index,
-                vector_end_index,
-                ..
-            } => {
-                if vertex_indices.len() < 2 {
-                    return false;
-                }
-                let translated_vertices = self.translated_polygon_vertices(
-                    &id,
-                    &vertex_indices,
-                    vector_start_index,
-                    vector_end_index,
-                );
+            ScenePointConstraint::OnPolygonShapeBoundary { polygon_index, .. } => {
                 self.derived(
                     id,
                     ObjectOp::PolygonBoundaryParameterFromPoint,
-                    translated_vertices
-                        .into_iter()
-                        .chain(std::iter::once(point_id(source_index))),
+                    [polygon_id(polygon_index), point_id(source_index)],
                 );
             }
             ScenePointConstraint::OnCircleArc {
@@ -3181,41 +3156,26 @@ impl Builder {
                     );
                 }
             }
-            ScenePointConstraint::OnTranslatedPolygonBoundary {
-                vertex_indices,
-                vector_start_index,
-                vector_end_index,
+            ScenePointConstraint::OnPolygonShapeBoundary {
+                polygon_index,
                 edge_index,
                 ..
             } => {
-                if vertex_indices.len() < 2 {
-                    return false;
-                }
                 let point_node_id = point_id(point_index);
-                let translated_vertices = self.translated_polygon_vertices(
-                    &id,
-                    &vertex_indices,
-                    vector_start_index,
-                    vector_end_index,
-                );
                 if self.nodes.iter().any(|node| node.id == point_node_id) {
                     self.derived(
                         id,
                         ObjectOp::PolygonBoundaryParameterFromPoint,
-                        translated_vertices
-                            .into_iter()
-                            .chain(std::iter::once(point_node_id)),
+                        [polygon_id(polygon_index), point_node_id],
                     );
                 } else {
                     self.derived(
                         id,
                         ObjectOp::PolygonBoundaryParameter { edge_index },
-                        translated_vertices
-                            .into_iter()
-                            .chain(std::iter::once(format!(
-                                "control:{}:t",
-                                point_id(point_index)
-                            ))),
+                        [
+                            polygon_id(polygon_index),
+                            format!("control:{point_node_id}:t"),
+                        ],
                     );
                 }
             }
@@ -3396,27 +3356,11 @@ impl Builder {
                         .chain(std::iter::once(parameter_id)),
                 );
             }
-            ScenePointConstraint::OnTranslatedPolygonBoundary {
-                vertex_indices,
-                vector_start_index,
-                vector_end_index,
-                ..
-            } => {
-                if vertex_indices.len() < 2 {
-                    return false;
-                }
-                let translated_vertices = self.translated_polygon_vertices(
-                    &id,
-                    &vertex_indices,
-                    vector_start_index,
-                    vector_end_index,
-                );
+            ScenePointConstraint::OnPolygonShapeBoundary { polygon_index, .. } => {
                 self.derived(
                     id,
                     ObjectOp::PointOnPolygonBoundary,
-                    translated_vertices
-                        .into_iter()
-                        .chain(std::iter::once(parameter_id)),
+                    [polygon_id(polygon_index), parameter_id],
                 );
             }
             ScenePointConstraint::OnCircleArc {
@@ -3490,34 +3434,6 @@ impl Builder {
             _ => return false,
         }
         true
-    }
-
-    fn translated_polygon_vertices(
-        &mut self,
-        owner_id: &str,
-        vertex_indices: &[usize],
-        vector_start_index: usize,
-        vector_end_index: usize,
-    ) -> Vec<String> {
-        vertex_indices
-            .iter()
-            .enumerate()
-            .map(|(ordinal, vertex_index)| {
-                let vertex_id = format!("domain:{owner_id}:translated-vertex:{ordinal}");
-                self.derived(
-                    vertex_id.clone(),
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::TranslateByVector,
-                    },
-                    [
-                        point_id(*vertex_index),
-                        point_id(vector_start_index),
-                        point_id(vector_end_index),
-                    ],
-                );
-                vertex_id
-            })
-            .collect()
     }
 
     fn scale_scalar(&mut self, point_index: usize, binding: &ScenePointBinding) -> Option<String> {
@@ -5003,6 +4919,22 @@ impl Builder {
                     },
                 },
                 [source_id, point_id(scale.center_index)],
+            ),
+            GeometryTransformBinding::ScaleByRatio(scale) => self.derived(
+                id,
+                ObjectOp::TransformObject {
+                    transform: ObjectTransform::ScaleByRatio {
+                        signed: scale.signed,
+                        clamp_to_unit: scale.clamp_to_unit,
+                    },
+                },
+                [
+                    source_id,
+                    point_id(scale.center_index),
+                    point_id(scale.ratio_origin_index),
+                    point_id(scale.ratio_denominator_index),
+                    point_id(scale.ratio_numerator_index),
+                ],
             ),
             GeometryTransformBinding::Reflect(axis) => {
                 let Some(axis_id) = self.axis_line_parent(

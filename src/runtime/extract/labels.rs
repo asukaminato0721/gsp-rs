@@ -715,12 +715,7 @@ fn parameter_anchor_value(
             vertex_group_indices,
         } => polygon_boundary_parameter(anchors, &vertex_group_indices, edge_index, t),
         RawPointConstraint::PolygonBoundaryParameter { parameter, .. } => Some(parameter),
-        RawPointConstraint::TranslatedPolygonBoundary {
-            edge_index,
-            t,
-            vertex_group_indices,
-            ..
-        } => polygon_boundary_parameter(anchors, &vertex_group_indices, edge_index, t),
+        RawPointConstraint::PolygonShapeBoundary { t, .. } => Some(t),
         RawPointConstraint::Circle(constraint) => circle_parameter(
             anchors,
             constraint.center_group_index,

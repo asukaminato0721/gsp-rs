@@ -860,19 +860,8 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                     )))
                 }
                 ObjectOp::PointOnPolygonBoundary => {
-                    if parents.len() < 3 {
-                        return Err(ObjectOpError::WrongArity {
-                            op: "point-on-polygon-boundary",
-                            expected: 3,
-                            actual: parents.len(),
-                        });
-                    }
-                    let vertex_count = parents.len() - 1;
-                    let vertices = (0..vertex_count)
-                        .map(|index| expect_point("point-on-polygon-boundary", parents, index))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    let parameter =
-                        expect_scalar("point-on-polygon-boundary", parents, vertex_count)?;
+                    let (vertices, parameter) =
+                        polygon_vertices_and_parameter("point-on-polygon-boundary", parents)?;
                     point_on_polygon_boundary(&vertices, parameter)
                         .map(ObjectValue::point)
                         .ok_or(ObjectOpError::Degenerate {
@@ -2136,20 +2125,10 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                     })
                 }
                 ObjectOp::PolygonBoundaryParameter { edge_index } => {
-                    if parents.len() < 3 {
-                        return Err(ObjectOpError::WrongArity {
-                            op: "polygon-boundary-parameter",
-                            expected: 3,
-                            actual: parents.len(),
-                        });
-                    }
-                    let vertex_count = parents.len() - 1;
-                    let vertices = (0..vertex_count)
-                        .map(|index| expect_point("polygon-boundary-parameter", parents, index))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    let local_t =
-                        expect_scalar("polygon-boundary-parameter", parents, vertex_count)?
-                            .clamp(0.0, 1.0);
+                    let (vertices, local_t) =
+                        polygon_vertices_and_parameter("polygon-boundary-parameter", parents)?;
+                    let local_t = local_t.clamp(0.0, 1.0);
+                    let vertex_count = vertices.len();
                     let lengths = vertices
                         .iter()
                         .zip(vertices.iter().cycle().skip(1))
@@ -2170,23 +2149,9 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                     })
                 }
                 ObjectOp::PolygonBoundaryParameterFromPoint => {
-                    if parents.len() < 3 {
-                        return Err(ObjectOpError::WrongArity {
-                            op: "polygon-boundary-parameter-from-point",
-                            expected: 3,
-                            actual: parents.len(),
-                        });
-                    }
-                    let point_index = parents.len() - 1;
-                    let vertices = (0..point_index)
-                        .map(|index| {
-                            expect_point("polygon-boundary-parameter-from-point", parents, index)
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-                    let point = expect_point(
+                    let (vertices, point) = polygon_vertices_and_point(
                         "polygon-boundary-parameter-from-point",
                         parents,
-                        point_index,
                     )?;
                     polygon_boundary_parameter_from_point(&vertices, point)
                         .map(|value| ObjectValue::Scalar { value })
@@ -2843,6 +2808,56 @@ fn expect_points<'a>(
         ) => Ok(points),
         _ => Err(ObjectOpError::ExpectedShape { op, parent: index }),
     }
+}
+
+fn polygon_vertices_and_parameter(
+    op: &'static str,
+    parents: &[&ObjectValue],
+) -> Result<(Vec<Point>, f64), ObjectOpError> {
+    if parents.len() == 2 {
+        let vertices = expect_points(op, parents, 0)?.to_vec();
+        if vertices.len() < 2 {
+            return Err(ObjectOpError::Degenerate { op });
+        }
+        return Ok((vertices, expect_scalar(op, parents, 1)?));
+    }
+    if parents.len() < 3 {
+        return Err(ObjectOpError::WrongArity {
+            op,
+            expected: 3,
+            actual: parents.len(),
+        });
+    }
+    let parameter_index = parents.len() - 1;
+    let vertices = (0..parameter_index)
+        .map(|index| expect_point(op, parents, index))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((vertices, expect_scalar(op, parents, parameter_index)?))
+}
+
+fn polygon_vertices_and_point(
+    op: &'static str,
+    parents: &[&ObjectValue],
+) -> Result<(Vec<Point>, Point), ObjectOpError> {
+    if parents.len() == 2 {
+        let vertices = expect_points(op, parents, 0)?.to_vec();
+        if vertices.len() < 2 {
+            return Err(ObjectOpError::Degenerate { op });
+        }
+        return Ok((vertices, expect_point(op, parents, 1)?));
+    }
+    if parents.len() < 3 {
+        return Err(ObjectOpError::WrongArity {
+            op,
+            expected: 3,
+            actual: parents.len(),
+        });
+    }
+    let point_index = parents.len() - 1;
+    let vertices = (0..point_index)
+        .map(|index| expect_point(op, parents, index))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((vertices, expect_point(op, parents, point_index)?))
 }
 
 fn expect_sampled_curve<'a>(

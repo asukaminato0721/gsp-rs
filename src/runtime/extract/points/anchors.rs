@@ -370,17 +370,7 @@ fn parameter_anchor_runtime_value(
                 t,
             )?,
             RawPointConstraint::PolygonBoundaryParameter { parameter, .. } => parameter,
-            RawPointConstraint::TranslatedPolygonBoundary {
-                edge_index,
-                t,
-                vertex_group_indices,
-                ..
-            } => super::super::labels::polygon_boundary_parameter(
-                anchors,
-                &vertex_group_indices,
-                edge_index,
-                t,
-            )?,
+            RawPointConstraint::PolygonShapeBoundary { .. } => return None,
             RawPointConstraint::Circle(constraint) => super::super::labels::circle_parameter(
                 anchors,
                 constraint.center_group_index,

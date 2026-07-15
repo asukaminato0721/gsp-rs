@@ -104,6 +104,12 @@
     return !!constraint && constraint.kind === "polygon-boundary-parameter";
   }
 
+  function isPolygonShapeBoundaryConstraint(
+    constraint: RuntimeScenePointJson["constraint"],
+  ): constraint is Extract<NonNullable<RuntimeScenePointJson["constraint"]>, { kind: "polygon-shape-boundary" }> {
+    return !!constraint && constraint.kind === "polygon-shape-boundary";
+  }
+
   
   function isCircleConstraint(
     constraint: RuntimeScenePointJson["constraint"],
@@ -329,6 +335,31 @@
         .reduce((sum, length) => sum + length, 0)
         + lengths[bestEdgeIndex] * bestT;
       constraint.parameter = traveled / perimeter;
+    },
+    "polygon-shape-boundary"(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
+      const constraint = point.constraint;
+      if (!isPolygonShapeBoundaryConstraint(constraint)) return;
+      const polygon = draft.polygons?.[constraint.polygonIndex];
+      if (!polygon || polygon.points.length < 2) return;
+      let bestEdgeIndex = constraint.edgeIndex;
+      let bestT = constraint.t;
+      let bestDistanceSquared = Number.POSITIVE_INFINITY;
+      for (let edgeIndex = 0; edgeIndex < polygon.points.length; edgeIndex += 1) {
+        const start = modules.scene.resolvePoint(env, polygon.points[edgeIndex]);
+        const end = modules.scene.resolvePoint(
+          env,
+          polygon.points[(edgeIndex + 1) % polygon.points.length],
+        );
+        if (!start || !end) continue;
+        const projection = modules.scene.projectToSegment(world, start, end);
+        if (projection && projection.distanceSquared < bestDistanceSquared) {
+          bestDistanceSquared = projection.distanceSquared;
+          bestEdgeIndex = edgeIndex;
+          bestT = projection.t;
+        }
+      }
+      constraint.edgeIndex = bestEdgeIndex;
+      constraint.t = bestT;
     },
     circle(env: ViewerEnv, _draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
       const constraint = point.constraint;

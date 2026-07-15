@@ -4,7 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u16, read_u32};
 use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use crate::runtime::extract::points::{
-    collect_point_objects, resolve_circle_like_raw, resolve_line_like_points_raw,
+    collect_point_objects, decode_polygon_edge_index, resolve_circle_like_raw,
+    resolve_line_like_points_raw,
 };
 use crate::runtime::extract::shapes::collect_raw_object_anchors;
 use crate::runtime::extract::{
@@ -2577,8 +2578,8 @@ fn decode_parameter_anchor_constraint_value(
         return Some(t);
     }
 
-    let edge_index = decode_polygon_edge_index_for_anchor(host_group, file, payload)?;
     let host_path = find_indexed_path(file, host_group)?;
+    let edge_index = decode_polygon_edge_index(host_path.refs.len(), payload)?;
     let max_ref_ordinal = host_path.refs.iter().copied().max()?;
     let helper_groups = groups.get(..max_ref_ordinal)?;
     let point_map = collect_point_objects(file, groups);
@@ -2590,27 +2591,6 @@ fn decode_parameter_anchor_constraint_value(
         .map(|ordinal| ordinal.checked_sub(1))
         .collect::<Option<Vec<_>>>()?;
     polygon_boundary_parameter_for_anchor(&anchors, &vertex_group_indices, edge_index, t)
-}
-
-fn decode_polygon_edge_index_for_anchor(
-    polygon_group: &ObjectGroup,
-    file: &GspFile,
-    payload: &[u8],
-) -> Option<usize> {
-    let vertex_count = find_indexed_path(file, polygon_group)?.refs.len();
-    if vertex_count < 2 || payload.len() < 16 {
-        return None;
-    }
-    let discrete = read_u32(payload, 12) as usize;
-    if discrete < vertex_count {
-        return Some(discrete);
-    }
-    let selector = read_f64(payload, 12);
-    if !selector.is_finite() {
-        return None;
-    }
-    let end_vertex = ((selector * vertex_count as f64) - 0.25).round() as isize;
-    Some(((end_vertex + vertex_count as isize - 1).rem_euclid(vertex_count as isize)) as usize)
 }
 
 fn polygon_boundary_parameter_for_anchor(

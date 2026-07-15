@@ -1774,7 +1774,7 @@ fn decode_htm_object_parameter(
         RawPointConstraint::Polyline { parameter, .. } => Some(parameter),
         RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
         RawPointConstraint::PolygonBoundaryParameter { parameter, .. } => Some(parameter),
-        RawPointConstraint::TranslatedPolygonBoundary { t, .. } => Some(t),
+        RawPointConstraint::PolygonShapeBoundary { t, .. } => Some(t),
         RawPointConstraint::Circle(constraint) => {
             Some((-constraint.unit_y).atan2(constraint.unit_x))
         }

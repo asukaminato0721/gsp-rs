@@ -546,6 +546,15 @@ impl Collector<'_> {
                 self.parameter(deps, rotation.parameter_name.as_deref());
             }
             GeometryTransformBinding::Scale(scale) => self.point(deps, Some(scale.center_index)),
+            GeometryTransformBinding::ScaleByRatio(scale) => self.points(
+                deps,
+                [
+                    scale.center_index,
+                    scale.ratio_origin_index,
+                    scale.ratio_denominator_index,
+                    scale.ratio_numerator_index,
+                ],
+            ),
             GeometryTransformBinding::Reflect(axis) => self.axis(deps, axis),
         }
     }
@@ -825,14 +834,8 @@ impl Collector<'_> {
             | ScenePointConstraint::OnPolygonBoundaryParameter { vertex_indices, .. } => {
                 self.points(deps, vertex_indices.iter().copied())
             }
-            ScenePointConstraint::OnTranslatedPolygonBoundary {
-                vertex_indices,
-                vector_start_index,
-                vector_end_index,
-                ..
-            } => {
-                self.points(deps, vertex_indices.iter().copied());
-                self.points(deps, [*vector_start_index, *vector_end_index]);
+            ScenePointConstraint::OnPolygonShapeBoundary { polygon_index, .. } => {
+                self.polygon(deps, *polygon_index)
             }
             ScenePointConstraint::OnCircle {
                 center_index,

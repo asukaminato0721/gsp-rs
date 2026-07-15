@@ -27,7 +27,7 @@ pub(crate) use decode::{
 pub(crate) use iterations::collect_point_iteration_points;
 pub(crate) use remap::{
     remap_arc_bindings, remap_circle_bindings, remap_label_bindings, remap_line_bindings,
-    remap_polygon_bindings,
+    remap_point_polygon_constraints, remap_polygon_bindings,
 };
 #[cfg(test)]
 pub(crate) use visible_points::collect_visible_points_checked;

@@ -47,10 +47,12 @@ pub(super) use bindings::{
     RawPointIterationFamily, TransformBindingKind, collect_point_iteration_points,
     collect_standalone_parameter_points, collect_visible_points_checked_with_context,
     refresh_visible_points_checked_with_context, remap_arc_bindings, remap_circle_bindings,
-    remap_label_bindings, remap_line_bindings, remap_polygon_bindings,
-    scene_point_from_parameter_controlled, try_decode_angle_rotation_binding,
-    try_decode_parameter_rotation_binding, try_decode_transform_binding,
+    remap_label_bindings, remap_line_bindings, remap_point_polygon_constraints,
+    remap_polygon_bindings, scene_point_from_parameter_controlled,
+    try_decode_angle_rotation_binding, try_decode_parameter_rotation_binding,
+    try_decode_transform_binding,
 };
+pub(crate) use constraints::decode_polygon_edge_index;
 pub(super) use constraints::{
     LegacyCoordinateConstructPoint, RawPointConstraint, decode_translated_point_constraint,
     regular_polygon_angle_expr_for_calc_group, regular_polygon_iteration_step,

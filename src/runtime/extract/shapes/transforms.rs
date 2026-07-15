@@ -4,8 +4,7 @@ use super::{
     SceneContext, ShapeBinding, TransformBindingKind, collect_circle_fill_colors, color_from_style,
     fill_color_from_styles, find_indexed_path, is_circle_group_kind, line_is_dashed,
     line_stroke_width_from_style, payload_debug_source, reflect_across_line, rotate_around,
-    scale_around, translation_point_pair_group_indices, try_decode_parameter_rotation_binding,
-    try_decode_transform_binding,
+    scale_around, translation_point_pair_group_indices, try_decode_transform_binding,
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::points::{
@@ -13,9 +12,10 @@ use crate::runtime::extract::points::{
     resolve_line_like_points_raw, scale_angle_expr_to_degrees,
 };
 use crate::runtime::functions::{FunctionExpr, function_parameter_group_ordinals};
-use crate::runtime::geometry::angle_degrees_from_points;
+use crate::runtime::geometry::{angle_degrees_from_points, from_core_point, to_core_point};
 use crate::runtime::scene::{
-    ArcBinding, AxisBinding, GeometryTransformBinding, RotationBinding, ScaleBinding,
+    ArcBinding, AxisBinding, GeometryTransformBinding, RatioScaleBinding, RotationBinding,
+    ScaleBinding,
 };
 
 fn arc_shape_raw(
@@ -683,8 +683,54 @@ pub(crate) fn collect_transformed_polygon_shapes(
 ) -> Vec<PolygonShape> {
     groups
         .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::Scale)
+        .filter(|group| {
+            matches!(
+                group.header.kind(),
+                crate::format::GroupKind::Scale | crate::format::GroupKind::RatioScale
+            )
+        })
         .filter_map(|group| {
+            if group.header.kind() == crate::format::GroupKind::RatioScale {
+                let path = context.indexed_path(group)?;
+                let source_group_index = context.path_ref_group_index(path, 0)?;
+                let source_group = context.path_ref_group(path, 0)?;
+                let center_index = context.path_ref_group_index(path, 1)?;
+                let ratio_origin_index = context.path_ref_group_index(path, 2)?;
+                let ratio_denominator_index = context.path_ref_group_index(path, 3)?;
+                let ratio_numerator_index = context.path_ref_group_index(path, 4)?;
+                let center = anchors.get(center_index)?.clone()?;
+                let ratio_origin = anchors.get(ratio_origin_index)?.clone()?;
+                let ratio_denominator = anchors.get(ratio_denominator_index)?.clone()?;
+                let ratio_numerator = anchors.get(ratio_numerator_index)?.clone()?;
+                let points = polygon_points_raw(file, groups, context, anchors, source_group)?
+                    .into_iter()
+                    .map(|point| {
+                        gsp_runtime_core::scale_by_three_point_ratio(
+                            to_core_point(&point),
+                            to_core_point(&center),
+                            to_core_point(&ratio_origin),
+                            to_core_point(&ratio_denominator),
+                            to_core_point(&ratio_numerator),
+                            true,
+                            false,
+                        )
+                        .map(from_core_point)
+                    })
+                    .collect::<Option<Vec<PointRecord>>>()?;
+                return derived_polygon_shape(
+                    group,
+                    source_group_index,
+                    points,
+                    GeometryTransformBinding::ScaleByRatio(RatioScaleBinding {
+                        center_index,
+                        ratio_origin_index,
+                        ratio_denominator_index,
+                        ratio_numerator_index,
+                        signed: true,
+                        clamp_to_unit: false,
+                    }),
+                );
+            }
             let binding = try_decode_transform_binding(file, group).ok()?;
             let TransformBindingKind::Scale { factor } = binding.kind else {
                 return None;
@@ -846,7 +892,7 @@ fn polygon_points_raw_inner(
         }
         crate::format::GroupKind::Rotation | crate::format::GroupKind::ParameterRotation => {
             let binding = if group.header.kind() == crate::format::GroupKind::ParameterRotation {
-                try_decode_parameter_rotation_binding(file, groups, group).ok()?
+                decode_parameter_rotation_transform_binding_raw(file, groups, group, anchors)?
             } else {
                 try_decode_transform_binding(file, group).ok()?
             };
@@ -872,6 +918,39 @@ fn polygon_points_raw_inner(
                     .into_iter()
                     .map(|point| scale_around(&point, &center, factor))
                     .collect(),
+            )
+        }
+        crate::format::GroupKind::RatioScale => {
+            let path = context.indexed_path(group)?;
+            let source_group = context.path_ref_group(path, 0)?;
+            let center = anchors
+                .get(context.path_ref_group_index(path, 1)?)?
+                .clone()?;
+            let ratio_origin = anchors
+                .get(context.path_ref_group_index(path, 2)?)?
+                .clone()?;
+            let ratio_denominator = anchors
+                .get(context.path_ref_group_index(path, 3)?)?
+                .clone()?;
+            let ratio_numerator = anchors
+                .get(context.path_ref_group_index(path, 4)?)?
+                .clone()?;
+            Some(
+                polygon_points_raw_inner(file, groups, context, anchors, source_group, stack)?
+                    .into_iter()
+                    .map(|point| {
+                        gsp_runtime_core::scale_by_three_point_ratio(
+                            to_core_point(&point),
+                            to_core_point(&center),
+                            to_core_point(&ratio_origin),
+                            to_core_point(&ratio_denominator),
+                            to_core_point(&ratio_numerator),
+                            true,
+                            false,
+                        )
+                        .map(from_core_point)
+                    })
+                    .collect::<Option<Vec<PointRecord>>>()?,
             )
         }
         crate::format::GroupKind::Reflection => {

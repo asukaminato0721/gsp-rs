@@ -12,7 +12,7 @@ use super::anchors::{
 use super::{
     decode_non_graph_parameter_value_for_group, editable_non_graph_parameter_name_for_group,
 };
-use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
+use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u16, read_u32};
 use crate::runtime::functions::{
     FunctionAst, FunctionExpr, evaluate_expr_with_parameters,
     evaluate_function_group_with_overrides, function_parameter_group_ordinals,
@@ -92,10 +92,8 @@ pub(crate) enum RawPointConstraint {
         vertex_group_indices: Vec<usize>,
         parameter: f64,
     },
-    TranslatedPolygonBoundary {
-        vertex_group_indices: Vec<usize>,
-        vector_start_group_index: usize,
-        vector_end_group_index: usize,
+    PolygonShapeBoundary {
+        polygon_group_index: usize,
         edge_index: usize,
         t: f64,
     },
@@ -469,17 +467,7 @@ fn parameter_anchor_value(
             t,
         )?,
         RawPointConstraint::PolygonBoundaryParameter { parameter, .. } => parameter,
-        RawPointConstraint::TranslatedPolygonBoundary {
-            edge_index,
-            t,
-            vertex_group_indices,
-            ..
-        } => super::super::labels::polygon_boundary_parameter(
-            anchors,
-            &vertex_group_indices,
-            edge_index,
-            t,
-        )?,
+        RawPointConstraint::PolygonShapeBoundary { t, .. } => t,
         RawPointConstraint::Circle(constraint) => super::super::labels::circle_parameter(
             anchors,
             constraint.center_group_index,

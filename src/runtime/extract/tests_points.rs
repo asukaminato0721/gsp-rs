@@ -3259,3 +3259,78 @@ fn ellipse_polygon_rolling_keeps_marked_translation_and_intersection_chain() {
         ));
     }
 }
+
+#[test]
+fn neon_light_polygon_chain_builds_a_complete_object_graph() {
+    let data = fixture_bytes("tests/Samples/个人专栏/方小庆作品/霓虹灯问题(inRm).gsp")
+        .expect("neon-light fixture");
+    let file = GspFile::parse(&data).expect("neon-light fixture parses");
+    let scene = build_scene_checked(&file).expect("neon-light scene builds");
+    let point_index = |group_ordinal| {
+        scene
+            .points
+            .iter()
+            .position(|point| {
+                point
+                    .debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == group_ordinal)
+            })
+            .unwrap_or_else(|| panic!("point group #{group_ordinal}"))
+    };
+    let point = |group_ordinal| &scene.points[point_index(group_ordinal)];
+
+    for group_ordinal in [25, 26, 28, 33, 35] {
+        assert!(matches!(
+            point(group_ordinal).constraint,
+            ScenePointConstraint::OnPolygonShapeBoundary { .. }
+        ));
+    }
+    for (group_ordinal, angle_point_ordinal) in [(39, 33), (41, 35)] {
+        let Some(ScenePointBinding::Rotate {
+            source_index,
+            center_index,
+            angle_parameter_point_index,
+            angle_parameter_start_index,
+            angle_parameter_end_index,
+            angle_parameter_scale,
+            ..
+        }) = &point(group_ordinal).binding
+        else {
+            panic!("point group #{group_ordinal} should retain its parameter rotation");
+        };
+        assert_eq!(*source_index, point_index(38));
+        assert_eq!(*center_index, point_index(37));
+        assert_eq!(
+            *angle_parameter_point_index,
+            Some(point_index(angle_point_ordinal))
+        );
+        assert_eq!(*angle_parameter_start_index, Some(point_index(25)));
+        assert_eq!(*angle_parameter_end_index, Some(point_index(26)));
+        assert_eq!(
+            *angle_parameter_scale,
+            Some(std::f64::consts::TAU.to_degrees())
+        );
+    }
+    let polygon = scene
+        .polygons
+        .iter()
+        .find(|polygon| {
+            polygon
+                .debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 44)
+        })
+        .expect("neon polygon #44");
+    assert!(matches!(
+        &polygon.binding,
+        Some(ShapeBinding::PointPolygon { vertex_indices })
+            if *vertex_indices == [39, 41, 42, 43].map(point_index)
+    ));
+    assert!(
+        scene.object_graph.geometry_complete,
+        "pending: {:?}",
+        scene.object_graph.pending_operations
+    );
+    assert!(scene.object_graph.pending_operations.is_empty());
+}

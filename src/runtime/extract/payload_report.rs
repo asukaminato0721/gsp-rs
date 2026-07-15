@@ -1261,13 +1261,16 @@ fn write_group_detail(
                         parameter,
                         ..
                     } => format!("polygon boundary parameter={parameter:.6}"),
-                    self::points::RawPointConstraint::TranslatedPolygonBoundary {
+                    self::points::RawPointConstraint::PolygonShapeBoundary {
+                        polygon_group_index,
                         edge_index,
                         t,
-                        ..
-                    } => {
-                        format!("translated-polygon edge={} t={:.6}", edge_index, t)
-                    }
+                    } => format!(
+                        "polygon object=#{} edge={} t={:.6}",
+                        polygon_group_index + 1,
+                        edge_index,
+                        t
+                    ),
                     self::points::RawPointConstraint::Circle(constraint) => format!(
                         "circle center=#{} radius=#{} unit=({:.6}, {:.6})",
                         constraint.center_group_index + 1,

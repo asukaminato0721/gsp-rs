@@ -178,9 +178,8 @@
       || (
         constraint.kind !== "polygon-boundary"
         && constraint.kind !== "polygon-boundary-parameter"
-        && constraint.kind !== "translated-polygon-boundary"
+        && constraint.kind !== "polygon-shape-boundary"
       )
-      || constraint.vertexIndices.length < 2
     ) {
       return null;
     }
@@ -188,12 +187,16 @@
     if (constraint.kind === "polygon-boundary-parameter") {
       return wrapUnitInterval(constraint.parameter);
     }
-    const count = constraint.vertexIndices.length;
+    const vertices = constraint.kind === "polygon-shape-boundary"
+      ? scene.polygons?.[constraint.polygonIndex]?.points
+      : constraint.vertexIndices.map((index) => scene.points[index]);
+    const count = vertices?.length ?? 0;
+    if (!vertices || count < 2) return null;
     let perimeter = 0;
     let traveled = 0;
     for (let index = 0; index < count; index += 1) {
-      const start = scene.points[constraint.vertexIndices[index]];
-      const end = scene.points[constraint.vertexIndices[(index + 1) % count]];
+      const start = vertices[index];
+      const end = vertices[(index + 1) % count];
       if (!start || !end) {
         return null;
       }
@@ -255,7 +258,7 @@
     polyline: (scene: ViewerSceneData, pointIndex: number) => scene.points[pointIndex]?.constraint?.t ?? null,
     "polygon-boundary": polygonBoundaryParameterFromPoint,
     "polygon-boundary-parameter": polygonBoundaryParameterFromPoint,
-    "translated-polygon-boundary": polygonBoundaryParameterFromPoint,
+    "polygon-shape-boundary": polygonBoundaryParameterFromPoint,
     circle: circleParameterFromPoint,
     "circle-arc": (scene: ViewerSceneData, pointIndex: number) => scene.points[pointIndex]?.constraint?.t ?? null,
     arc: (scene: ViewerSceneData, pointIndex: number) => scene.points[pointIndex]?.constraint?.t ?? null,
@@ -323,8 +326,33 @@
     "polygon-boundary-parameter"(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
       point.constraint.parameter = wrapUnitInterval(value);
     },
-    "translated-polygon-boundary"(point: RuntimeScenePointJson, scene: ViewerSceneData, value: number) {
-      POINT_CONSTRAINT_PARAMETER_APPLIERS["polygon-boundary"](point, scene, value);
+    "polygon-shape-boundary"(point: RuntimeScenePointJson, scene: ViewerSceneData, value: number) {
+      const constraint = point.constraint as Extract<
+        RuntimePointConstraintJson,
+        { kind: "polygon-shape-boundary" }
+      >;
+      const points = scene.polygons?.[constraint.polygonIndex]?.points;
+      if (!points || points.length < 2) return;
+      const wrapped = wrapUnitInterval(value);
+      const lengths = points.map((start, index) => {
+        const end = points[(index + 1) % points.length];
+        return Math.hypot(end.x - start.x, end.y - start.y);
+      });
+      const perimeter = lengths.reduce((sum, length) => sum + length, 0);
+      if (perimeter <= 1e-9) return;
+      const target = wrapped * perimeter;
+      let traveled = 0;
+      for (let edgeIndex = 0; edgeIndex < lengths.length; edgeIndex += 1) {
+        const length = lengths[edgeIndex];
+        if (traveled + length >= target || edgeIndex + 1 === lengths.length) {
+          constraint.edgeIndex = edgeIndex;
+          constraint.t = length <= 1e-9
+            ? 0
+            : Math.max(0, Math.min(1, (target - traveled) / length));
+          return;
+        }
+        traveled += length;
+      }
     },
     circle(point: RuntimeScenePointJson, _scene: ViewerSceneData, value: number) {
       const wrapped = wrapUnitInterval(value);

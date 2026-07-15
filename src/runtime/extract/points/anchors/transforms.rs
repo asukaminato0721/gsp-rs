@@ -37,7 +37,7 @@ pub(crate) fn decode_custom_transform_parameter(
                 RawPointConstraint::Polyline { parameter, .. } => Some(parameter),
                 RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
                 RawPointConstraint::PolygonBoundaryParameter { parameter, .. } => Some(parameter),
-                RawPointConstraint::TranslatedPolygonBoundary { t, .. } => Some(t),
+                RawPointConstraint::PolygonShapeBoundary { t, .. } => Some(t),
                 RawPointConstraint::Circle(constraint) => {
                     let angle = (-constraint.unit_y).atan2(constraint.unit_x);
                     let tau = std::f64::consts::TAU;
@@ -63,7 +63,7 @@ pub(crate) fn decode_custom_transform_parameter(
                 RawPointConstraint::Polyline { parameter, .. } => Some(parameter),
                 RawPointConstraint::PolygonBoundary { t, .. } => Some(t),
                 RawPointConstraint::PolygonBoundaryParameter { parameter, .. } => Some(parameter),
-                RawPointConstraint::TranslatedPolygonBoundary { t, .. } => Some(t),
+                RawPointConstraint::PolygonShapeBoundary { t, .. } => Some(t),
                 RawPointConstraint::Circle(constraint) => {
                     let angle = (-constraint.unit_y).atan2(constraint.unit_x);
                     let tau = std::f64::consts::TAU;
@@ -150,10 +150,7 @@ pub(crate) fn custom_transform_trace_parameter(
         | crate::runtime::scene::ScenePointConstraint::OnRay { t, .. }
         | crate::runtime::scene::ScenePointConstraint::OnCircleArc { t, .. }
         | crate::runtime::scene::ScenePointConstraint::OnArc { t, .. } => Some(*t),
-        crate::runtime::scene::ScenePointConstraint::OnPolygonBoundary { t, .. }
-        | crate::runtime::scene::ScenePointConstraint::OnTranslatedPolygonBoundary { t, .. } => {
-            Some(*t)
-        }
+        crate::runtime::scene::ScenePointConstraint::OnPolygonBoundary { t, .. } => Some(*t),
         crate::runtime::scene::ScenePointConstraint::OnCircle { unit_x, unit_y, .. } => {
             let angle = (-*unit_y).atan2(*unit_x);
             let tau = std::f64::consts::TAU;
@@ -756,24 +753,8 @@ pub(crate) fn decode_point_constraint_anchor(
                 .collect::<Option<Vec<_>>>()?;
             resolve_polygon_boundary_parameter_point_raw(&vertices, parameter)
         }
-        RawPointConstraint::TranslatedPolygonBoundary {
-            vertex_group_indices,
-            vector_start_group_index,
-            vector_end_group_index,
-            edge_index,
-            t,
-        } => {
-            let vertices = vertex_group_indices
-                .iter()
-                .map(|group_index| anchors.get(*group_index)?.clone())
-                .collect::<Option<Vec<_>>>()?;
-            let base = resolve_polygon_boundary_point_raw(&vertices, edge_index, t)?;
-            let vector_start = anchors.get(vector_start_group_index)?.clone()?;
-            let vector_end = anchors.get(vector_end_group_index)?.clone()?;
-            Some(PointRecord {
-                x: base.x + vector_end.x - vector_start.x,
-                y: base.y + vector_end.y - vector_start.y,
-            })
+        RawPointConstraint::PolygonShapeBoundary { .. } => {
+            anchors.get(group.ordinal.checked_sub(1)?).cloned().flatten()
         }
         RawPointConstraint::Circle(constraint) => {
             let center = anchors.get(constraint.center_group_index)?.clone()?;

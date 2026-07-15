@@ -589,10 +589,8 @@ pub(crate) enum ScenePointConstraint {
         vertex_indices: Vec<usize>,
         parameter: f64,
     },
-    OnTranslatedPolygonBoundary {
-        vertex_indices: Vec<usize>,
-        vector_start_index: usize,
-        vector_end_index: usize,
+    OnPolygonShapeBoundary {
+        polygon_index: usize,
         edge_index: usize,
         t: f64,
     },
@@ -876,6 +874,16 @@ pub(crate) struct ScaleBinding {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct RatioScaleBinding {
+    pub(crate) center_index: usize,
+    pub(crate) ratio_origin_index: usize,
+    pub(crate) ratio_denominator_index: usize,
+    pub(crate) ratio_numerator_index: usize,
+    pub(crate) signed: bool,
+    pub(crate) clamp_to_unit: bool,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) enum GeometryTransformBinding {
     TranslateDelta {
         dx: f64,
@@ -887,6 +895,7 @@ pub(crate) enum GeometryTransformBinding {
     },
     Rotate(RotationBinding),
     Scale(ScaleBinding),
+    ScaleByRatio(RatioScaleBinding),
     Reflect(AxisBinding),
 }
 

@@ -130,16 +130,12 @@ pub(super) fn build_world_data(
                     vertex_indices: vertex_indices.clone(),
                     parameter: *parameter,
                 },
-                ScenePointConstraint::OnTranslatedPolygonBoundary {
-                    vertex_indices,
-                    vector_start_index,
-                    vector_end_index,
+                ScenePointConstraint::OnPolygonShapeBoundary {
+                    polygon_index,
                     edge_index,
                     t,
-                } => ScenePointConstraint::OnTranslatedPolygonBoundary {
-                    vertex_indices: vertex_indices.clone(),
-                    vector_start_index: *vector_start_index,
-                    vector_end_index: *vector_end_index,
+                } => ScenePointConstraint::OnPolygonShapeBoundary {
+                    polygon_index: *polygon_index,
                     edge_index: *edge_index,
                     t: *t,
                 },

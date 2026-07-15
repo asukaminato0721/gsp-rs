@@ -700,14 +700,10 @@ enum PointConstraintJson {
         vertex_indices: Vec<usize>,
         parameter: f64,
     },
-    #[serde(rename = "translated-polygon-boundary")]
-    TranslatedPolygonBoundary {
-        #[serde(rename = "vertexIndices")]
-        vertex_indices: Vec<usize>,
-        #[serde(rename = "vectorStartIndex")]
-        vector_start_index: usize,
-        #[serde(rename = "vectorEndIndex")]
-        vector_end_index: usize,
+    #[serde(rename = "polygon-shape-boundary")]
+    PolygonShapeBoundary {
+        #[serde(rename = "polygonIndex")]
+        polygon_index: usize,
         #[serde(rename = "edgeIndex")]
         edge_index: usize,
         t: f64,
@@ -933,16 +929,12 @@ impl PointConstraintJson {
                 vertex_indices: vertex_indices.clone(),
                 parameter: *parameter,
             }),
-            ScenePointConstraint::OnTranslatedPolygonBoundary {
-                vertex_indices,
-                vector_start_index,
-                vector_end_index,
+            ScenePointConstraint::OnPolygonShapeBoundary {
+                polygon_index,
                 edge_index,
                 t,
-            } => Some(Self::TranslatedPolygonBoundary {
-                vertex_indices: vertex_indices.clone(),
-                vector_start_index: *vector_start_index,
-                vector_end_index: *vector_end_index,
+            } => Some(Self::PolygonShapeBoundary {
+                polygon_index: *polygon_index,
                 edge_index: *edge_index,
                 t: *t,
             }),

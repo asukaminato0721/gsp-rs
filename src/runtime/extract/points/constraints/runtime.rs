@@ -163,27 +163,21 @@ pub(crate) fn try_decode_point_constraint(
         (_, GroupKind::Polygon) => {
             return try_decode_polygon_boundary_constraint(file, host_group, payload);
         }
-        (_, GroupKind::Translation) => {
-            if host_path.refs.len() >= 3
-                && let Some(source_group) = groups.get(host_path.refs[0].saturating_sub(1))
-                && source_group.header.kind() == GroupKind::Polygon
-            {
-                let RawPointConstraint::PolygonBoundary {
-                    vertex_group_indices,
-                    edge_index,
-                    t,
-                } = try_decode_polygon_boundary_constraint(file, source_group, payload)?
-                else {
-                    unreachable!();
-                };
-                return Ok(RawPointConstraint::TranslatedPolygonBoundary {
-                    vertex_group_indices,
-                    vector_start_group_index: host_path.refs[1].saturating_sub(1),
-                    vector_end_group_index: host_path.refs[2].saturating_sub(1),
-                    edge_index,
-                    t,
-                });
-            }
+        (_, host_kind)
+            if matches!(
+                host_kind,
+                GroupKind::Translation
+                    | GroupKind::Rotation
+                    | GroupKind::ParameterRotation
+                    | GroupKind::Scale
+                    | GroupKind::RatioScale
+                    | GroupKind::Reflection
+            ) && transformed_polygon_vertex_count(file, groups, host_group, &mut Vec::new())
+                .is_some() =>
+        {
+            return try_decode_polygon_shape_boundary_constraint(
+                file, groups, host_group, payload,
+            );
         }
         (_, GroupKind::ThreePointArc | GroupKind::ArcOnCircle | GroupKind::CenterArc) => {
             return try_decode_arc_family_constraint(file, groups, host_group, payload);
@@ -667,6 +661,63 @@ fn try_decode_polygon_boundary_constraint(
     })
 }
 
+fn try_decode_polygon_shape_boundary_constraint(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    host_group: &ObjectGroup,
+    payload: &[u8],
+) -> Result<RawPointConstraint, PointConstraintDecodeError> {
+    let vertex_count = transformed_polygon_vertex_count(file, groups, host_group, &mut Vec::new())
+        .ok_or(PointConstraintDecodeError::InvalidPolygonHostPath)?;
+    let t = read_f64(payload, 4);
+    if !t.is_finite() {
+        return Err(PointConstraintDecodeError::NonFiniteParameter);
+    }
+    let edge_index = decode_polygon_edge_index(vertex_count, payload)
+        .ok_or(PointConstraintDecodeError::InvalidPolygonEdgeIndex)?;
+    Ok(RawPointConstraint::PolygonShapeBoundary {
+        polygon_group_index: host_group
+            .ordinal
+            .checked_sub(1)
+            .ok_or(PointConstraintDecodeError::InvalidPolygonHostPath)?,
+        edge_index,
+        t,
+    })
+}
+
+fn transformed_polygon_vertex_count(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    stack: &mut Vec<usize>,
+) -> Option<usize> {
+    let group_index = group.ordinal.checked_sub(1)?;
+    if stack.contains(&group_index) {
+        return None;
+    }
+    stack.push(group_index);
+    let result = match group.header.kind() {
+        GroupKind::Polygon => find_indexed_path(file, group)
+            .map(|path| path.refs.len())
+            .filter(|vertex_count| *vertex_count >= 2),
+        GroupKind::Translation
+        | GroupKind::Rotation
+        | GroupKind::ParameterRotation
+        | GroupKind::Scale
+        | GroupKind::RatioScale
+        | GroupKind::Reflection => {
+            let source_group = find_indexed_path(file, group)?
+                .refs
+                .first()
+                .and_then(|ordinal| groups.get(ordinal.checked_sub(1)?))?;
+            transformed_polygon_vertex_count(file, groups, source_group, stack)
+        }
+        _ => None,
+    };
+    stack.pop();
+    result
+}
+
 fn try_decode_arc_family_constraint(
     file: &GspFile,
     groups: &[ObjectGroup],
@@ -962,20 +1013,11 @@ fn locate_polyline_parameter(points: &[PointRecord], normalized_t: f64) -> Optio
     Some((segment_index.min(points.len() - 2), scaled.fract()))
 }
 
-fn decode_polygon_edge_index(vertex_count: usize, payload: &[u8]) -> Option<usize> {
-    if vertex_count < 2 || payload.len() < 16 {
+pub(crate) fn decode_polygon_edge_index(vertex_count: usize, payload: &[u8]) -> Option<usize> {
+    if vertex_count < 2 || payload.len() < 14 {
         return None;
     }
 
-    let discrete = read_u32(payload, 12) as usize;
-    if discrete < vertex_count {
-        return Some(discrete);
-    }
-
-    let selector = read_f64(payload, 12);
-    if !selector.is_finite() {
-        return None;
-    }
-    let end_vertex = ((selector * vertex_count as f64) - 0.25).round() as isize;
-    Some(((end_vertex + vertex_count as isize - 1).rem_euclid(vertex_count as isize)) as usize)
+    let edge_index = read_u16(payload, 12) as usize;
+    (edge_index < vertex_count).then_some(edge_index)
 }
