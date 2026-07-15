@@ -41,7 +41,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         None => {
             eprintln!(
                 "usage: cargo xtask <runtime|check-runtime|build|corpus>\n\
-                 corpus options: [--root DIR] [--output-dir DIR] [--jobs N] \
+                 corpus options: [--root DIR] [--jobs N] \
                  [--timeout-ms N] [--html] [--no-build]"
             );
             Ok(())
@@ -52,7 +52,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[derive(Debug, PartialEq, Eq)]
 struct CorpusOptions {
     root: PathBuf,
-    output_dir: PathBuf,
     jobs: usize,
     timeout_ms: u64,
     html_only: bool,
@@ -63,7 +62,6 @@ impl Default for CorpusOptions {
     fn default() -> Self {
         Self {
             root: PathBuf::from("tests"),
-            output_dir: PathBuf::from("target/xtask-gsp-corpus"),
             jobs: std::thread::available_parallelism()
                 .map_or(1, usize::from)
                 .clamp(1, 4),
@@ -79,7 +77,7 @@ fn parse_corpus_options(args: Vec<String>) -> Result<CorpusOptions, Box<dyn std:
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
-            "--root" | "--output-dir" | "--jobs" | "--timeout-ms" => {
+            "--root" | "--jobs" | "--timeout-ms" => {
                 let flag = args[index].clone();
                 index += 1;
                 let value = args
@@ -87,7 +85,6 @@ fn parse_corpus_options(args: Vec<String>) -> Result<CorpusOptions, Box<dyn std:
                     .ok_or_else(|| format!("{flag} requires a value"))?;
                 match flag.as_str() {
                     "--root" => options.root = PathBuf::from(value),
-                    "--output-dir" => options.output_dir = PathBuf::from(value),
                     "--jobs" => options.jobs = value.parse::<usize>()?.max(1),
                     "--timeout-ms" => options.timeout_ms = value.parse::<u64>()?.max(1),
                     _ => unreachable!(),
@@ -130,8 +127,6 @@ fn run_corpus(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
         .collect::<Vec<_>>();
     weighted_files.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
     let shards = balance_shards(weighted_files, options.jobs);
-    let output_dir = root.join(&options.output_dir);
-    fs::create_dir_all(&output_dir)?;
     let compiler = root.join("target/release/gsp-rs");
     let started = Instant::now();
     eprintln!(
@@ -147,8 +142,6 @@ fn run_corpus(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
         command
             .current_dir(&root)
             .env("GSP_RS_WORKER_TIMEOUT_MS", options.timeout_ms.to_string())
-            .arg("--output-dir")
-            .arg(&output_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::inherit());
         if options.html_only {
@@ -258,13 +251,19 @@ mod tests {
             options,
             CorpusOptions {
                 root: PathBuf::from("fixtures"),
-                output_dir: PathBuf::from("target/xtask-gsp-corpus"),
                 jobs: 3,
                 timeout_ms: 2500,
                 html_only: true,
                 build: false,
             }
         );
+    }
+
+    #[test]
+    fn rejects_output_dir() {
+        let error = parse_corpus_options(vec!["--output-dir".into(), "out".into()])
+            .expect_err("output directory is not a corpus option");
+        assert_eq!(error.to_string(), "unknown corpus option `--output-dir`");
     }
 
     #[test]
