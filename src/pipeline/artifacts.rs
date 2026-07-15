@@ -1,5 +1,5 @@
 use crate::export::html::write_standalone_html;
-use crate::runtime::render_payload_log;
+use crate::runtime::{geometry::GraphTransform, render_payload_log_with_graph};
 use miette::{IntoDiagnostic, Report, Result, WrapErr, miette};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,11 +12,11 @@ pub(super) struct ArtifactPaths {
 }
 
 impl ArtifactPaths {
-    pub(super) fn from_output(gsp_path: &Path, html_path: &Path) -> Self {
+    pub(super) fn from_output(_gsp_path: &Path, html_path: &Path) -> Self {
         Self {
             html_path: html_path.to_path_buf(),
             debug_json_path: html_path.with_extension("debug.json"),
-            payload_log_path: gsp_path.with_extension("log"),
+            payload_log_path: html_path.with_extension("log"),
         }
     }
 
@@ -48,8 +48,9 @@ pub(super) fn write_payload_log(
     gsp_path: &Path,
     paths: &ArtifactPaths,
     file: &crate::format::GspFile,
+    graph: Option<&GraphTransform>,
 ) -> Result<PathBuf> {
-    let log_body = render_payload_log(gsp_path, file);
+    let log_body = render_payload_log_with_graph(gsp_path, file, graph);
     fs::write(&paths.payload_log_path, log_body)
         .into_diagnostic()
         .wrap_err_with(|| format!("failed to write {}", paths.payload_log_path.display()))?;
@@ -62,7 +63,7 @@ pub(super) fn attach_payload_log(
     file: &crate::format::GspFile,
     error: Report,
 ) -> Report {
-    match write_payload_log(gsp_path, paths, file) {
+    match write_payload_log(gsp_path, paths, file, None) {
         Ok(log_path) => miette!("{error}\npayload log: {}", log_path.display()),
         Err(_) => error,
     }
@@ -82,9 +83,6 @@ mod tests {
 
         assert_eq!(paths.html_path, Path::new("out/point.html"));
         assert_eq!(paths.debug_json_path, Path::new("out/point.debug.json"));
-        assert_eq!(
-            paths.payload_log_path,
-            Path::new("fixtures/source/point.log")
-        );
+        assert_eq!(paths.payload_log_path, Path::new("out/point.log"));
     }
 }

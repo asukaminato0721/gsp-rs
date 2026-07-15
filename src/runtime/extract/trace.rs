@@ -1,3 +1,4 @@
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
@@ -25,6 +26,41 @@ use super::{find_indexed_path, payload_debug_source};
 const TRACE_DESCRIPTOR_PATH_FLAGS_OFFSET: usize = 20;
 const TRACE_DESCRIPTOR_OPEN_PATH_FLAG: u32 = 1 << 16;
 
+thread_local! {
+    static TRACE_RESOLVE_DEPTH: Cell<usize> = const { Cell::new(0) };
+    static TRACE_RESOLVE_CACHE: RefCell<Vec<Option<PointRecord>>> = const { RefCell::new(Vec::new()) };
+}
+
+struct TraceResolveCacheGuard {
+    root: bool,
+}
+
+impl TraceResolveCacheGuard {
+    fn enter(point_count: usize) -> Self {
+        let root = TRACE_RESOLVE_DEPTH.with(|depth| {
+            let current = depth.get();
+            depth.set(current + 1);
+            current == 0
+        });
+        if root {
+            TRACE_RESOLVE_CACHE.with(|cache| {
+                cache.borrow_mut().resize(point_count, None);
+                cache.borrow_mut().fill(None);
+            });
+        }
+        Self { root }
+    }
+}
+
+impl Drop for TraceResolveCacheGuard {
+    fn drop(&mut self) {
+        TRACE_RESOLVE_DEPTH.with(|depth| depth.set(depth.get().saturating_sub(1)));
+        if self.root {
+            TRACE_RESOLVE_CACHE.with(|cache| cache.borrow_mut().clear());
+        }
+    }
+}
+
 fn trace_driver_path_is_open(payload: &[u8]) -> bool {
     read_u32(payload, TRACE_DESCRIPTOR_PATH_FLAGS_OFFSET) & TRACE_DESCRIPTOR_OPEN_PATH_FLAG != 0
 }
@@ -49,15 +85,17 @@ pub(super) fn collect_point_traces(
     visible_points: &[ScenePoint],
     group_to_point_index: &[Option<usize>],
     graph_ref: &Option<GraphTransform>,
+    only_group_ordinals: Option<&BTreeSet<usize>>,
 ) -> Vec<crate::runtime::scene::LineShape> {
     groups
         .iter()
         .filter(|group| {
-            matches!(
-                group.header.kind(),
-                crate::format::GroupKind::PointTrace
-                    | crate::format::GroupKind::CustomTransformTrace
-            )
+            only_group_ordinals.is_none_or(|ordinals| ordinals.contains(&group.ordinal))
+                && matches!(
+                    group.header.kind(),
+                    crate::format::GroupKind::PointTrace
+                        | crate::format::GroupKind::CustomTransformTrace
+                )
         })
         .filter_map(|group| {
             let group_kind = group.header.kind();
@@ -152,14 +190,21 @@ pub(super) fn collect_point_traces(
             }
 
             let (driver_point_index, driver_group_index) = driver?;
+            let sampled_polyline_indices = trace_dependency_polyline_point_indices(
+                file,
+                groups,
+                [target_group_index],
+                visible_points,
+                group_to_point_index,
+            );
 
             let mut points = Vec::with_capacity(descriptor.sample_count);
+            let mut sampled_points = visible_points.to_vec();
             let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
             for sample_index in 0..descriptor.sample_count {
                 let t = sample_index as f64 / last;
                 let parameter = descriptor.x_min + (trace_max - descriptor.x_min) * t;
                 let sample = (|| {
-                    let mut sampled_points = visible_points.to_vec();
                     let driver_point = sampled_points.get_mut(driver_point_index)?;
                     apply_trace_parameter_with_mode(
                         driver_point,
@@ -182,6 +227,7 @@ pub(super) fn collect_point_traces(
                         &mut sampled_points,
                         group_to_point_index,
                         graph_ref,
+                        &sampled_polyline_indices,
                     );
                     resolve_trace_point(
                         &mut sampled_points,
@@ -321,14 +367,21 @@ pub(super) fn collect_segment_traces(
                         .find(|(_, group_index)| *group_index != target_group_index)
                 })?;
             let (driver_point_index, driver_group_index) = driver;
+            let sampled_polyline_indices = trace_dependency_polyline_point_indices(
+                file,
+                groups,
+                [start_group_index, end_group_index],
+                visible_points,
+                group_to_point_index,
+            );
 
-            let mut sampled_points = Vec::with_capacity(descriptor.sample_count * 2);
+            let mut trace_points = Vec::with_capacity(descriptor.sample_count * 2);
+            let mut sampled_points = visible_points.to_vec();
             let last = descriptor.sample_count.saturating_sub(1).max(1) as f64;
             for sample_index in 0..descriptor.sample_count {
                 let t = sample_index as f64 / last;
                 let parameter = descriptor.x_min + (descriptor.x_max - descriptor.x_min) * t;
                 let sample = (|| {
-                    let mut sampled_points = visible_points.to_vec();
                     let driver_point = sampled_points.get_mut(driver_point_index)?;
                     apply_trace_parameter_with_mode(
                         driver_point,
@@ -351,6 +404,7 @@ pub(super) fn collect_segment_traces(
                         &mut sampled_points,
                         group_to_point_index,
                         graph_ref,
+                        &sampled_polyline_indices,
                     );
                     let start = resolve_trace_point(
                         &mut sampled_points,
@@ -367,14 +421,14 @@ pub(super) fn collect_segment_traces(
                 if let Some((start, end)) = sample
                     && (end.x - start.x).hypot(end.y - start.y) > 1e-9
                 {
-                    sampled_points.push(start);
-                    sampled_points.push(end);
+                    trace_points.push(start);
+                    trace_points.push(end);
                 }
             }
             Some((
                 driver_path_is_open,
                 LineShape {
-                    points: sampled_points,
+                    points: trace_points,
                     color: crate::runtime::geometry::color_from_style(group.header.style_b),
                     dashed: false,
                     stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
@@ -853,36 +907,39 @@ fn refresh_sampled_trace_polylines(
     points: &mut [ScenePoint],
     group_to_point_index: &[Option<usize>],
     graph_ref: &Option<GraphTransform>,
+    point_indices: &[usize],
 ) {
-    let updates = points
+    let updates = point_indices
         .iter()
-        .enumerate()
-        .filter_map(|(point_index, point)| match &point.constraint {
-            ScenePointConstraint::OnPolyline {
-                function_key,
-                points: polyline,
-                parameter,
-                ..
-            } => {
-                if polyline.len() < 2 {
-                    return None;
+        .filter_map(|point_index| {
+            let point = points.get(*point_index)?;
+            match &point.constraint {
+                ScenePointConstraint::OnPolyline {
+                    function_key,
+                    points: polyline,
+                    parameter,
+                    ..
+                } => {
+                    if polyline.len() < 2 {
+                        return None;
+                    }
+                    let normalized = parameter.clamp(0.0, 1.0);
+                    let group = function_key
+                        .checked_sub(1)
+                        .and_then(|group_index| groups.get(group_index))?;
+                    let position = sample_point_trace_at_parameter_normalized(
+                        file,
+                        groups,
+                        group,
+                        points,
+                        group_to_point_index,
+                        graph_ref,
+                        normalized,
+                    )?;
+                    Some((*point_index, position))
                 }
-                let normalized = parameter.clamp(0.0, 1.0);
-                let group = function_key
-                    .checked_sub(1)
-                    .and_then(|group_index| groups.get(group_index))?;
-                let position = sample_point_trace_at_parameter_normalized(
-                    file,
-                    groups,
-                    group,
-                    points,
-                    group_to_point_index,
-                    graph_ref,
-                    normalized,
-                )?;
-                Some((point_index, position))
+                _ => None,
             }
-            _ => None,
         })
         .collect::<Vec<_>>();
     for (point_index, position) in updates {
@@ -891,6 +948,68 @@ fn refresh_sampled_trace_polylines(
             point.constraint = ScenePointConstraint::Free;
         }
     }
+}
+
+fn trace_dependency_polyline_point_indices(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    root_group_indices: impl IntoIterator<Item = usize>,
+    points: &[ScenePoint],
+    group_to_point_index: &[Option<usize>],
+) -> Vec<usize> {
+    fn visit(
+        file: &GspFile,
+        groups: &[ObjectGroup],
+        group_index: usize,
+        points: &[ScenePoint],
+        group_to_point_index: &[Option<usize>],
+        visited: &mut BTreeSet<usize>,
+        result: &mut Vec<usize>,
+    ) {
+        if !visited.insert(group_index) {
+            return;
+        }
+        let Some(group) = groups.get(group_index) else {
+            return;
+        };
+        if let Some(path) = find_indexed_path(file, group) {
+            for ordinal in path.refs {
+                if let Some(parent_index) = ordinal.checked_sub(1) {
+                    visit(
+                        file,
+                        groups,
+                        parent_index,
+                        points,
+                        group_to_point_index,
+                        visited,
+                        result,
+                    );
+                }
+            }
+        }
+        if let Some(point_index) = group_to_point_index.get(group_index).copied().flatten()
+            && points.get(point_index).is_some_and(|point| {
+                matches!(point.constraint, ScenePointConstraint::OnPolyline { .. })
+            })
+        {
+            result.push(point_index);
+        }
+    }
+
+    let mut visited = BTreeSet::new();
+    let mut result = Vec::new();
+    for group_index in root_group_indices {
+        visit(
+            file,
+            groups,
+            group_index,
+            points,
+            group_to_point_index,
+            &mut visited,
+            &mut result,
+        );
+    }
+    result
 }
 
 fn sample_point_trace_at_parameter_normalized(
@@ -1412,6 +1531,12 @@ fn resolve_trace_point(
     index: usize,
     visiting: &mut BTreeSet<usize>,
 ) -> Option<PointRecord> {
+    let _cache_guard = TraceResolveCacheGuard::enter(points.len());
+    if let Some(resolved) =
+        TRACE_RESOLVE_CACHE.with(|cache| cache.borrow().get(index).cloned().flatten())
+    {
+        return Some(resolved);
+    }
     if !visiting.insert(index) {
         return None;
     }
@@ -1979,7 +2104,12 @@ fn resolve_trace_point(
     if let Some(resolved_point) = resolved.clone()
         && let Some(point) = points.get_mut(index)
     {
-        point.position = resolved_point;
+        point.position = resolved_point.clone();
+        TRACE_RESOLVE_CACHE.with(|cache| {
+            if let Some(slot) = cache.borrow_mut().get_mut(index) {
+                *slot = Some(resolved_point);
+            }
+        });
     }
     resolved
 }

@@ -61,6 +61,12 @@ impl CompiledDocument {
         }
         render_document_scene_json(&as_html_pages(&self.pages))
     }
+
+    pub(super) fn payload_log_graph_transform(
+        &self,
+    ) -> Option<&crate::runtime::geometry::GraphTransform> {
+        self.pages.first()?.scene.graph_transform.as_ref()
+    }
 }
 
 fn compile_pages(

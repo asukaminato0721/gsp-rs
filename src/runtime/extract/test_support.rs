@@ -60,6 +60,9 @@ pub(super) fn derive_expression_label_parameters(
             if let Some(result_name) = result_name {
                 names.push(result_name.clone());
             }
+            if let Some(group_ordinal) = label.debug.as_ref().map(|debug| debug.group_ordinal) {
+                names.push(format!("__object_{group_ordinal}"));
+            }
             for name in names {
                 if parameters.get(&name).copied() != Some(value) {
                     parameters.insert(name, value);

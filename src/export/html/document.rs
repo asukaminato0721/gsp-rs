@@ -208,6 +208,7 @@ mod tests {
             saved_viewport: false,
             y_up: false,
             origin: None,
+            graph_transform: None,
             bounds: Bounds {
                 min_x: 0.0,
                 max_x: 1.0,

@@ -5,12 +5,14 @@ mod plot;
 mod scene;
 
 pub(crate) use decode::{
-    FunctionExprParseError, evaluate_function_group_with_overrides,
-    function_expr_uses_degree_units, function_parameter_group_ordinals, numeric_helper_group_name,
+    FunctionExprParseError, cached_raw_object_anchors, evaluate_function_group_with_overrides,
+    function_expr_uses_degree_units, function_parameter_group_ordinals, function_parameter_name,
+    numeric_helper_group_name, point_map_fingerprint, set_cached_raw_object_anchor,
     try_decode_embedded_calculate_expr, try_decode_function_expr,
     try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
     try_decode_numeric_helper_group, try_decode_parameter_control_expr,
-    try_decode_standalone_function_expr, with_function_expr_cache, with_numeric_helper_cache,
+    try_decode_standalone_function_expr, with_compact_parameter_names, with_function_expr_cache,
+    with_numeric_helper_cache,
 };
 pub(crate) use eval::evaluate_expr_with_parameters;
 pub(crate) use expr::{

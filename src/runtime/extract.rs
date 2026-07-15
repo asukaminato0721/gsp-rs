@@ -57,10 +57,10 @@ use crate::util::{hex_bytes, truncate_text};
 
 use self::graph::{
     collect_document_canvas_bounds, collect_saved_viewport, detect_graph_transform,
-    has_coordinate_transform_consumers, has_graph_classes,
+    has_coordinate_transform_consumers, has_graph_classes, has_graph_transform_definition,
 };
 use self::labels::{circle_parameter, polygon_boundary_parameter};
-pub(crate) use self::payload_report::render_payload_log;
+pub(crate) use self::payload_report::render_payload_log_with_graph;
 use self::points::{
     RawPointConstraint, TransformBindingKind, collect_point_objects,
     decode_angle_rotation_anchor_raw, decode_line_midpoint_anchor_raw, decode_offset_anchor_raw,

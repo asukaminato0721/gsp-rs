@@ -24,6 +24,7 @@ use crate::runtime::functions::{
     FunctionExpr, evaluate_expr_with_parameters, function_expr_label,
     function_parameter_group_ordinals, numeric_helper_group_name,
     synthesize_standalone_function_definition_labels, try_decode_function_expr,
+    with_compact_parameter_names, with_function_expr_cache,
 };
 use crate::runtime::geometry::{
     angle_degrees_from_points, color_from_style, distance_world, format_number,
@@ -86,12 +87,9 @@ pub(super) fn collect_scene_labels(
         analysis.graph_mode,
         !analysis.has_function_plots && !analysis.has_coordinate_objects,
     );
-    labels.extend(collect_coordinate_labels(
-        file,
-        groups,
-        context,
-        &analysis.raw_anchors,
-    ));
+    labels.extend(with_function_expr_cache(|| {
+        collect_coordinate_labels(file, groups, context, &analysis.raw_anchors)
+    }));
     labels.extend(collect_polygon_parameter_labels(
         file,
         groups,
@@ -1401,6 +1399,9 @@ pub(super) fn collect_coordinate_labels(
     for group in groups {
         let kind = group.header.kind();
         let helper_visible = label_visible_for_group(file, group);
+        // Calculation objects form a payload DAG. Keep their internal parameters keyed by
+        // object ordinal instead of recursively expanding parent formulas into trees.
+        let compact_expression = kind == crate::format::GroupKind::FunctionExpr;
         let is_standalone_function_definition = kind == crate::format::GroupKind::Point
             && is_standalone_function_definition_group_with_context(file, context, group);
         let is_non_graph_parameter = kind == crate::format::GroupKind::Point
@@ -1679,7 +1680,11 @@ pub(super) fn collect_coordinate_labels(
                 ..Default::default()
             });
         } else if kind == crate::format::GroupKind::FunctionExpr
-            && let Some(override_expr) =
+            && let Some(anchor) = try_decode_payload_anchor_point(file, group)
+                .ok()
+                .flatten()
+                .or_else(|| function_expr_screen_anchor(file, group))
+            && let Some(override_expr) = with_compact_parameter_names(compact_expression, || {
                 regular_polygon_angle_expr_for_calc_group(file, groups, group)
                     .map(|(expr, parameter_name, parameter_value)| {
                         (
@@ -1708,10 +1713,7 @@ pub(super) fn collect_coordinate_labels(
                         let expr = try_decode_function_expr(file, groups, group).ok()?;
                         Some((expr, String::new(), 0.0, Some("multi-parameter")))
                     })
-            && let Some(anchor) = try_decode_payload_anchor_point(file, group)
-                .ok()
-                .flatten()
-                .or_else(|| function_expr_screen_anchor(file, group))
+            })
         {
             let (expr, parameter_name, parameter_value, semantic_kind) = override_expr;
             let value = evaluate_expr_with_parameters(
@@ -1745,8 +1747,9 @@ pub(super) fn collect_coordinate_labels(
                     result_name: decode_label_name(file, group),
                     expr_label: expr_label.clone(),
                     expr: expr.clone(),
-                    parameter_group_ordinals: function_parameter_group_ordinals(
-                        file, groups, group,
+                    parameter_group_ordinals: with_compact_parameter_names(
+                        compact_expression,
+                        || function_parameter_group_ordinals(file, groups, group),
                     ),
                 })
             };

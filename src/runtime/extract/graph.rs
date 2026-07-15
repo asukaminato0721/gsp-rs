@@ -85,6 +85,12 @@ pub(super) fn detect_graph_transform(
         .or_else(|| detect_calibration_graph_transform(file, groups, anchors))
 }
 
+pub(super) fn has_graph_transform_definition(groups: &[ObjectGroup]) -> bool {
+    groups.iter().any(|group| {
+        group.header.kind() == GroupKind::AxisLine || group.header.kind().is_graph_calibration()
+    })
+}
+
 fn detect_calibration_graph_transform(
     file: &GspFile,
     groups: &[ObjectGroup],

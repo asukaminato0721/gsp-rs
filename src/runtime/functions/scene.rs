@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_u16};
 use crate::runtime::extract::points::is_standalone_function_definition_group;
@@ -271,9 +271,14 @@ pub(crate) fn synthesize_standalone_function_definition_labels(
     groups: &[ObjectGroup],
     existing_labels: &[TextLabel],
 ) -> Vec<TextLabel> {
+    let action_function_ordinals = groups
+        .iter()
+        .filter(|group| group.header.kind() == crate::format::GroupKind::ActionButton)
+        .filter_map(|group| find_indexed_path(file, group))
+        .flat_map(|path| path.refs)
+        .collect::<BTreeSet<_>>();
     groups
         .iter()
-        .filter(|group| standalone_function_label_candidate(file, groups, group).is_some())
         .filter(|group| {
             !existing_labels.iter().any(|label| {
                 label
@@ -283,6 +288,12 @@ pub(crate) fn synthesize_standalone_function_definition_labels(
             })
         })
         .filter_map(|group| {
+            let (_expr, text) = standalone_function_label_candidate(
+                file,
+                groups,
+                group,
+                &action_function_ordinals,
+            )?;
             let anchor = if group.header.kind() == crate::format::GroupKind::FunctionDefinition {
                 function_definition_screen_anchor(file, group)?
             } else {
@@ -290,7 +301,6 @@ pub(crate) fn synthesize_standalone_function_definition_labels(
                     .ok()
                     .flatten()?
             };
-            let (_expr, text) = standalone_function_label_candidate(file, groups, group)?;
             Some(TextLabel {
                 anchor,
                 text,
@@ -312,7 +322,16 @@ fn standalone_function_label_candidate(
     file: &GspFile,
     groups: &[ObjectGroup],
     group: &ObjectGroup,
+    action_function_ordinals: &BTreeSet<usize>,
 ) -> Option<(FunctionExpr, String)> {
+    if !matches!(
+        group.header.kind(),
+        crate::format::GroupKind::Point | crate::format::GroupKind::FunctionDefinition
+    ) || group.header.is_hidden()
+        || action_function_ordinals.contains(&group.ordinal)
+    {
+        return None;
+    }
     if is_standalone_function_definition_group(file, groups, group) {
         let name = source_function_name(file, group)?;
         let expr = super::decode::try_decode_standalone_function_expr(file, groups, group).ok()?;

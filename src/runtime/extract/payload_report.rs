@@ -30,11 +30,34 @@ pub(super) fn validate_scene_payloads(file: &GspFile, groups: &[ObjectGroup]) ->
     )
 }
 
+#[cfg(test)]
 pub(crate) fn render_payload_log(source_path: &Path, file: &GspFile) -> String {
-    with_numeric_helper_cache(|| render_payload_log_inner(source_path, file))
+    render_payload_log_cached(source_path, file, None)
 }
 
-fn render_payload_log_inner(source_path: &Path, file: &GspFile) -> String {
+pub(crate) fn render_payload_log_with_graph(
+    source_path: &Path,
+    file: &GspFile,
+    graph: Option<&GraphTransform>,
+) -> String {
+    render_payload_log_cached(source_path, file, Some(graph))
+}
+
+fn render_payload_log_cached(
+    source_path: &Path,
+    file: &GspFile,
+    known_graph: Option<Option<&GraphTransform>>,
+) -> String {
+    with_numeric_helper_cache(|| {
+        with_function_expr_cache(|| render_payload_log_inner(source_path, file, known_graph))
+    })
+}
+
+fn render_payload_log_inner(
+    source_path: &Path,
+    file: &GspFile,
+    known_graph: Option<Option<&GraphTransform>>,
+) -> String {
     let groups = file.object_groups();
     let issues = collect_unsupported_payload_issues(file, &groups);
 
@@ -93,12 +116,18 @@ fn render_payload_log_inner(source_path: &Path, file: &GspFile) -> String {
             .enumerate()
             .map(|(index, group)| (group.ordinal, index + 1))
             .collect::<BTreeMap<_, _>>();
-        let point_map = collect_point_objects(file, &groups);
-        let raw_anchors_for_graph = collect_raw_object_anchors(file, &groups, &point_map, None);
-        let graph = detect_graph_transform(file, &groups, &raw_anchors_for_graph);
+        let detected_graph = (known_graph.is_none() && has_graph_transform_definition(&groups))
+            .then(|| {
+                let point_map = collect_point_objects(file, &groups);
+                let raw_anchors_for_graph =
+                    collect_raw_object_anchors(file, &groups, &point_map, None);
+                detect_graph_transform(file, &groups, &raw_anchors_for_graph)
+            });
+        let detected_graph = detected_graph.flatten();
+        let graph = known_graph.flatten().or(detected_graph.as_ref());
         let htm_context = HtmPayloadContext {
             ordinal_map: &construction_ordinals,
-            graph: graph.as_ref(),
+            graph,
             has_point_function_plot: groups.iter().any(|group| {
                 matches!(
                     group.header.kind(),

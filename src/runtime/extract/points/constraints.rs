@@ -1657,12 +1657,22 @@ pub(crate) fn decode_coordinate_point(
                         let x_parameter_name = decode_label_name(file, x_calc_group)
                             .or_else(|| decode_label_name(file, x_parameter_group))
                             .unwrap_or_else(|| {
-                                crate::runtime::functions::function_expr_label(x_expr.clone())
+                                crate::runtime::functions::function_parameter_name(
+                                    file,
+                                    groups,
+                                    x_parameter_group,
+                                    &x_expr,
+                                )
                             });
                         let y_parameter_name = decode_label_name(file, y_calc_group)
                             .or_else(|| decode_label_name(file, y_parameter_group))
                             .unwrap_or_else(|| {
-                                crate::runtime::functions::function_expr_label(y_expr.clone())
+                                crate::runtime::functions::function_parameter_name(
+                                    file,
+                                    groups,
+                                    y_parameter_group,
+                                    &y_expr,
+                                )
                             });
                         let parameters = BTreeMap::new();
                         let dx = evaluate_expr_with_parameters(&x_expr, 0.0, &parameters)?;
@@ -2279,8 +2289,9 @@ fn coordinate_parameter_binding(
 
     if let Ok(expr) = try_decode_function_expr(file, groups, parameter_group) {
         let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new()).unwrap_or(0.0);
-        let name = decode_label_name(file, parameter_group)
-            .unwrap_or_else(|| crate::runtime::functions::function_expr_label(expr.clone()));
+        let name = decode_label_name(file, parameter_group).unwrap_or_else(|| {
+            crate::runtime::functions::function_parameter_name(file, groups, parameter_group, &expr)
+        });
         return Some((name, value, expr));
     }
 

@@ -24,6 +24,7 @@ pub(crate) struct Scene {
     pub(crate) saved_viewport: bool,
     pub(crate) y_up: bool,
     pub(crate) origin: Option<PointRecord>,
+    pub(crate) graph_transform: Option<super::geometry::GraphTransform>,
     pub(crate) bounds: Bounds,
     pub(crate) images: Vec<SceneImage>,
     pub(crate) lines: Vec<LineShape>,

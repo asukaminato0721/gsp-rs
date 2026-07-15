@@ -12,7 +12,7 @@ use crate::runtime::extract::{
     graph_object_circle_measurement_kind, is_circle_group_kind,
     try_decode_parameter_control_value_for_group,
 };
-use crate::runtime::functions::{evaluate_expr_with_parameters, function_expr_label};
+use crate::runtime::functions::evaluate_expr_with_parameters;
 use crate::runtime::geometry::GraphTransform;
 use crate::runtime::geometry::angle_degrees_from_points;
 use crate::runtime::payload_consts::{
@@ -48,13 +48,29 @@ use self::parser::parse_function_expr;
 thread_local! {
     static DECODE_CACHE_ACTIVE: Cell<bool> = const { Cell::new(false) };
     static FUNCTION_EXPR_CACHE_ACTIVE: Cell<bool> = const { Cell::new(false) };
+    static COMPACT_PARAMETER_NAMES: Cell<bool> = const { Cell::new(false) };
     static RESOLVING_MEASURED_VALUES: RefCell<BTreeSet<usize>> = const { RefCell::new(BTreeSet::new()) };
     static MEASURED_VALUE_ANCHORS_CACHE: RefCell<Option<Vec<Option<PointRecord>>>> = const { RefCell::new(None) };
     static RESOLVING_NUMERIC_HELPERS: RefCell<BTreeSet<usize>> = const { RefCell::new(BTreeSet::new()) };
-    static NUMERIC_HELPER_CACHE: RefCell<BTreeMap<usize, Option<FunctionExpr>>> = const { RefCell::new(BTreeMap::new()) };
-    static FUNCTION_EXPR_CACHE: RefCell<BTreeMap<(usize, usize), Result<FunctionExpr, FunctionExprParseError>>> = const { RefCell::new(BTreeMap::new()) };
-    static RAW_FUNCTION_EXPR_CACHE: RefCell<BTreeMap<(usize, bool, usize), FunctionExpr>> = const { RefCell::new(BTreeMap::new()) };
+    static NUMERIC_HELPER_CACHE: RefCell<BTreeMap<(usize, bool), Option<FunctionExpr>>> = const { RefCell::new(BTreeMap::new()) };
+    static RAW_ANCHOR_CACHE: RefCell<BTreeMap<RawAnchorCacheKey, RawAnchorCacheEntry>> = const { RefCell::new(BTreeMap::new()) };
+    static FUNCTION_EXPR_CACHE: RefCell<BTreeMap<(usize, usize, bool, DecodeResolutionContext), FunctionExpr>> = const { RefCell::new(BTreeMap::new()) };
+    static FUNCTION_VALUE_CACHE: RefCell<BTreeMap<usize, Option<f64>>> = const { RefCell::new(BTreeMap::new()) };
+    static PARAMETER_NAME_CACHE: RefCell<BTreeMap<(usize, usize), String>> = const { RefCell::new(BTreeMap::new()) };
+    static RAW_FUNCTION_EXPR_CACHE: RefCell<BTreeMap<(usize, bool, usize, bool, DecodeResolutionContext), FunctionExpr>> = const { RefCell::new(BTreeMap::new()) };
     static DEGREE_UNITS_CACHE: RefCell<BTreeMap<(usize, usize), bool>> = const { RefCell::new(BTreeMap::new()) };
+}
+
+pub(crate) fn with_compact_parameter_names<T>(compact: bool, f: impl FnOnce() -> T) -> T {
+    if !compact {
+        return f();
+    }
+    COMPACT_PARAMETER_NAMES.with(|state| {
+        let previous = state.replace(true);
+        let result = f();
+        state.set(previous);
+        result
+    })
 }
 
 pub(crate) fn with_numeric_helper_cache<T>(f: impl FnOnce() -> T) -> T {
@@ -95,8 +111,146 @@ fn clear_decode_caches() {
     NUMERIC_HELPER_CACHE.with(|cache| cache.borrow_mut().clear());
     DEGREE_UNITS_CACHE.with(|cache| cache.borrow_mut().clear());
     MEASURED_VALUE_ANCHORS_CACHE.with(|cache| *cache.borrow_mut() = None);
+    RAW_ANCHOR_CACHE.with(|cache| cache.borrow_mut().clear());
+    FUNCTION_VALUE_CACHE.with(|cache| cache.borrow_mut().clear());
+    PARAMETER_NAME_CACHE.with(|cache| cache.borrow_mut().clear());
     RESOLVING_NUMERIC_HELPERS.with(|resolving| resolving.borrow_mut().clear());
     RESOLVING_MEASURED_VALUES.with(|resolving| resolving.borrow_mut().clear());
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct RawAnchorCacheKey {
+    group_count: usize,
+    point_map_fingerprint: u64,
+    graph: Option<(u64, u64, u64)>,
+}
+
+#[derive(Clone, Debug)]
+struct RawAnchorCacheEntry {
+    anchors: Vec<Option<PointRecord>>,
+    initial_anchors: Vec<Option<PointRecord>>,
+    complete: bool,
+}
+
+fn same_point(left: &Option<PointRecord>, right: &Option<PointRecord>) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => {
+            left.x.to_bits() == right.x.to_bits() && left.y.to_bits() == right.y.to_bits()
+        }
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+fn raw_anchor_cache_key(
+    group_count: usize,
+    point_map_fingerprint: u64,
+    graph: Option<&GraphTransform>,
+) -> RawAnchorCacheKey {
+    RawAnchorCacheKey {
+        group_count,
+        point_map_fingerprint,
+        graph: graph.map(|graph| {
+            (
+                graph.origin_raw.x.to_bits(),
+                graph.origin_raw.y.to_bits(),
+                graph.raw_per_unit.to_bits(),
+            )
+        }),
+    }
+}
+
+pub(crate) fn point_map_fingerprint(point_map: &[Option<PointRecord>]) -> u64 {
+    point_map.iter().fold(
+        0xcbf2_9ce4_8422_2325_u64 ^ point_map.len() as u64,
+        |hash, point| {
+            let (x, y) = point.as_ref().map_or((u64::MAX, u64::MAX), |point| {
+                (point.x.to_bits(), point.y.to_bits())
+            });
+            hash.wrapping_mul(0x100_0000_01b3) ^ x.rotate_left(17) ^ y.rotate_right(13)
+        },
+    )
+}
+
+pub(crate) fn cached_raw_object_anchors(
+    group_count: usize,
+    point_map_fingerprint: u64,
+    graph: Option<&GraphTransform>,
+    initial_anchors: &[Option<PointRecord>],
+    compute: impl FnOnce() -> Vec<Option<PointRecord>>,
+) -> Vec<Option<PointRecord>> {
+    if !decode_cache_is_active() {
+        return compute();
+    }
+    let key = raw_anchor_cache_key(group_count, point_map_fingerprint, graph);
+    if let Some(anchors) = RAW_ANCHOR_CACHE.with(|cache| {
+        let cache = cache.borrow();
+        if let Some(entry) = cache.get(&key)
+            && entry.complete
+        {
+            return Some(entry.anchors.clone());
+        }
+        cache
+            .iter()
+            .filter(|(candidate, entry)| {
+                **candidate != key
+                    && !entry.complete
+                    && candidate.graph == key.graph
+                    && candidate.group_count >= group_count
+                    && entry
+                        .initial_anchors
+                        .iter()
+                        .zip(initial_anchors)
+                        .take(group_count)
+                        .all(|(left, right)| same_point(left, right))
+            })
+            .min_by_key(|(candidate, _)| candidate.group_count)
+            .map(|(_, entry)| entry.anchors[..group_count].to_vec())
+    }) {
+        return anchors;
+    }
+    RAW_ANCHOR_CACHE.with(|cache| {
+        cache.borrow_mut().insert(
+            key,
+            RawAnchorCacheEntry {
+                anchors: initial_anchors.to_vec(),
+                initial_anchors: initial_anchors.to_vec(),
+                complete: false,
+            },
+        );
+    });
+    let anchors = compute();
+    RAW_ANCHOR_CACHE.with(|cache| {
+        cache.borrow_mut().insert(
+            key,
+            RawAnchorCacheEntry {
+                anchors: anchors.clone(),
+                initial_anchors: initial_anchors.to_vec(),
+                complete: true,
+            },
+        );
+    });
+    anchors
+}
+
+pub(crate) fn set_cached_raw_object_anchor(
+    group_count: usize,
+    point_map_fingerprint: u64,
+    graph: Option<&GraphTransform>,
+    index: usize,
+    anchor: Option<PointRecord>,
+) {
+    if !decode_cache_is_active() {
+        return;
+    }
+    let key = raw_anchor_cache_key(group_count, point_map_fingerprint, graph);
+    RAW_ANCHOR_CACHE.with(|cache| {
+        if let Some(entry) = cache.borrow_mut().get_mut(&key)
+            && let Some(slot) = entry.anchors.get_mut(index)
+        {
+            *slot = anchor;
+        }
+    });
 }
 
 pub(crate) fn with_function_expr_cache<T>(f: impl FnOnce() -> T) -> T {
@@ -116,6 +270,9 @@ impl FunctionExprCacheGuard {
         if outermost {
             FUNCTION_EXPR_CACHE.with(|cache| cache.borrow_mut().clear());
             RAW_FUNCTION_EXPR_CACHE.with(|cache| cache.borrow_mut().clear());
+            if !decode_cache_is_active() {
+                PARAMETER_NAME_CACHE.with(|cache| cache.borrow_mut().clear());
+            }
         }
         Self { outermost }
     }
@@ -126,6 +283,9 @@ impl Drop for FunctionExprCacheGuard {
         if self.outermost {
             FUNCTION_EXPR_CACHE.with(|cache| cache.borrow_mut().clear());
             RAW_FUNCTION_EXPR_CACHE.with(|cache| cache.borrow_mut().clear());
+            if !decode_cache_is_active() {
+                PARAMETER_NAME_CACHE.with(|cache| cache.borrow_mut().clear());
+            }
             FUNCTION_EXPR_CACHE_ACTIVE.with(|active| active.set(false));
         }
     }
@@ -133,6 +293,21 @@ impl Drop for FunctionExprCacheGuard {
 
 fn function_expr_cache_is_active() -> bool {
     FUNCTION_EXPR_CACHE_ACTIVE.with(Cell::get)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct DecodeResolutionContext {
+    numeric_helpers: Vec<usize>,
+    measured_values: Vec<usize>,
+}
+
+fn decode_resolution_context() -> DecodeResolutionContext {
+    DecodeResolutionContext {
+        numeric_helpers: RESOLVING_NUMERIC_HELPERS
+            .with(|resolving| resolving.borrow().iter().copied().collect()),
+        measured_values: RESOLVING_MEASURED_VALUES
+            .with(|resolving| resolving.borrow().iter().copied().collect()),
+    }
 }
 
 fn is_function_like_group(group: &ObjectGroup) -> bool {
@@ -191,19 +366,25 @@ pub(crate) fn try_decode_function_expr(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Result<FunctionExpr, FunctionExprParseError> {
+    let cache_key = (
+        group.ordinal,
+        groups.len(),
+        COMPACT_PARAMETER_NAMES.with(Cell::get),
+        decode_resolution_context(),
+    );
     if function_expr_cache_is_active()
-        && let Some(cached) = FUNCTION_EXPR_CACHE
-            .with(|cache| cache.borrow().get(&(group.ordinal, groups.len())).cloned())
+        && let Some(cached) =
+            FUNCTION_EXPR_CACHE.with(|cache| cache.borrow().get(&cache_key).cloned())
     {
-        return cached;
+        return Ok(cached);
     }
     let decoded = decode_function_expr_recursive(file, groups, group, &mut BTreeSet::new())
         .map(|expr| apply_payload_angle_units(file, groups, group, expr));
-    if function_expr_cache_is_active() {
+    if function_expr_cache_is_active()
+        && let Ok(expr) = &decoded
+    {
         FUNCTION_EXPR_CACHE.with(|cache| {
-            cache
-                .borrow_mut()
-                .insert((group.ordinal, groups.len()), decoded.clone());
+            cache.borrow_mut().insert(cache_key, expr.clone());
         });
     }
     decoded
@@ -479,7 +660,23 @@ pub(crate) fn evaluate_function_group_with_overrides(
     group: &ObjectGroup,
     overrides: &BTreeMap<String, f64>,
 ) -> Option<f64> {
-    evaluate_function_group_recursive(file, groups, group, overrides, &mut BTreeSet::new())
+    let mut values = if overrides.is_empty() && decode_cache_is_active() {
+        FUNCTION_VALUE_CACHE.with(|cache| cache.borrow().clone())
+    } else {
+        BTreeMap::new()
+    };
+    let value = evaluate_function_group_recursive(
+        file,
+        groups,
+        group,
+        overrides,
+        &mut BTreeSet::new(),
+        &mut values,
+    );
+    if overrides.is_empty() && decode_cache_is_active() {
+        FUNCTION_VALUE_CACHE.with(|cache| cache.borrow_mut().extend(values));
+    }
+    value
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -517,13 +714,16 @@ fn decode_function_expr_recursive_impl(
     if visiting.contains(&group.ordinal) {
         return Err(FunctionExprParseError::NoExpressionFound { word_len: 0 });
     }
+    let cache_key = (
+        group.ordinal,
+        inline_function_refs,
+        groups.len(),
+        COMPACT_PARAMETER_NAMES.with(Cell::get),
+        decode_resolution_context(),
+    );
     if function_expr_cache_is_active()
-        && let Some(cached) = RAW_FUNCTION_EXPR_CACHE.with(|cache| {
-            cache
-                .borrow()
-                .get(&(group.ordinal, inline_function_refs, groups.len()))
-                .cloned()
-        })
+        && let Some(cached) =
+            RAW_FUNCTION_EXPR_CACHE.with(|cache| cache.borrow().get(&cache_key).cloned())
     {
         return Ok(cached);
     }
@@ -561,10 +761,7 @@ fn decode_function_expr_recursive_impl(
         && let Ok(expr) = &expr
     {
         RAW_FUNCTION_EXPR_CACHE.with(|cache| {
-            cache.borrow_mut().insert(
-                (group.ordinal, inline_function_refs, groups.len()),
-                expr.clone(),
-            );
+            cache.borrow_mut().insert(cache_key, expr.clone());
         });
     }
     expr
@@ -820,8 +1017,8 @@ pub(crate) fn try_decode_numeric_helper_group(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<FunctionExpr> {
-    if let Some(cached) =
-        NUMERIC_HELPER_CACHE.with(|cache| cache.borrow().get(&group.ordinal).cloned())
+    let cache_key = (group.ordinal, COMPACT_PARAMETER_NAMES.with(Cell::get));
+    if let Some(cached) = NUMERIC_HELPER_CACHE.with(|cache| cache.borrow().get(&cache_key).cloned())
     {
         return cached;
     }
@@ -840,7 +1037,7 @@ pub(crate) fn try_decode_numeric_helper_group(
         };
         if result.is_some() || !retry_after_missing_dependencies {
             NUMERIC_HELPER_CACHE.with(|cache| {
-                cache.borrow_mut().insert(group.ordinal, result.clone());
+                cache.borrow_mut().insert(cache_key, result.clone());
             });
         }
         result
@@ -1959,14 +2156,20 @@ fn evaluate_function_group_recursive(
     group: &ObjectGroup,
     overrides: &BTreeMap<String, f64>,
     visiting: &mut BTreeSet<usize>,
+    values: &mut BTreeMap<usize, Option<f64>>,
 ) -> Option<f64> {
+    if let Some(value) = values.get(&group.ordinal) {
+        return *value;
+    }
     if !visiting.insert(group.ordinal) {
         return None;
     }
     let result = (|| {
         if !is_function_like_group(group) {
-            return decode_runtime_parameter_binding(file, groups, group, overrides, visiting)
-                .map(|binding| binding.value);
+            return decode_runtime_parameter_binding(
+                file, groups, group, overrides, visiting, values,
+            )
+            .map(|binding| binding.value);
         }
         let runtime_value = (|| {
             let payload = group_function_payload(file, group).ok()?;
@@ -1980,6 +2183,7 @@ fn evaluate_function_group_recursive(
                         parameter_group,
                         overrides,
                         visiting,
+                        values,
                     )?;
                     parameters.insert(index as u16, binding);
                 }
@@ -1993,6 +2197,7 @@ fn evaluate_function_group_recursive(
         })
     })();
     visiting.remove(&group.ordinal);
+    values.insert(group.ordinal, result);
     result
 }
 
@@ -2094,13 +2299,14 @@ fn decode_runtime_parameter_binding(
     group: &ObjectGroup,
     overrides: &BTreeMap<String, f64>,
     visiting: &mut BTreeSet<usize>,
+    values: &mut BTreeMap<usize, Option<f64>>,
 ) -> Option<ParameterBinding> {
     if (group.header.kind()) == crate::format::GroupKind::MeasuredValue {
         return decode_measured_value_binding(file, groups, group);
     }
     if let Some(expr) = try_decode_numeric_helper_group(file, groups, group) {
         let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())?;
-        let name = group_name(file, groups, group).unwrap_or_else(|| function_expr_label(expr));
+        let name = function_parameter_name(file, groups, group, &expr);
         return Some(ParameterBinding::value(name, value));
     }
     if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
@@ -2126,8 +2332,9 @@ fn decode_runtime_parameter_binding(
             return None;
         }
         let binding = (|| {
-            let mut binding =
-                decode_runtime_parameter_binding(file, groups, source, overrides, visiting)?;
+            let mut binding = decode_runtime_parameter_binding(
+                file, groups, source, overrides, visiting, values,
+            )?;
             binding.name = group_name(file, groups, group).unwrap_or(binding.name);
             if let Some(value) = overrides.get(&binding.name).copied() {
                 binding.value = value;
@@ -2140,9 +2347,9 @@ fn decode_runtime_parameter_binding(
     }
     if is_function_like_group(group) {
         let expr = decode_function_expr_recursive(file, groups, group, visiting).ok()?;
-        let name =
-            group_name(file, groups, group).unwrap_or_else(|| function_expr_label(expr.clone()));
-        let value = evaluate_function_group_recursive(file, groups, group, overrides, visiting)?;
+        let name = function_parameter_name(file, groups, group, &expr);
+        let value =
+            evaluate_function_group_recursive(file, groups, group, overrides, visiting, values)?;
         return Some(ParameterBinding::value(name, value));
     }
 
@@ -2180,7 +2387,7 @@ fn decode_parameter_binding_recursive(
     }
     if let Some(expr) = try_decode_numeric_helper_group(file, groups, group) {
         let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new())?;
-        let name = group_name(file, groups, group).unwrap_or_else(|| function_expr_label(expr));
+        let name = function_parameter_name(file, groups, group, &expr);
         return Some(ParameterBinding::value(name, value));
     }
     if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
@@ -2218,8 +2425,7 @@ fn decode_parameter_binding_recursive(
     }
     if is_function_like_group(group) {
         if let Ok(expr) = decode_function_expr_recursive(file, groups, group, visiting) {
-            let name = group_name(file, groups, group)
-                .unwrap_or_else(|| function_expr_label(expr.clone()));
+            let name = function_parameter_name(file, groups, group, &expr);
             let value = evaluate_expr_with_parameters(&expr, 0.0, &BTreeMap::new());
             if !inline_function_refs
                 || function_expr_contains_variable(&expr)
@@ -2532,6 +2738,31 @@ fn group_name(file: &GspFile, groups: &[ObjectGroup], group: &ObjectGroup) -> Op
         .find(|record| record.record_type == RECORD_LABEL_AUX)
         .and_then(|record| decode_parameter_name(record.payload(&file.data)))
         .or_else(|| numeric_helper_group_name(file, groups, group))
+}
+
+pub(crate) fn function_parameter_name(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    expr: &FunctionExpr,
+) -> String {
+    if let Some(name) = group_name(file, groups, group) {
+        return name;
+    }
+    if COMPACT_PARAMETER_NAMES.with(Cell::get) {
+        return format!("__object_{}", group.ordinal);
+    }
+    let key = (group.ordinal, groups.len());
+    if (decode_cache_is_active() || function_expr_cache_is_active())
+        && let Some(name) = PARAMETER_NAME_CACHE.with(|cache| cache.borrow().get(&key).cloned())
+    {
+        return name;
+    }
+    let name = crate::runtime::functions::function_expr_label(expr.clone());
+    if decode_cache_is_active() || function_expr_cache_is_active() {
+        PARAMETER_NAME_CACHE.with(|cache| cache.borrow_mut().insert(key, name.clone()));
+    }
+    name
 }
 
 pub(crate) fn numeric_helper_group_name(

@@ -62,10 +62,9 @@ pub(super) use basic::{
 };
 pub(super) use iterations::{
     collect_carried_circle_iteration_families, collect_carried_iteration_circles,
-    collect_carried_iteration_lines, collect_carried_iteration_polygons,
-    collect_carried_line_iteration_families, collect_carried_line_iteration_image_groups,
-    collect_carried_polygon_edge_segment_groups, collect_carried_polygon_iteration_families,
-    collect_rotational_line_iteration_families,
+    collect_carried_iteration_polygons, collect_carried_line_iteration_families,
+    collect_carried_line_iteration_image_groups, collect_carried_polygon_edge_segment_groups,
+    collect_carried_polygon_iteration_families, collect_rotational_line_iteration_families,
 };
 pub(super) use transforms::{
     collect_reflected_arc_shapes, collect_reflected_circle_shapes, collect_reflected_line_shapes,
@@ -81,7 +80,6 @@ pub(super) fn collect_scene_shapes(
     context: &SceneContext<'_>,
     analysis: &SceneAnalysis,
 ) -> CollectedShapes {
-    let suppressed_segment_groups = collect_carried_polygon_edge_segment_groups(file, groups);
     let suppressed_carried_line_images = collect_carried_line_iteration_image_groups(file, groups);
     let suppressed_ray_groups = collect_materialized_ray_groups(file, groups);
     let segments = collect_line_shapes(
@@ -202,20 +200,9 @@ pub(super) fn collect_scene_shapes(
             &analysis.raw_anchors,
         ))
         .collect();
-    let iteration_lines = Vec::new();
-    let iteration_polygons = Vec::new();
-    let carried_iteration_lines = collect_carried_iteration_lines(
-        file,
-        groups,
-        &analysis.raw_anchors,
-        &suppressed_segment_groups,
-    );
 
     lines.shrink_to_fit();
-    let post_function_lines = iteration_lines
-        .into_iter()
-        .chain(carried_iteration_lines)
-        .collect::<Vec<_>>();
+    let post_function_lines = Vec::new();
     let polygons = base_polygons
         .into_iter()
         .chain(collect_translated_polygon_shapes(
@@ -242,7 +229,6 @@ pub(super) fn collect_scene_shapes(
             context,
             &analysis.raw_anchors,
         ))
-        .chain(iteration_polygons)
         .chain(collect_carried_iteration_polygons(
             file,
             groups,

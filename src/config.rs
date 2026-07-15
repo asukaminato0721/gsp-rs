@@ -10,6 +10,7 @@ pub struct Config {
     pub render_height: u32,
     pub upload_url: Option<String>,
     pub mode: CompileMode,
+    pub output_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,8 +40,9 @@ impl Config {
         }
 
         let mut mode = CompileMode::Standard;
-        let mut jobs = Vec::new();
+        let mut inputs = Vec::new();
         let mut upload_url = None;
+        let mut output_dir = None;
         let mut index = 0usize;
         while index < raw_args.len() {
             let arg = raw_args[index].to_string_lossy();
@@ -51,23 +53,34 @@ impl Config {
                 "--html" => {
                     mode = CompileMode::HtmlOnly;
                 }
+                "--output-dir" => {
+                    index += 1;
+                    let Some(value) = raw_args.get(index) else {
+                        return Err(miette!("--output-dir requires a path\n{}", Self::usage()));
+                    };
+                    output_dir = Some(PathBuf::from(value));
+                }
                 value if value.starts_with('-') => {
                     return Err(miette!("unknown flag: {value}\n{}", Self::usage()));
                 }
                 _ => {
-                    let gsp_path = PathBuf::from(&raw_args[index]);
-                    jobs.push(RenderJob {
-                        html_path: gsp_path.with_extension("html"),
-                        gsp_path,
-                    });
+                    inputs.push(PathBuf::from(&raw_args[index]));
                 }
             }
             index += 1;
         }
 
-        if jobs.is_empty() {
+        if inputs.is_empty() {
             return Err(miette!(Self::usage()));
         }
+
+        let jobs = inputs
+            .into_iter()
+            .map(|gsp_path| RenderJob {
+                html_path: output_path(&gsp_path, output_dir.as_deref()),
+                gsp_path,
+            })
+            .collect();
 
         if mode == CompileMode::HtmlOnly {
             upload_url = None;
@@ -79,19 +92,37 @@ impl Config {
             render_height: 600,
             upload_url,
             mode,
+            output_dir,
         })
     }
 
     pub fn usage() -> String {
         [
-            "usage: gsp-rs [--upload] [--html] <path/to/file1.gsp> [path/to/file2.gsp ...]",
+            "usage: gsp-rs [--upload] [--html] [--output-dir DIR] <file1.gsp> [file2.gsp ...]",
             "",
             "--upload uploads each successfully compiled .gsp file.",
             "--html only writes the bundled .html output.",
+            "--output-dir mirrors output artifacts below DIR.",
             "GSP_RS_WORKER_TIMEOUT_MS optionally sets a per-file compiler timeout; unset means no timeout.",
         ]
         .join("\n")
     }
+}
+
+fn output_path(gsp_path: &std::path::Path, output_dir: Option<&std::path::Path>) -> PathBuf {
+    let Some(output_dir) = output_dir else {
+        return gsp_path.with_extension("html");
+    };
+    let relative = if gsp_path.is_absolute() {
+        std::env::current_dir()
+            .ok()
+            .and_then(|cwd| gsp_path.strip_prefix(cwd).ok().map(PathBuf::from))
+            .or_else(|| gsp_path.file_name().map(PathBuf::from))
+            .unwrap_or_else(|| PathBuf::from("output.gsp"))
+    } else {
+        gsp_path.to_path_buf()
+    };
+    output_dir.join(relative).with_extension("html")
 }
 
 #[cfg(test)]
@@ -123,6 +154,18 @@ mod tests {
     fn rejects_unknown_flags() {
         let error = Config::parse(["--wat", "a.gsp"].into_iter()).expect_err("unknown flag");
         assert!(error.to_string().contains("unknown flag: --wat"));
+    }
+
+    #[test]
+    fn mirrors_outputs_below_the_requested_directory() {
+        let config =
+            Config::parse(["--output-dir", "target/corpus", "tests/nested/a.gsp"].into_iter())
+                .expect("config parses");
+        assert_eq!(config.output_dir, Some(PathBuf::from("target/corpus")));
+        assert_eq!(
+            config.jobs[0].html_path,
+            PathBuf::from("target/corpus/tests/nested/a.html")
+        );
     }
 
     #[test]

@@ -33,7 +33,7 @@ use super::trace::{
 use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, record_name};
 use crate::runtime::functions::{
     collect_scene_functions, collect_scene_parameters, collect_standalone_function_definitions,
-    with_numeric_helper_cache,
+    with_function_expr_cache, with_numeric_helper_cache,
 };
 use crate::runtime::scene::{
     LabelIterationFamily, LineBinding, LineIterationFamily, LineShape, PayloadDebugSource,
@@ -85,7 +85,7 @@ pub(in crate::runtime) fn payload_debug_source(group: &ObjectGroup) -> PayloadDe
 }
 
 pub(crate) fn build_scene_checked(file: &GspFile) -> Result<Scene> {
-    with_numeric_helper_cache(|| build_scene_checked_inner(file))
+    with_numeric_helper_cache(|| with_function_expr_cache(|| build_scene_checked_inner(file)))
 }
 
 fn build_scene_checked_inner(file: &GspFile) -> Result<Scene> {
@@ -576,6 +576,7 @@ fn collect_visible_points_and_traces(
         &visible_points,
         &group_to_point_index,
         &analysis.graph_ref,
+        None,
     ));
     bind_points_to_point_traces(
         file,
@@ -595,55 +596,63 @@ fn collect_visible_points_and_traces(
         &mut visible_points,
         &mut group_to_point_index,
     )?;
-    let existing_point_trace_indices = shapes
+    let incomplete_trace_ordinals = shapes
         .trace_lines
         .iter()
-        .enumerate()
-        .filter_map(|(index, trace)| {
-            trace
+        .filter(|trace| trace.points.len() < 2)
+        .filter_map(|trace| trace.debug.as_ref().map(|debug| debug.group_ordinal))
+        .collect::<std::collections::BTreeSet<_>>();
+    if !incomplete_trace_ordinals.is_empty() {
+        let trace_indices = shapes
+            .trace_lines
+            .iter()
+            .enumerate()
+            .filter_map(|(index, trace)| {
+                trace
+                    .debug
+                    .as_ref()
+                    .map(|debug| (debug.group_ordinal, index))
+            })
+            .collect::<BTreeMap<_, _>>();
+        for trace in collect_point_traces(
+            file,
+            groups,
+            &visible_points,
+            &group_to_point_index,
+            &analysis.graph_ref,
+            Some(&incomplete_trace_ordinals),
+        ) {
+            let Some(index) = trace
                 .debug
                 .as_ref()
-                .map(|debug| (debug.group_ordinal, index))
-        })
-        .collect::<BTreeMap<_, _>>();
-    for trace in collect_point_traces(
-        file,
-        groups,
-        &visible_points,
-        &group_to_point_index,
-        &analysis.graph_ref,
-    ) {
-        let Some(existing_index) = trace
-            .debug
-            .as_ref()
-            .and_then(|debug| existing_point_trace_indices.get(&debug.group_ordinal))
-            .copied()
-        else {
-            shapes.trace_lines.push(trace);
-            continue;
-        };
-        if shapes.trace_lines[existing_index].points.len() < 2 && trace.points.len() >= 2 {
-            shapes.trace_lines[existing_index] = trace;
+                .and_then(|debug| trace_indices.get(&debug.group_ordinal))
+                .copied()
+            else {
+                continue;
+            };
+            if trace.points.len() >= 2 {
+                shapes.trace_lines[index] = trace;
+            }
         }
+        bind_points_to_point_traces(
+            file,
+            groups,
+            &analysis.raw_anchors,
+            &mut visible_points,
+            &mut group_to_point_index,
+            &shapes.trace_lines,
+        );
+        refresh_visible_points_checked_with_context(
+            file,
+            groups,
+            context,
+            point_map,
+            &analysis.raw_anchors,
+            &analysis.graph_ref,
+            &mut visible_points,
+            &mut group_to_point_index,
+        )?;
     }
-    bind_points_to_point_traces(
-        file,
-        groups,
-        &analysis.raw_anchors,
-        &mut visible_points,
-        &mut group_to_point_index,
-        &shapes.trace_lines,
-    );
-    refresh_visible_points_checked_with_context(
-        file,
-        groups,
-        context,
-        point_map,
-        &analysis.raw_anchors,
-        &analysis.graph_ref,
-        &mut visible_points,
-        &mut group_to_point_index,
-    )?;
     shapes.trace_lines.extend(collect_segment_traces(
         file,
         groups,

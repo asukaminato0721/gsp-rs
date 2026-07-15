@@ -19,7 +19,10 @@ use crate::runtime::extract::points::{
 use crate::runtime::extract::points::{
     decode_directed_angle_anchor_raw, decode_legacy_angle_rotation_anchor_raw,
 };
-use crate::runtime::functions::with_function_expr_cache;
+use crate::runtime::functions::{
+    cached_raw_object_anchors, point_map_fingerprint, set_cached_raw_object_anchor,
+    with_function_expr_cache,
+};
 
 pub(crate) fn collect_raw_object_anchors(
     file: &GspFile,
@@ -27,19 +30,39 @@ pub(crate) fn collect_raw_object_anchors(
     point_map: &[Option<PointRecord>],
     graph: Option<&GraphTransform>,
 ) -> Vec<Option<PointRecord>> {
-    with_function_expr_cache(|| collect_raw_object_anchors_inner(file, groups, point_map, graph))
+    let point_map_fingerprint = point_map_fingerprint(point_map);
+    with_function_expr_cache(|| {
+        cached_raw_object_anchors(
+            groups.len(),
+            point_map_fingerprint,
+            graph,
+            point_map,
+            || {
+                collect_raw_object_anchors_inner(
+                    file,
+                    groups,
+                    point_map,
+                    point_map_fingerprint,
+                    graph,
+                )
+            },
+        )
+    })
 }
 
 fn collect_raw_object_anchors_inner(
     file: &GspFile,
     groups: &[ObjectGroup],
     point_map: &[Option<PointRecord>],
+    point_map_fingerprint: u64,
     graph: Option<&GraphTransform>,
 ) -> Vec<Option<PointRecord>> {
     let mut anchors = Vec::with_capacity(groups.len());
     for (index, group) in groups.iter().enumerate() {
         let anchor = if let Some(point) = point_map.get(index).cloned().flatten() {
             Some(point)
+        } else if group.header.kind() == crate::format::GroupKind::FunctionExpr {
+            inherited_anchor(file, group, &anchors)
         } else if is_parameter_control_group(group) {
             try_decode_payload_anchor_point(file, group).ok().flatten()
         } else if let Some(anchor) =
@@ -141,15 +164,28 @@ fn collect_raw_object_anchors_inner(
         } else if let Some(anchor) = decode_bbox_anchor_raw(file, group) {
             Some(anchor)
         } else {
-            if let Some(path) = find_indexed_path(file, group) {
-                path.refs.iter().rev().find_map(|object_ref| {
-                    anchors.get(object_ref.saturating_sub(1)).cloned().flatten()
-                })
-            } else {
-                None
-            }
+            inherited_anchor(file, group, &anchors)
         };
+        set_cached_raw_object_anchor(
+            groups.len(),
+            point_map_fingerprint,
+            graph,
+            index,
+            anchor.clone(),
+        );
         anchors.push(anchor);
     }
     anchors
+}
+
+fn inherited_anchor(
+    file: &GspFile,
+    group: &ObjectGroup,
+    anchors: &[Option<PointRecord>],
+) -> Option<PointRecord> {
+    find_indexed_path(file, group)?
+        .refs
+        .iter()
+        .rev()
+        .find_map(|object_ref| anchors.get(object_ref.saturating_sub(1)).cloned().flatten())
 }

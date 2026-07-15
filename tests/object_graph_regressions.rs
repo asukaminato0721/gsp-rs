@@ -1038,11 +1038,29 @@ fn legacy_coordinate_helpers_keep_piecewise_star_intersections_live() {
         .expect("piecewise helper expression");
     assert_eq!(
         expression_node["definition"]["op"]["parameter_names"],
-        serde_json::json!(["__param_anchor_142", "__ratio_value_231*__param_anchor_107"])
+        serde_json::json!(["__param_anchor_142", "__object_233"])
     );
     assert_eq!(
         expression_node["definition"]["parents"],
         serde_json::json!([parameter_scalar, nested_expression])
+    );
+
+    let nested_expression_node = scene["objectGraph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == nested_expression)
+        .expect("nested helper expression");
+    assert_eq!(
+        nested_expression_node["definition"]["op"]["parameter_names"],
+        serde_json::json!(["__object_232", "__object_120"])
+    );
+    assert_eq!(
+        nested_expression_node["definition"]["parents"],
+        serde_json::json!([
+            object_id_for_group(&scene, "labels", "scalar:label", 232),
+            object_id_for_group(&scene, "labels", "scalar:label", 120),
+        ])
     );
 
     let ratio = object_id_for_group(&scene, "labels", "scalar:label", 231);

@@ -3,11 +3,11 @@ use std::collections::BTreeSet;
 use super::SceneContext;
 use super::transforms::polygon_points_raw;
 use super::{
-    CircleShape, GspFile, LineIterationFamily, LineShape, ObjectGroup, PointRecord,
-    PolygonIterationFamily, PolygonShape, color_from_style, decode_label_name,
-    decode_translated_point_constraint, fill_color_from_styles, find_indexed_path, line_is_dashed,
-    line_stroke_width_from_style, regular_polygon_iteration_step,
-    try_decode_parameter_controlled_point, try_decode_point_constraint,
+    CircleShape, GspFile, LineIterationFamily, ObjectGroup, PointRecord, PolygonIterationFamily,
+    PolygonShape, color_from_style, decode_label_name, decode_translated_point_constraint,
+    fill_color_from_styles, find_indexed_path, line_is_dashed, line_stroke_width_from_style,
+    regular_polygon_iteration_step, try_decode_parameter_controlled_point,
+    try_decode_point_constraint,
 };
 use crate::runtime::extract::decode::resolve_circle_points_raw;
 use crate::runtime::extract::iteration_depth::decode_iteration_depth_expr;
@@ -26,14 +26,6 @@ struct AffinePointMap {
     target_origin: PointRecord,
     target_u: PointRecord,
     target_v: PointRecord,
-}
-
-#[derive(Clone)]
-struct SegmentSimilarityCoefficients {
-    start_alpha: f64,
-    start_beta: f64,
-    end_alpha: f64,
-    end_beta: f64,
 }
 
 #[derive(Clone)]
@@ -159,134 +151,6 @@ pub(crate) fn collect_rotational_line_iteration_families(
         }
     }
     families
-}
-
-pub(crate) fn collect_carried_iteration_lines(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    anchors: &[Option<PointRecord>],
-    suppressed_source_groups: &BTreeSet<usize>,
-) -> Vec<LineShape> {
-    groups
-        .iter()
-        .filter(|group| (group.header.kind()) == crate::format::GroupKind::IterationBinding)
-        .filter_map(|group| {
-            let path = find_indexed_path(file, group)?;
-            let source_group_index = path.refs.first()?.checked_sub(1)?;
-            if suppressed_source_groups.contains(&source_group_index) {
-                return None;
-            }
-            let source_group = groups.get(source_group_index)?;
-            if (source_group.header.kind()) != crate::format::GroupKind::Segment {
-                return None;
-            }
-            let iter_group = groups.get(path.refs.get(1)?.checked_sub(1)?)?;
-            if !iter_group.header.kind().is_carried_iteration() {
-                return None;
-            }
-            if (iter_group.header.kind()) == crate::format::GroupKind::RegularPolygonIteration
-                && regular_polygon_iteration_step(file, groups, iter_group).is_some()
-            {
-                return None;
-            }
-            let source_path = find_indexed_path(file, source_group)?;
-            if source_path.refs.len() != 2 {
-                return None;
-            }
-            let start = anchors.get(source_path.refs[0].checked_sub(1)?)?.clone()?;
-            let end = anchors.get(source_path.refs[1].checked_sub(1)?)?.clone()?;
-            let depth = carried_iteration_depth(file, iter_group, 3);
-            if depth == 0 {
-                return None;
-            }
-            if let Some(step) =
-                regular_polygon_translation_iteration_step(file, groups, iter_group, anchors)
-            {
-                let color = color_from_style(source_group.header.style_b);
-                return Some(
-                    (1..=depth)
-                        .map(|index| {
-                            let delta = step.clone() * index as f64;
-                            LineShape {
-                                points: vec![start.clone() + delta.clone(), end.clone() + delta],
-                                color,
-                                dashed: line_is_dashed(source_group.header.style_a),
-                                stroke_width: Some(line_stroke_width_from_style(
-                                    source_group.header.style_a,
-                                )),
-                                visible: !iter_group.header.is_hidden(),
-                                ..Default::default()
-                            }
-                        })
-                        .collect::<Vec<_>>(),
-                );
-            }
-            if let Some(branching) =
-                regular_polygon_branch_iteration(file, groups, iter_group, source_group)
-            {
-                let coeffs = branching
-                    .target_group_pairs
-                    .iter()
-                    .map(|(start_group_index, end_group_index)| {
-                        let target_start = anchors.get(*start_group_index)?.clone()?;
-                        let target_end = anchors.get(*end_group_index)?.clone()?;
-                        similarity_coefficients(&start, &end, &target_start, &target_end)
-                    })
-                    .collect::<Option<Vec<_>>>()?;
-                return Some(branching_lines(
-                    &start,
-                    &end,
-                    &coeffs,
-                    branching.depth,
-                    color_from_style(source_group.header.style_b),
-                    line_is_dashed(source_group.header.style_a),
-                    line_stroke_width_from_style(source_group.header.style_a),
-                    !iter_group.header.is_hidden(),
-                ));
-            }
-            if let Some(point_map) = carried_iteration_point_map(file, groups, iter_group, anchors)
-            {
-                let color = color_from_style(source_group.header.style_b);
-                let mut current_start = start.clone();
-                let mut current_end = end.clone();
-                let mut lines = Vec::with_capacity(depth);
-                for _ in 0..depth {
-                    current_start = point_map.map_point(&current_start);
-                    current_end = point_map.map_point(&current_end);
-                    lines.push(LineShape {
-                        points: vec![current_start.clone(), current_end.clone()],
-                        color,
-                        dashed: line_is_dashed(source_group.header.style_a),
-                        stroke_width: Some(line_stroke_width_from_style(
-                            source_group.header.style_a,
-                        )),
-                        visible: !iter_group.header.is_hidden(),
-                        ..Default::default()
-                    });
-                }
-                return Some(lines);
-            }
-            let steps = carried_iteration_steps(file, groups, iter_group, anchors);
-            let (step, secondary_step, bidirectional) = carried_iteration_basis(&steps)?;
-            let color = color_from_style(source_group.header.style_b);
-            Some(
-                carried_iteration_line_deltas(&step, secondary_step.as_ref(), depth, bidirectional)
-                    .into_iter()
-                    .map(|delta| LineShape {
-                        points: vec![start.clone() + delta.clone(), end.clone() + delta],
-                        color,
-                        dashed: line_is_dashed(source_group.header.style_a),
-                        stroke_width: Some(line_stroke_width_from_style(
-                            source_group.header.style_a,
-                        )),
-                        visible: !iter_group.header.is_hidden(),
-                        ..Default::default()
-                    })
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .flatten()
-        .collect()
 }
 
 pub(crate) fn collect_carried_line_iteration_image_groups(
@@ -673,31 +537,6 @@ fn regular_polygon_branch_iteration(
     })
 }
 
-fn similarity_coefficients(
-    source_start: &PointRecord,
-    source_end: &PointRecord,
-    target_start: &PointRecord,
-    target_end: &PointRecord,
-) -> Option<SegmentSimilarityCoefficients> {
-    let source_dx = source_end.x - source_start.x;
-    let source_dy = source_end.y - source_start.y;
-    let source_len_sq = source_dx * source_dx + source_dy * source_dy;
-    if source_len_sq <= 1e-9 {
-        return None;
-    }
-
-    let (start_alpha, start_beta) =
-        similarity_coefficients_for_point(source_start, source_end, target_start)?;
-    let (end_alpha, end_beta) =
-        similarity_coefficients_for_point(source_start, source_end, target_end)?;
-    Some(SegmentSimilarityCoefficients {
-        start_alpha,
-        start_beta,
-        end_alpha,
-        end_beta,
-    })
-}
-
 fn similarity_coefficients_for_point(
     source_start: &PointRecord,
     source_end: &PointRecord,
@@ -729,50 +568,6 @@ fn apply_similarity_coefficients(
         x: segment_start.x + alpha * dx - beta * dy,
         y: segment_start.y + alpha * dy + beta * dx,
     }
-}
-
-fn branching_lines(
-    seed_start: &PointRecord,
-    seed_end: &PointRecord,
-    coeffs: &[SegmentSimilarityCoefficients],
-    depth: usize,
-    color: [u8; 4],
-    dashed: bool,
-    stroke_width: f64,
-    visible: bool,
-) -> Vec<LineShape> {
-    let mut frontier = vec![(seed_start.clone(), seed_end.clone())];
-    let mut lines = Vec::new();
-    for _ in 0..depth {
-        let mut next = Vec::new();
-        for (current_start, current_end) in frontier {
-            for coeff in coeffs {
-                let child_start = apply_similarity_coefficients(
-                    &current_start,
-                    &current_end,
-                    coeff.start_alpha,
-                    coeff.start_beta,
-                );
-                let child_end = apply_similarity_coefficients(
-                    &current_start,
-                    &current_end,
-                    coeff.end_alpha,
-                    coeff.end_beta,
-                );
-                lines.push(LineShape {
-                    points: vec![child_start.clone(), child_end.clone()],
-                    color,
-                    dashed,
-                    stroke_width: Some(stroke_width),
-                    visible,
-                    ..Default::default()
-                });
-                next.push((child_start, child_end));
-            }
-        }
-        frontier = next;
-    }
-    lines
 }
 
 pub(crate) fn collect_carried_polygon_edge_segment_groups(
@@ -1062,70 +857,6 @@ fn is_zero_step(step: &PointRecord) -> bool {
 
 fn same_iteration_step(left: &PointRecord, right: &PointRecord) -> bool {
     (left.x - right.x).abs() < 1e-6 && (left.y - right.y).abs() < 1e-6
-}
-
-fn carried_iteration_line_deltas(
-    step: &PointRecord,
-    secondary_step: Option<&PointRecord>,
-    depth: usize,
-    bidirectional: bool,
-) -> Vec<PointRecord> {
-    if bidirectional {
-        if let Some(secondary) = secondary_step {
-            let mut deltas = Vec::new();
-            for primary_index in -(depth as isize)..=(depth as isize) {
-                for secondary_index in -(depth as isize)..=(depth as isize) {
-                    if primary_index == 0 && secondary_index == 0 {
-                        continue;
-                    }
-                    if primary_index.unsigned_abs() + secondary_index.unsigned_abs() > depth {
-                        continue;
-                    }
-                    deltas.push(PointRecord {
-                        x: step.x * primary_index as f64 + secondary.x * secondary_index as f64,
-                        y: step.y * primary_index as f64 + secondary.y * secondary_index as f64,
-                    });
-                }
-            }
-            return deltas;
-        }
-        return (1..=depth)
-            .flat_map(|index| {
-                [
-                    PointRecord {
-                        x: step.x * index as f64,
-                        y: step.y * index as f64,
-                    },
-                    PointRecord {
-                        x: -step.x * index as f64,
-                        y: -step.y * index as f64,
-                    },
-                ]
-            })
-            .collect();
-    }
-    if let Some(secondary) = secondary_step {
-        let mut deltas = Vec::new();
-        for primary_index in 0..=depth {
-            for secondary_index in 0..=depth - primary_index {
-                if primary_index == 0 && secondary_index == 0 {
-                    continue;
-                }
-                deltas.push(PointRecord {
-                    x: step.x * primary_index as f64 + secondary.x * secondary_index as f64,
-                    y: step.y * primary_index as f64 + secondary.y * secondary_index as f64,
-                });
-            }
-        }
-        return deltas;
-    }
-
-    (1..=depth)
-        .map(|index| PointRecord {
-            x: step.x * index as f64,
-            y: step.y * index as f64,
-        })
-        .collect()
 }
 
 fn carried_iteration_polygon_deltas(

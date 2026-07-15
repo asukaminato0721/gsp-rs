@@ -498,33 +498,29 @@ fn preserves_carried_segment_default_depth_iteration_fixture() {
 
     assert_eq!(
         scene.lines.len(),
-        4,
-        "expected original segment plus three carried copies"
+        1,
+        "expected only the payload source segment"
     );
     assert_eq!(
         scene.points.len(),
         2,
         "expected the payload's original point and initial image; later images are interpreted"
     );
-    let starts = scene
-        .lines
-        .iter()
-        .map(|line| line.points.first().cloned().expect("segment start"))
-        .collect::<Vec<_>>();
     assert!(
-        starts
-            .iter()
-            .any(|point| { (point.x - 168.0).abs() < 1e-6 && (point.y - 376.0).abs() < 1e-6 })
+        scene.line_iterations.iter().any(|family| matches!(
+            family,
+            LineIterationFamily::Translate {
+                start_index: 0,
+                end_index: 1,
+                dx,
+                dy,
+                depth: 3,
+                ..
+            } if (*dx - 37.79527559055117).abs() < 1e-6
+                && (*dy + 37.79527559055117).abs() < 1e-6
+        )),
+        "expected the carried copies to remain a live runtime iteration family"
     );
-    assert!(starts.iter().any(|point| {
-        (point.x - 205.79527559055117).abs() < 1e-6 && (point.y - 338.20472440944883).abs() < 1e-6
-    }));
-    assert!(starts.iter().any(|point| {
-        (point.x - 243.59055118110234).abs() < 1e-6 && (point.y - 300.40944881889766).abs() < 1e-6
-    }));
-    assert!(starts.iter().any(|point| {
-        (point.x - 281.3858267716535).abs() < 1e-6 && (point.y - 262.6141732283465).abs() < 1e-6
-    }));
 }
 
 #[test]
@@ -724,13 +720,13 @@ fn preserves_midpoint_triangle_iteration_geometry() {
         );
     }
 
-    assert!(scene.lines.iter().any(|line| {
-        line.points.len() == 2
-            && (line.points[0].x - 751.0).abs() < 0.01
-            && (line.points[0].y - 467.5).abs() < 0.01
-            && (line.points[1].x - 853.0).abs() < 0.01
-            && (line.points[1].y - 319.5).abs() < 0.01
-    }));
+    assert_eq!(scene.line_iterations.len(), 3);
+    assert!(
+        scene
+            .line_iterations
+            .iter()
+            .all(|family| matches!(family, LineIterationFamily::Affine { depth: 3, .. }))
+    );
     assert!(
         !scene.lines.iter().any(|line| {
             line.points.len() == 2

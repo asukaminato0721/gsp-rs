@@ -82,7 +82,12 @@ impl<'a> FileCompileJob<'a> {
             ));
         }
         artifacts::write_debug_json(&self.paths, &document.render_scene_json())?;
-        artifacts::write_payload_log(self.gsp_path, &self.paths, &file)?;
+        artifacts::write_payload_log(
+            self.gsp_path,
+            &self.paths,
+            &file,
+            document.payload_log_graph_transform(),
+        )?;
         Ok(())
     }
 

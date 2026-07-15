@@ -801,6 +801,7 @@ pub(super) fn assemble_scene(
             .graph_ref
             .as_ref()
             .map(|transform| to_world(&transform.origin_raw, &analysis.graph_ref)),
+        graph_transform: analysis.graph_ref.clone(),
         bounds: bounds_data.bounds,
         images: artifacts
             .images
