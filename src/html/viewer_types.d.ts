@@ -24,7 +24,6 @@ type ScenePointJson = import("./generated/ScenePointJson").ScenePointJson;
 type PointConstraintJson = import("./generated/PointConstraintJson").PointConstraintJson;
 type PointBindingJson = import("./generated/PointBindingJson").PointBindingJson;
 type PointTransformJson = import("./generated/PointTransformJson").PointTransformJson;
-type TransformJson = import("./generated/TransformJson").TransformJson;
 type LineJson = import("./generated/LineJson").LineJson;
 type LineBindingJson = import("./generated/LineBindingJson").LineBindingJson;
 type PolygonJson = import("./generated/PolygonJson").PolygonJson;
@@ -868,24 +867,12 @@ interface Window {
       rightRadius: number,
     ) => Point[];
     pointCircleTangents: (point: Point, center: Point, radius: number) => Point[];
-    resolvePointConstraints: (
-      points: RuntimeScenePointJson[],
-      pointOrder: number[],
-      yUp: boolean,
-      parameters: Map<string, number>,
-    ) => Array<Point | null>;
     inversePointTransform: (
       world: Point,
       transform: PointTransformJson,
       points: RuntimeScenePointJson[],
       parameters: Map<string, number>,
     ) => Point | null;
-    transformPoints: (
-      points: Point[],
-      transform: TransformJson,
-      scene: ViewerSceneData,
-      parameters: Map<string, number>,
-    ) => Point[] | null;
     sampleFunction: (
       expr: FunctionExprJson | FunctionAstJson,
       parameters: Map<string, number>,

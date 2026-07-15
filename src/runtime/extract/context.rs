@@ -186,7 +186,7 @@ fn decode_group_indexed_path(
     let Some(record) = record else {
         return Ok(None);
     };
-    decode_indexed_path(record.record_type, record.payload(&file.data))
+    decode_indexed_path(record.payload(&file.data))
         .map(Some)
         .ok_or(IndexedPathDecodeError::MalformedPathRecord {
             record_type: record.record_type,

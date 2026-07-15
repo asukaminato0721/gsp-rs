@@ -99,9 +99,7 @@ impl GspFile {
         self.records
             .iter()
             .filter_map(|record| match record.record_type {
-                0x07d2 | 0x07d3 => {
-                    decode_indexed_path(record.record_type, record.payload(&self.data))
-                }
+                0x07d2 | 0x07d3 => decode_indexed_path(record.payload(&self.data)),
                 _ => None,
             })
             .collect()
@@ -311,8 +309,6 @@ impl SubAssign for PointRecord {
 
 #[derive(Debug, Clone)]
 pub struct IndexedPathRecord {
-    #[allow(dead_code)]
-    pub record_type: u32,
     pub refs: Vec<usize>,
 }
 
@@ -341,11 +337,8 @@ impl ObjectGroupHeader {
 
 #[derive(Debug, Clone)]
 pub struct ObjectGroup {
-    #[allow(dead_code)]
     pub ordinal: usize,
-    #[allow(dead_code)]
     pub start_offset: usize,
-    #[allow(dead_code)]
     pub end_offset: usize,
     pub header: ObjectGroupHeader,
     pub object_aux_0x07d6_words: Option<Vec<u16>>,

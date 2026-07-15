@@ -867,23 +867,6 @@ pub(crate) fn try_decode_payload_anchor_point(
     }))
 }
 
-#[allow(dead_code)]
-pub(crate) fn decode_caption_text(
-    file: &GspFile,
-    groups: &[ObjectGroup],
-    group: &ObjectGroup,
-) -> Option<String> {
-    let path = find_indexed_path(file, group)?;
-    let mut parts = Vec::new();
-    for &obj_ref in &path.refs {
-        let ref_group = groups.get(obj_ref.checked_sub(1)?)?;
-        if let Some(name) = decode_label_name(file, ref_group) {
-            parts.push(name);
-        }
-    }
-    (!parts.is_empty()).then(|| parts.join(", "))
-}
-
 pub(crate) fn decode_label_name(file: &GspFile, group: &ObjectGroup) -> Option<String> {
     let payload = group
         .records
@@ -933,7 +916,7 @@ pub(crate) fn try_find_indexed_path(
     let Some(record) = record else {
         return Ok(None);
     };
-    decode_indexed_path(record.record_type, record.payload(&file.data))
+    decode_indexed_path(record.payload(&file.data))
         .map(Some)
         .ok_or(IndexedPathDecodeError::MalformedPathRecord {
             record_type: record.record_type,

@@ -749,7 +749,7 @@ fn parse_trailing_scanned_function_expr(
     })
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(super) fn parse_function_expr(
     payload: &[u8],
     parameters: &BTreeMap<u16, ParameterBinding>,
@@ -1096,18 +1096,6 @@ fn lex_grouped_function_token(
         kind,
         width_words: 1,
     })
-}
-
-#[allow(dead_code)]
-fn parse_grouped_function_expr(
-    payload: &[u8],
-    parameters: &BTreeMap<u16, ParameterBinding>,
-) -> Result<FunctionAst, FunctionExprParseError> {
-    let words = payload
-        .chunks_exact(2)
-        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-        .collect::<Vec<_>>();
-    parse_grouped_function_expr_from_words(&words, parameters)
 }
 
 pub(super) fn parse_grouped_function_expr_from_words(

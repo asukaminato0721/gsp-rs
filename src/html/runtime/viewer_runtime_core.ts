@@ -24,12 +24,10 @@
     gsp_circle_circle_intersections: (leftX: number, leftY: number, leftRadius: number, rightX: number, rightY: number, rightRadius: number) => number;
     gsp_point_circle_tangents: (pointX: number, pointY: number, centerX: number, centerY: number, radius: number) => number;
     gsp_compile_dependency_plan: (pointer: number, length: number) => number;
-    gsp_resolve_point_constraints: (pointer: number, length: number) => number;
     gsp_evaluate_object_graph: (pointer: number, length: number) => number;
     gsp_json_result_ptr: () => number;
     gsp_json_result_len: () => number;
     gsp_inverse_point_transform: (pointer: number, length: number) => number;
-    gsp_transform_points: (pointer: number, length: number) => number;
     gsp_dependency_topo_order: (handle: number) => number;
     gsp_dependency_affected: (handle: number, rootsPointer: number, rootsLength: number) => number;
     gsp_last_error_ptr: () => number;
@@ -407,31 +405,6 @@
     };
   }
 
-  function resolvePointConstraints(
-    points: RuntimeScenePointJson[],
-    pointOrder: number[],
-    yUp: boolean,
-    parameters: Map<string, number>,
-  ): Array<Point | null> {
-    const input = encoder.encode(JSON.stringify({
-      points,
-      pointOrder,
-      yUp,
-      parameters: Object.fromEntries(parameters),
-    }));
-    const count = withInputBytes(input, (pointer) =>
-      wasm.gsp_resolve_point_constraints(pointer, input.length));
-    if (count !== points.length) {
-      throw new Error(lastRuntimeError());
-    }
-    const values = batchScalars(count * 2);
-    return Array.from({ length: count }, (_, index) => {
-      const x = values[index * 2];
-      const y = values[index * 2 + 1];
-      return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
-    });
-  }
-
   function inversePointTransform(
     world: Point,
     transform: PointTransformJson,
@@ -446,24 +419,6 @@
     }));
     return withInputBytes(input, (pointer) =>
       geometryResult(wasm.gsp_inverse_point_transform(pointer, input.length)));
-  }
-
-  function transformPoints(
-    points: Point[],
-    transform: TransformJson,
-    scene: ViewerSceneData,
-    parameters: Map<string, number>,
-  ): Point[] | null {
-    const input = encoder.encode(JSON.stringify({
-      points,
-      transform,
-      scenePoints: scene.points,
-      lines: scene.lines,
-      parameters: Object.fromEntries(parameters),
-    }));
-    const transformed = withInputBytes(input, (pointer) =>
-      batchPoints(wasm.gsp_transform_points(pointer, input.length)));
-    return transformed.length === points.length ? transformed : null;
   }
 
   function setExpressionParameters(compiled: CompiledExpression, parameters: Map<string, number>) {
@@ -925,9 +880,7 @@
     pointCircleTangents,
     createDependencyPlan,
     evaluateObjectGraph,
-    resolvePointConstraints,
     inversePointTransform,
-    transformPoints,
     sampleFunction,
     sampleParametricCurve,
     sampleCoordinateTrace,

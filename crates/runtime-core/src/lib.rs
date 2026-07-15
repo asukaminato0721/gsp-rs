@@ -4,7 +4,7 @@ mod dependency;
 mod geometry;
 pub mod object_graph;
 mod object_ops;
-mod point_constraints;
+mod point_transform;
 mod scene_math;
 
 pub use dependency::{DependencyNodeInput, DependencyPlan, DependencyPlanError};
@@ -25,9 +25,7 @@ pub use object_ops::{
     ObjectOp, ObjectOpError, ObjectProgram, ObjectSourceValue, ObjectTransform, ObjectValue,
     TraceDriver, evaluate_object_graph_json,
 };
-pub use point_constraints::{
-    inverse_point_transform_json, resolve_point_constraints_json, transform_points_json,
-};
+pub use point_transform::inverse_point_transform_json;
 pub use scene_math::{
     CoordinateTraceMode, PlotMode, affine_iteration_segment, angle_marker_points,
     branching_iteration_segments, choose_point_candidate, directed_angle_anchor,
@@ -333,11 +331,10 @@ mod wasm_abi {
         point_angle_degrees, point_circle_tangents, point_distance, point_distance_ratio,
         point_on_circle_arc, point_on_three_point_arc, point_on_three_point_arc_complement,
         polygon_area, project_to_circle_arc, project_to_line_like, project_to_three_point_arc,
-        reflect_across_line, resolve_point_constraints_json, rotate_around,
-        rotate_iteration_points, sample_circle_arc, sample_coordinate_trace,
-        sample_custom_transform_trace, sample_expression, sample_parametric_curve,
-        sample_three_point_arc, scale_around, scale_by_three_point_ratio, three_point_arc_geometry,
-        transform_points_json, translation_iteration_deltas,
+        reflect_across_line, rotate_around, rotate_iteration_points, sample_circle_arc,
+        sample_coordinate_trace, sample_custom_transform_trace, sample_expression,
+        sample_parametric_curve, sample_three_point_arc, scale_around, scale_by_three_point_ratio,
+        three_point_arc_geometry, translation_iteration_deltas,
     };
 
     struct CompiledExpression {
@@ -930,30 +927,6 @@ mod wasm_abi {
     }
 
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn gsp_resolve_point_constraints(ptr: u32, len: u32) -> u32 {
-        if ptr == 0 || len == 0 {
-            set_last_error("point constraint input is empty");
-            return write_batch_scalars(std::iter::empty());
-        }
-        // SAFETY: the caller owns an allocation of at least `len` bytes in this module's memory.
-        let bytes = unsafe { std::slice::from_raw_parts(ptr as usize as *const u8, len as usize) };
-        let results = match resolve_point_constraints_json(bytes) {
-            Ok(results) => results,
-            Err(error) => {
-                set_last_error(&format!("invalid point constraint input: {error}"));
-                return write_batch_scalars(std::iter::empty());
-            }
-        };
-        clear_last_error();
-        let count = results.len() as u32;
-        write_batch_scalars(results.into_iter().flat_map(|point| match point {
-            Some(point) => [point.x, point.y],
-            None => [f64::NAN, f64::NAN],
-        }));
-        count
-    }
-
-    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn gsp_evaluate_object_graph(ptr: u32, len: u32) -> u32 {
         if ptr == 0 || len == 0 {
             set_last_error("object graph input is empty");
@@ -1003,30 +976,6 @@ mod wasm_abi {
             Err(error) => {
                 set_last_error(&format!("invalid inverse point transform input: {error}"));
                 write_geometry_results(std::iter::empty())
-            }
-        }
-    }
-
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn gsp_transform_points(ptr: u32, len: u32) -> u32 {
-        if ptr == 0 || len == 0 {
-            set_last_error("point transform input is empty");
-            return write_batch_points(std::iter::empty());
-        }
-        // SAFETY: the caller owns an allocation of at least `len` bytes in this module's memory.
-        let bytes = unsafe { std::slice::from_raw_parts(ptr as usize as *const u8, len as usize) };
-        match transform_points_json(bytes) {
-            Ok(Some(points)) => {
-                clear_last_error();
-                write_batch_points(points)
-            }
-            Ok(None) => {
-                clear_last_error();
-                write_batch_points(std::iter::empty())
-            }
-            Err(error) => {
-                set_last_error(&format!("invalid point transform input: {error}"));
-                write_batch_points(std::iter::empty())
             }
         }
     }

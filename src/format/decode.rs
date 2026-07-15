@@ -56,7 +56,7 @@ pub fn decode_point_record(payload: &[u8]) -> Option<PointRecord> {
     Some(PointRecord { x: raw.x, y: raw.y })
 }
 
-pub fn decode_indexed_path(record_type: u32, payload: &[u8]) -> Option<IndexedPathRecord> {
+pub fn decode_indexed_path(payload: &[u8]) -> Option<IndexedPathRecord> {
     if payload.len() < 4 || !payload.len().is_multiple_of(4) {
         return None;
     }
@@ -69,7 +69,6 @@ pub fn decode_indexed_path(record_type: u32, payload: &[u8]) -> Option<IndexedPa
     }
 
     Some(IndexedPathRecord {
-        record_type,
         refs: raw.refs.into_iter().map(|value| value as usize).collect(),
     })
 }

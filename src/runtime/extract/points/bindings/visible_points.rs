@@ -1958,7 +1958,7 @@ fn build_scene_point_for_group_checked(
     }
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn collect_visible_points_checked(
     file: &GspFile,
     groups: &[ObjectGroup],

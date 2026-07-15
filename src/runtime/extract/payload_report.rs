@@ -1405,11 +1405,9 @@ fn format_record_summary(file: &GspFile, record: &Record) -> Option<String> {
             decode_point_record(payload).map(|point| format!("点=({:.3}, {:.3})", point.x, point.y))
         }
         crate::runtime::payload_consts::RECORD_INDEXED_PATH_A
-        | crate::runtime::payload_consts::RECORD_INDEXED_PATH_B => {
-            decode_indexed_path(record.record_type, payload)
-                .map(|path| format!("引用={:?}", path.refs))
-                .or_else(|| Some("引用解析失败".to_string()))
-        }
+        | crate::runtime::payload_consts::RECORD_INDEXED_PATH_B => decode_indexed_path(payload)
+            .map(|path| format!("引用={:?}", path.refs))
+            .or_else(|| Some("引用解析失败".to_string())),
         RECORD_FUNCTION_PLOT_DESCRIPTOR => {
             Some(match try_decode_function_plot_descriptor(payload) {
                 Ok(descriptor) => format!(
