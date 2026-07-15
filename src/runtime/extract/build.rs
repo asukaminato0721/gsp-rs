@@ -241,7 +241,7 @@ fn build_scene_checked_inner(file: &GspFile) -> Result<Scene> {
             function_definitions,
         },
     );
-    scene.object_graph = crate::export::html::build_object_graph(&scene);
+    scene.object_graph = super::object_graph::build_object_graph(&scene);
     Ok(scene)
 }
 

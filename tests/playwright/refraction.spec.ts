@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
-import path from 'node:path';
+import { compileFixtureToTempHtml } from './compile-fixture';
 
 test('refraction sample preserves payload background and rich-text styling without synthetic geometry', async ({ page }) => {
-  const file = path.resolve('tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).html');
+  const file = compileFixtureToTempHtml('tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).gsp');
   await page.goto(`file://${file}`);
 
   const result = await page.evaluate(() => {
@@ -64,7 +64,7 @@ test('refraction sample preserves payload background and rich-text styling witho
 });
 
 test('refraction sample updates its ray iterations from the light-count parameter', async ({ page }) => {
-  const file = path.resolve('tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).html');
+  const file = compileFixtureToTempHtml('tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).gsp');
   await page.goto(`file://${file}`);
 
   const before = await page.evaluate(() => {
@@ -97,7 +97,7 @@ test('refraction sample updates its ray iterations from the light-count paramete
 });
 
 test('refraction show-hide button toggles the reflected ray and every iterated image', async ({ page }) => {
-  const file = path.resolve('tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).html');
+  const file = compileFixtureToTempHtml('tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).gsp');
   await page.goto(`file://${file}`);
 
   const visibilityState = () => page.evaluate(() => {
@@ -167,7 +167,7 @@ test('refraction show-hide button toggles the reflected ray and every iterated i
 });
 
 test('refraction iteration arrows follow the dragged medium point', async ({ page }) => {
-  const file = path.resolve('tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).html');
+  const file = compileFixtureToTempHtml('tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).gsp');
   await page.goto(`file://${file}`);
 
   const result = await page.evaluate(() => {
@@ -240,7 +240,7 @@ test('refraction iteration arrows follow the dragged medium point', async ({ pag
 });
 
 test('refraction iteration arrows follow the dragged ray-spacing point', async ({ page }) => {
-  const file = path.resolve('tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).html');
+  const file = compileFixtureToTempHtml('tests/Samples/个人专栏/侯仰顺作品/光的折射(蚂蚁制作).gsp');
   await page.goto(`file://${file}`);
 
   const result = await page.evaluate(() => {

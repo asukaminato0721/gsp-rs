@@ -1,17 +1,11 @@
 use super::*;
 
 #[test]
-fn exports_unnamed1_fixture_with_live_angle_rotation_binding_in_json_and_html() {
+fn rejects_unnamed1_instead_of_exporting_an_incomplete_geometry_runtime() {
     let data = include_bytes!("../../../tests/fixtures/未实现的系统功能/未命名1.gsp");
-    let scene_json = fixture_scene_json(data, "unnamed1 fixture should compile");
-    let html = fixture_html(data, "unnamed1 fixture should compile to html");
-
-    assert!(scene_json.contains("\"angleStartIndex\":"));
-    assert!(scene_json.contains("\"angleVertexIndex\":"));
-    assert!(scene_json.contains("\"angleEndIndex\":"));
-    assert!(html.contains("\"angleStartIndex\":"));
-    assert!(html.contains("\"angleVertexIndex\":"));
-    assert!(html.contains("\"angleEndIndex\":"));
+    let error = fixture_scene_error(data);
+    assert!(error.contains("does not produce a complete object graph"));
+    assert!(error.contains("point:20:point-binding"));
 }
 
 #[test]

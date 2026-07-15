@@ -745,129 +745,9 @@ type ViewerDynamicsParametersModule = {
   };
 };
 
-type RuntimeDynamicsGeometryDependencies = {
-  applyTraceValueToPoint: (
-    point: RuntimeScenePointJson,
-    scene: ViewerSceneData,
-    value: number | null | undefined,
-    xMin: number,
-    xMax: number,
-  ) => void;
-  markedAngleTranslationPoint: (
-    binding: Extract<PointBindingJson, { kind: "marked-angle-translation" }>,
-    parameters: Map<string, number>,
-    resolvePointAt: (pointIndex: number) => Point | null | undefined,
-  ) => Point | null;
-  circumcenter: (start: Point, mid: Point, end: Point) => Point | null;
-  clipRayToBounds: (start: Point, end: Point, bounds: RuntimeBounds) => Point[] | null;
-  deriveLabelParameters: (
-    scene: ViewerSceneData | null | undefined,
-    parameters: Map<string, number>,
-  ) => Map<string, number>;
-  discreteIterationDepth: (value: number | null | undefined) => number;
-  evaluateExpr: ViewerDynamicsExpressionModule["evaluateExpr"];
-  hsbToRgba: (
-    hue: number,
-    saturation: number,
-    brightness: number,
-    alpha: number,
-  ) => [number, number, number, number];
-  isFiniteNumber: (value: unknown) => value is number;
-  lerpPoint: (start: Point, end: Point, t: number) => Point;
-  lineProjectionParameterFromPoints: (
-    point: Point | null | undefined,
-    start: Point | null | undefined,
-    end: Point | null | undefined,
-    lineKind?: RuntimeLineKind,
-  ) => number | null;
-  parameterValueFromPoint: (scene: ViewerSceneData, pointIndex: number) => number | null;
-  pointOnPolylineByIndex: (points: Point[], normalized: number) => Point | null;
-  polylineParameterFromPoint: (scene: ViewerSceneData, pointIndex: number) => number | null;
-  reflectAcrossLine: (point: Point, lineStart: Point, lineEnd: Point) => Point | null;
-  resolveLineConstraintPoints: (
-    resolvePointAt: (pointIndex: number) => Point | null,
-    bounds: RuntimeBounds,
-    constraint: LineConstraintJson,
-  ) => Point[] | null;
-  resolveRotateTransformAngleDegrees: (
-    transform:
-      | Extract<TransformJson, { kind: "rotate" }>
-      | Extract<PointTransformJson, { kind: "rotate" }>,
-    parameters: Map<string, number>,
-    resolvePoint: (index: number) => Point | null | undefined,
-  ) => number | null | undefined;
-  resolveScaleTransformFactor: (
-    transform:
-      | Extract<TransformJson, { kind: "scale" }>
-      | Extract<PointTransformJson, { kind: "scale" }>,
-    parameters: Map<string, number>,
-    resolvePoint?: ((index: number) => Point | null | undefined) | null,
-  ) => number | null | undefined;
-  rotateAround: (point: Point, center: Point, radians: number) => Point;
-  scaleAround: (point: Point, center: Point, factor: number) => Point;
-  scaleByThreePointRatio: (
-    source: Point,
-    center: Point,
-    ratioOrigin: Point,
-    ratioDenominator: Point,
-    ratioNumerator: Point,
-    signed: boolean,
-    clampToUnit: boolean,
-  ) => Point | null;
-  updateConstraintParameterizedPoint: (
-    point: RuntimeScenePointJson,
-    scene: ViewerSceneData,
-    value: number,
-  ) => void;
-  updateCustomTransformPoint: (
-    point: RuntimeScenePointJson,
-    parameters: Map<string, number>,
-    resolvePointAt: (pointIndex: number) => Point | null,
-    parameterSourceScene: ViewerSceneData,
-  ) => void;
-  updatePolarTransformPoint: (
-    point: RuntimeScenePointJson,
-    source: Point | null,
-    parameters: Map<string, number>,
-    yUp: boolean,
-  ) => void;
-};
-
-type ViewerDynamicsGeometryModule = {
-  createDynamicsGeometry: (dependencies: RuntimeDynamicsGeometryDependencies) => {
-    resolveHostLinePoints: (scene: ViewerSceneData, binding: HostLineBinding) => PointHandle[] | null;
-    sampleCustomTransformTraceLine: (
-      scene: ViewerSceneData,
-      line: RuntimeLineJson,
-      parameters: Map<string, number>,
-    ) => Point[] | null;
-    cloneTracePoint: <T extends Point>(point: T) => T;
-    samplePointTraceTargets: (
-      scene: ViewerSceneData,
-      line: RuntimeLineJson,
-      parameters: Map<string, number>,
-      targetPointIndices: number[],
-    ) => Point[][] | null;
-    samplePointTraceLine: (
-      scene: ViewerSceneData,
-      line: RuntimeLineJson,
-      parameters: Map<string, number>,
-    ) => Point[] | null;
-    refreshDerivedLine: LineBindingRefresher;
-    refreshColorizedSpectrumLine: LineBindingRefresher;
-    refreshDerivedPolygon: (
-      env: CircleBindingRefreshContext,
-      polygon: RuntimePolygonJson,
-    ) => void;
-    refreshDerivedCircle: CircleBindingRefresher;
-  };
-};
 
 type ViewerDynamicsIterationsModule = {
   createDynamicsIterations: (dependencies: Record<string, any>) => {
-    rebuildIterationPoints: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
-    rebuildIteratedLines: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
-    rebuildIteratedPolygons: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
     rebuildIteratedLabels: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
     rebuildIterationTables: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
   };
@@ -880,10 +760,6 @@ type ViewerDynamicsDependencyGraphModule = {
     describeDependencyGraph: (env: ViewerEnv) => unknown[];
     runDependencyGraph: (env: ViewerEnv, scene: ViewerSceneData, dirtyRootIds: string[]) => unknown;
   };
-};
-
-type ViewerDynamicsDependenciesModule = {
-  createPointDependencyOrder: (sourceScene: SceneData | ViewerSceneData) => number[];
 };
 
 type DocumentScenePage = { index: number; title: string; scene: SceneData };
@@ -931,9 +807,7 @@ type ViewerModules = {
   dynamicsExpression: ViewerDynamicsExpressionModule;
   dynamicsRichText: ViewerDynamicsRichTextModule;
   dynamicsParameters: ViewerDynamicsParametersModule;
-  dynamicsGeometry: ViewerDynamicsGeometryModule;
   dynamicsIterations: ViewerDynamicsIterationsModule;
-  dynamicsDependencies: ViewerDynamicsDependenciesModule;
   dynamicsDependencyGraph: ViewerDynamicsDependencyGraphModule;
   appDocument: ViewerAppDocumentModule;
   appDebugGraph: ViewerAppDebugGraphModule;

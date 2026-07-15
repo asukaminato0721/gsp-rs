@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
-import path from 'node:path';
+import { compileFixtureToTempHtml } from './compile-fixture';
 
 test('moving equilateral triangle follows E through its payload parameter chain', async ({ page }) => {
-  const file = path.resolve(
-    'tests/Samples/个人专栏/侯仰顺作品/参数的应用-正三角形在正方形内滑动【蚂蚁制作】.html',
+  const file = compileFixtureToTempHtml(
+    'tests/Samples/个人专栏/侯仰顺作品/参数的应用-正三角形在正方形内滑动【蚂蚁制作】.gsp',
   );
   await page.goto(`file://${file}`);
 

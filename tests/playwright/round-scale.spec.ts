@@ -1,9 +1,8 @@
 import { test, expect } from '@playwright/test';
-import path from 'node:path';
 import { compileFixtureToTempHtml } from './compile-fixture';
 
 test('scaled circle intersections render', async ({ page }) => {
-  const file = path.resolve('tests/fixtures/bug/圆的伸缩变换.html');
+  const file = compileFixtureToTempHtml('tests/fixtures/bug/圆的伸缩变换.gsp');
   await page.goto(`file://${file}`);
 
   const circleStrokes = page.locator('circle[stroke^="rgba(0, 128, 0"]');

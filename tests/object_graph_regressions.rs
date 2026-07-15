@@ -9,12 +9,42 @@ fn compile_fixture(path: &str) -> Value {
     serde_json::from_str(&json).unwrap()
 }
 
+fn compile_fixture_error(path: &str) -> String {
+    compile_file_to_scene_json(Path::new(path), 960, 640)
+        .expect_err("fixture should be rejected before export")
+        .to_string()
+}
+
 fn operation_kind<'a>(scene: &'a Value, id: &str) -> Option<&'a str> {
+    let op = &scene["objectGraph"]["nodes"]
+        .as_array()?
+        .iter()
+        .find(|node| node["id"] == id)?["definition"]["op"];
+    if op["kind"] == "curve" {
+        op["curve"]["kind"].as_str()
+    } else {
+        op["kind"].as_str()
+    }
+}
+
+fn object_op_kind<'a>(scene: &'a Value, id: &str) -> Option<&'a str> {
     scene["objectGraph"]["nodes"]
         .as_array()?
         .iter()
         .find(|node| node["id"] == id)?["definition"]["op"]["kind"]
         .as_str()
+}
+
+fn operation<'a>(scene: &'a Value, id: &str) -> Option<&'a Value> {
+    let op = &scene["objectGraph"]["nodes"]
+        .as_array()?
+        .iter()
+        .find(|node| node["id"] == id)?["definition"]["op"];
+    Some(if op["kind"] == "curve" {
+        &op["curve"]
+    } else {
+        op
+    })
 }
 
 fn transform_kind<'a>(scene: &'a Value, id: &str) -> Option<&'a str> {
@@ -1386,6 +1416,15 @@ fn parametric_curve_is_sampled_by_the_operation_table() {
     let scene = compile_fixture("tests/fixtures/gsp/static/parameter_curve2.gsp");
     assert_eq!(scene["objectGraph"]["geometryComplete"], true);
     assert_eq!(operation_kind(&scene, "line:3"), Some("parametric-curve"));
+    assert_eq!(object_op_kind(&scene, "line:3"), Some("curve"));
+    assert!(matches!(
+        evaluate_scene_object_graph(&scene)
+            .into_iter()
+            .find(|result| result.id == "line:3")
+            .expect("parametric curve value")
+            .value,
+        ObjectValue::Curve { .. }
+    ));
 }
 
 #[test]
@@ -1410,6 +1449,15 @@ fn function_plot_line_depends_on_expression_parameters() {
     let scene = compile_fixture("tests/fixtures/未实现的系统功能/函数.gsp");
     assert_eq!(scene["objectGraph"]["geometryComplete"], true);
     assert_eq!(operation_kind(&scene, "line:3"), Some("function-plot"));
+    assert_eq!(object_op_kind(&scene, "line:3"), Some("curve"));
+    assert!(matches!(
+        evaluate_scene_object_graph(&scene)
+            .into_iter()
+            .find(|result| result.id == "line:3")
+            .expect("function curve value")
+            .value,
+        ObjectValue::Curve { .. }
+    ));
 }
 
 #[test]
@@ -1448,7 +1496,7 @@ fn nested_function_plot_uses_live_parameters_and_payload_defaults() {
             .iter()
             .any(|parent| parent == "parameter:σ")
     );
-    let expression = &node["definition"]["op"]["expression"];
+    let expression = &operation(scene, &line_id).unwrap()["expression"];
     let serialized = serde_json::to_string(expression).unwrap();
     assert!(serialized.contains("pi-constant"));
     assert!(serialized.contains("euler-constant"));
@@ -1516,19 +1564,10 @@ fn transformed_line_constraints_remain_nested_graph_parents() {
 }
 
 #[test]
-fn hidden_function_intersection_builds_its_own_typed_plot_domain() {
-    let document = compile_fixture("tests/Samples/个人专栏/向忠作品/指数函数的图象和性质.gsp");
-    let scene = &document["pages"][0]["scene"];
-    assert_no_graph_validation_errors(scene);
-    let point_id = object_id_for_group(scene, "points", "point", 323);
-    assert_eq!(
-        operation_kind(scene, &point_id),
-        Some("line-polyline-intersection")
-    );
-    assert_eq!(
-        operation_kind(scene, &format!("domain:{point_id}:function")),
-        Some("function-plot")
-    );
+fn multipage_function_sample_is_rejected_when_any_page_has_an_incomplete_graph() {
+    let error = compile_fixture_error("tests/Samples/个人专栏/向忠作品/指数函数的图象和性质.gsp");
+    assert!(error.contains("page 2 does not produce a complete object graph"));
+    assert!(error.contains("references missing dependency"));
 }
 
 #[test]
@@ -1536,13 +1575,7 @@ fn point_trace_evaluates_the_target_point_dependency_program() {
     let scene = compile_fixture("tests/fixtures/gsp/trace.gsp");
     assert_eq!(scene["objectGraph"]["geometryComplete"], true);
     assert_eq!(operation_kind(&scene, "line:5"), Some("point-trace"));
-    let operation = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == "line:5")
-        .unwrap()["definition"]["op"]
-        .clone();
+    let operation = operation(&scene, "line:5").unwrap();
     assert_eq!(operation["program"]["targetId"], "point:5");
     assert_eq!(operation["driver"]["kind"], "scalar");
 }
@@ -1562,14 +1595,8 @@ fn polygon_boundary_driver_traces_the_complete_live_boundary() {
         Some("polygon-boundary-parameter")
     );
     assert_eq!(operation_kind(scene, &trace_id), Some("point-trace"));
-    let trace = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == trace_id)
-        .unwrap();
     assert_eq!(
-        trace["definition"]["op"]["driver"]["source_id"],
+        operation(scene, &trace_id).unwrap()["driver"]["source_id"],
         format!("control:{driver_id}:boundary")
     );
     assert!(
@@ -1618,15 +1645,16 @@ fn custom_transform_trace_runs_the_payload_target_dependency_program() {
     );
     let trace_id = object_id_for_group(&scene, "lines", "line", 33);
     let target_id = object_id_for_group(&scene, "points", "point", 26);
+    assert_eq!(object_op_kind(&scene, &trace_id), Some("curve"));
     assert_eq!(operation_kind(&scene, &trace_id), Some("point-trace"));
-    let trace = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == trace_id)
-        .unwrap();
-    assert_eq!(trace["definition"]["op"]["program"]["targetId"], target_id);
-    assert_eq!(trace["definition"]["op"]["driver"]["kind"], "circle");
+    assert_eq!(
+        operation(&scene, &trace_id).unwrap()["program"]["targetId"],
+        target_id
+    );
+    assert_eq!(
+        operation(&scene, &trace_id).unwrap()["driver"]["kind"],
+        "circle"
+    );
 
     let trace_parameter = "scalar:group:88";
     assert_eq!(
@@ -1700,14 +1728,8 @@ fn function_point_drives_the_complete_point_and_segment_trace_chain() {
             format!("{segment_trace_id}:end-trace")
         ])
     );
-    let start_trace = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == format!("{segment_trace_id}:start-trace"))
-        .unwrap();
     assert!(
-        start_trace["definition"]["op"]["program"]["nodes"]
+        operation(&scene, &format!("{segment_trace_id}:start-trace")).unwrap()["program"]["nodes"]
             .as_array()
             .unwrap()
             .iter()
@@ -1859,7 +1881,7 @@ fn polygon_rolling_translation_and_trace_use_the_complete_parent_program() {
         serde_json::json!([source, vector_start, vector_end])
     );
     assert_eq!(
-        node(&trace)["definition"]["op"]["program"]["targetId"],
+        operation(&scene, &trace).unwrap()["program"]["targetId"],
         translated
     );
 }
@@ -2293,13 +2315,7 @@ fn point_trace_can_override_a_derived_constraint_parameter() {
     let trace_id = object_id_for_group(&scene, "lines", "line", 114);
     assert_eq!(operation_kind(&scene, &trace_id), Some("point-trace"));
 
-    let trace_node = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == trace_id)
-        .unwrap();
-    let operation = &trace_node["definition"]["op"];
+    let operation = operation(&scene, &trace_id).unwrap();
     assert_eq!(
         operation["driver"]["source_id"],
         "scalar:point:22:derived-parameter"
@@ -3438,9 +3454,8 @@ fn payload_intersections_can_depend_on_source_line_and_circle_nodes() {
 }
 
 #[test]
-fn payload_linear_intersection_uses_typed_scene_lines() {
-    let scene = compile_fixture("tests/Samples/个人专栏/钟科作品/向水杯注水（颗粒）.gsp");
-    let point = object_id_for_group(&scene, "points", "point", 172);
-
-    assert_eq!(operation_kind(&scene, &point), Some("line-intersection"));
+fn payload_with_unmodeled_linear_intersections_is_rejected_before_export() {
+    let error = compile_fixture_error("tests/Samples/个人专栏/钟科作品/向水杯注水（颗粒）.gsp");
+    assert!(error.contains("does not produce a complete object graph"));
+    assert!(error.contains("point:81:point-binding"));
 }

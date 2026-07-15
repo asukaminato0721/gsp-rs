@@ -227,7 +227,7 @@ test('a function point drives both sides of the point and segment trace construc
       lowerTraceIndex,
       segmentTraceOp: source.objectGraph.nodes.find(
         (node: any) => node.id === `line:${segmentTraceIndex}`,
-      )?.definition.op.kind,
+      )?.definition.op,
       beforePoint,
       afterPoint,
       beforeUpper,
@@ -245,7 +245,8 @@ test('a function point drives both sides of the point and segment trace construc
   expect(result.segmentTraceIndex).toBeGreaterThanOrEqual(0);
   expect(result.upperTraceIndex).toBeGreaterThanOrEqual(0);
   expect(result.lowerTraceIndex).toBeGreaterThanOrEqual(0);
-  expect(result.segmentTraceOp).toBe('zip-point-traces');
+  expect(result.segmentTraceOp.kind).toBe('curve');
+  expect(result.segmentTraceOp.curve.kind).toBe('zip-point-traces');
   expect(result.segmentPointCount).toBe(2000);
   expect(result.segmentCount).toBe(1000);
   expect(Math.hypot(

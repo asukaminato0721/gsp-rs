@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
-import path from 'node:path';
+import { compileFixtureToTempHtml } from './compile-fixture';
 
 test('ant fixture rebuilds iterated lines without duplicating exported payload lines', async ({ page }) => {
-  const file = path.resolve('tests/fixtures/bug/迭代方法2(蚂蚁).html');
+  const file = compileFixtureToTempHtml('tests/fixtures/bug/迭代方法2(蚂蚁).gsp');
   await page.goto(`file://${file}`);
 
   const countsAtLoad = await page.evaluate(() => {

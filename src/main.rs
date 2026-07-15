@@ -13,7 +13,7 @@ use gsp_rs::{
 use miette::{Result, miette};
 
 const WORKER_ENV: &str = "GSP_RS_WORKER";
-const WORKER_TIMEOUT: Duration = Duration::from_secs(5);
+const WORKER_TIMEOUT: Duration = Duration::from_secs(15);
 
 fn main() -> Result<()> {
     run()

@@ -68,6 +68,13 @@ fn compile_pages(
         let mut scene = build_scene_checked(page_file)
             .map_err(|error| miette!("{error:#}"))
             .wrap_err_with(|| format!("failed to build scene from page {}", index + 1))?;
+        if !scene.object_graph.geometry_complete {
+            return Err(miette!(
+                "page {} does not produce a complete object graph: {}",
+                index + 1,
+                scene.object_graph.pending_operations.join(", ")
+            ));
+        }
         if let Some(reference_htm) = reference_htm {
             apply_reference_animation_definitions(&mut scene, reference_htm);
             apply_reference_move_definitions(&mut scene, reference_htm);

@@ -146,6 +146,7 @@ pub fn evaluate_object_graph_json(bytes: &[u8]) -> Result<Vec<u8>, String> {
 #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ObjectValue {
+    Undefined,
     Scalar {
         value: f64,
     },
@@ -172,6 +173,13 @@ pub enum ObjectValue {
     },
     Points {
         points: Vec<Point>,
+    },
+    Curve {
+        points: Vec<Point>,
+    },
+    SampledCurve {
+        points: Vec<Point>,
+        sample_indices: Vec<usize>,
     },
     Polygons {
         polygons: Vec<Vec<Point>>,
@@ -220,14 +228,84 @@ impl ObjectValue {
             Self::Arc {
                 start, mid, end, ..
             } => Some(vec![*start, *mid, *end]),
-            Self::Points { points } => Some(points.clone()),
+            Self::Points { points }
+            | Self::Curve { points }
+            | Self::SampledCurve { points, .. } => Some(points.clone()),
             Self::Scalar { .. }
+            | Self::Undefined
             | Self::Polygons { .. }
             | Self::Circles { .. }
             | Self::Color { .. }
             | Self::Text { .. } => None,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomTransformProgram {
+    pub distance_expression: ObjectExpression,
+    pub angle_expression: ObjectExpression,
+    pub distance_parameter_names: Vec<String>,
+    pub angle_parameter_names: Vec<String>,
+    pub distance_scale: f64,
+    pub angle_degrees_scale: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum CurveOp {
+    CoordinateTrace {
+        x_expression: ObjectExpression,
+        y_expression: Option<ObjectExpression>,
+        parameter_names: Vec<String>,
+        trace_parameter_name: String,
+        value_min: f64,
+        value_max: f64,
+        sample_count: usize,
+        mode: CoordinateTraceMode,
+    },
+    CartesianParameterTrace {
+        expression: ObjectExpression,
+        parameter_names: Vec<String>,
+        trace_parameter_name: String,
+        value_min: f64,
+        value_max: f64,
+        sample_count: usize,
+    },
+    ParametricCurve {
+        x_expression: ObjectExpression,
+        y_expression: ObjectExpression,
+        parameter_names: Vec<String>,
+        value_min: f64,
+        value_max: f64,
+        sample_count: usize,
+    },
+    FunctionPlot {
+        expression: ObjectExpression,
+        parameter_names: Vec<String>,
+        value_min: f64,
+        value_max: f64,
+        sample_count: usize,
+        plot_mode: PlotMode,
+    },
+    CustomTransformTrace {
+        transform: CustomTransformProgram,
+        value_min: f64,
+        value_max: f64,
+        sample_count: usize,
+    },
+    PointTrace {
+        program: ObjectProgram,
+        driver: TraceDriver,
+        value_min: f64,
+        value_max: f64,
+        sample_count: usize,
+    },
+    RepeatPoint {
+        sample_count: usize,
+    },
+    ZipPointTraces,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -281,70 +359,12 @@ pub enum ObjectOp {
         t: f64,
         marker_class: u32,
     },
-    CoordinateTrace {
-        x_expression: ObjectExpression,
-        y_expression: Option<ObjectExpression>,
-        parameter_names: Vec<String>,
-        trace_parameter_name: String,
-        value_min: f64,
-        value_max: f64,
-        sample_count: usize,
-        mode: CoordinateTraceMode,
-    },
-    CartesianParameterTrace {
-        expression: ObjectExpression,
-        parameter_names: Vec<String>,
-        trace_parameter_name: String,
-        value_min: f64,
-        value_max: f64,
-        sample_count: usize,
-    },
-    ParametricCurve {
-        x_expression: ObjectExpression,
-        y_expression: ObjectExpression,
-        parameter_names: Vec<String>,
-        value_min: f64,
-        value_max: f64,
-        sample_count: usize,
-    },
-    FunctionPlot {
-        expression: ObjectExpression,
-        parameter_names: Vec<String>,
-        value_min: f64,
-        value_max: f64,
-        sample_count: usize,
-        plot_mode: PlotMode,
+    Curve {
+        curve: CurveOp,
     },
     CustomTransformPoint {
-        distance_expression: ObjectExpression,
-        angle_expression: ObjectExpression,
-        distance_parameter_names: Vec<String>,
-        angle_parameter_names: Vec<String>,
-        distance_scale: f64,
-        angle_degrees_scale: f64,
+        transform: CustomTransformProgram,
     },
-    CustomTransformTrace {
-        distance_expression: ObjectExpression,
-        angle_expression: ObjectExpression,
-        distance_parameter_names: Vec<String>,
-        angle_parameter_names: Vec<String>,
-        value_min: f64,
-        value_max: f64,
-        sample_count: usize,
-        distance_scale: f64,
-        angle_degrees_scale: f64,
-    },
-    PointTrace {
-        program: ObjectProgram,
-        driver: TraceDriver,
-        value_min: f64,
-        value_max: f64,
-        sample_count: usize,
-    },
-    RepeatPoint {
-        sample_count: usize,
-    },
-    ZipPointTraces,
     LinePolylineIntersection {
         variant: usize,
         sample_hint: Option<f64>,
@@ -677,1555 +697,1602 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
         op: &ObjectOp,
         parents: &[&ObjectValue],
     ) -> Result<ObjectValue, Self::Error> {
-        match op {
-            ObjectOp::Copy => {
-                expect_arity("copy", parents, 1)?;
-                Ok(parents[0].clone())
-            }
-            ObjectOp::WrapUnitScalar => {
-                expect_arity("wrap-unit-scalar", parents, 1)?;
-                Ok(ObjectValue::Scalar {
-                    value: expect_scalar("wrap-unit-scalar", parents, 0)?.rem_euclid(1.0),
-                })
-            }
-            ObjectOp::SelectParent { index } => parents
-                .get(*index)
-                .map(|value| (*value).clone())
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "select-parent",
-                }),
-            ObjectOp::ProjectedCoordinatePoint { source_parent } => Ok(ObjectValue::point(
-                expect_point("projected-coordinate-point", parents, *source_parent)?,
-            )),
-            ObjectOp::PointFromScalars => {
-                expect_arity("point-from-scalars", parents, 2)?;
-                Ok(ObjectValue::point(Point {
-                    x: expect_scalar("point-from-scalars", parents, 0)?,
-                    y: expect_scalar("point-from-scalars", parents, 1)?,
-                }))
-            }
-            ObjectOp::DirectedAngleAnchor {
-                distance,
-                parameter,
-            } => {
-                expect_arity("directed-angle-anchor", parents, 4)?;
-                let point = directed_angle_anchor(
-                    expect_point("directed-angle-anchor", parents, 0)?,
-                    expect_point("directed-angle-anchor", parents, 1)?,
-                    expect_point("directed-angle-anchor", parents, 2)?,
-                    expect_point("directed-angle-anchor", parents, 3)?,
-                    *distance,
-                    *parameter,
-                )
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "directed-angle-anchor",
-                })?;
-                Ok(ObjectValue::point(point))
-            }
-            ObjectOp::PointOnLine => {
-                expect_arity("point-on-line", parents, 2)?;
-                let (line_kind, start, end) = expect_line("point-on-line", parents, 0)?;
-                let t = expect_scalar("point-on-line", parents, 1)?;
-                let point = match line_kind {
-                    LineKind::Segment => lerp_point(start, end, t.clamp(0.0, 1.0)),
-                    LineKind::Ray => lerp_point(start, end, t.max(0.0)),
-                    LineKind::Line => lerp_point(start, end, t),
-                };
-                Ok(ObjectValue::point(point))
-            }
-            ObjectOp::PointOnCircle { invert_y } => {
-                expect_arity("point-on-circle", parents, 3)?;
-                let (center, radius_point) = expect_circle("point-on-circle", parents, 0)?;
-                let unit_x = expect_scalar("point-on-circle", parents, 1)?;
-                let unit_y = expect_scalar("point-on-circle", parents, 2)?;
-                let radius = (radius_point.x - center.x).hypot(radius_point.y - center.y);
-                Ok(ObjectValue::point(Point {
-                    x: center.x + unit_x * radius,
-                    y: center.y + if *invert_y { -unit_y } else { unit_y } * radius,
-                }))
-            }
-            ObjectOp::PointOnCircleParameter { invert_y } => {
-                expect_arity("point-on-circle-parameter", parents, 2)?;
-                let (center, radius_point) =
-                    expect_circle("point-on-circle-parameter", parents, 0)?;
-                let parameter = expect_scalar("point-on-circle-parameter", parents, 1)?;
-                let angle = parameter.rem_euclid(1.0) * std::f64::consts::TAU;
-                let radius = (radius_point.x - center.x).hypot(radius_point.y - center.y);
-                Ok(ObjectValue::point(Point {
-                    x: center.x + angle.cos() * radius,
-                    y: center.y + if *invert_y { -angle.sin() } else { angle.sin() } * radius,
-                }))
-            }
-            ObjectOp::PointOnArc => {
-                expect_arity("point-on-arc", parents, 2)?;
-                let (start, mid, end, _, _, complement) = expect_arc("point-on-arc", parents, 0)?;
-                let t = expect_scalar("point-on-arc", parents, 1)?;
-                let point = if complement {
-                    point_on_three_point_arc_complement(start, mid, end, t)
-                } else {
-                    point_on_three_point_arc(start, mid, end, t)
+        if parents
+            .iter()
+            .any(|value| matches!(value, ObjectValue::Undefined))
+        {
+            return Ok(ObjectValue::Undefined);
+        }
+        let evaluate_defined = || -> Result<ObjectValue, ObjectOpError> {
+            match op {
+                ObjectOp::Copy => {
+                    expect_arity("copy", parents, 1)?;
+                    Ok(parents[0].clone())
                 }
-                .unwrap_or(start);
-                Ok(ObjectValue::point(point))
-            }
-            ObjectOp::PointOnPolyline => {
-                expect_arity("point-on-polyline", parents, 2)?;
-                let points = expect_points("point-on-polyline", parents, 0)?;
-                if points.len() < 2 {
-                    return Err(ObjectOpError::Degenerate {
-                        op: "point-on-polyline",
-                    });
-                }
-                let parameter = expect_scalar("point-on-polyline", parents, 1)?.clamp(0.0, 1.0);
-                let scaled = parameter * (points.len() - 1) as f64;
-                let segment_index = (scaled.floor() as usize).min(points.len() - 2);
-                let t = scaled - segment_index as f64;
-                Ok(ObjectValue::point(lerp_point(
-                    points[segment_index],
-                    points[segment_index + 1],
-                    t,
-                )))
-            }
-            ObjectOp::PointOnGeneratedTrace {
-                program,
-                driver,
-                value_min,
-                value_max,
-            } => {
-                expect_arity(
-                    "point-on-generated-trace",
-                    parents,
-                    program.source_ids.len() + 1,
-                )?;
-                let graph = build_object_program("point-on-generated-trace", program)?;
-                let parameter = expect_scalar(
-                    "point-on-generated-trace",
-                    parents,
-                    program.source_ids.len(),
-                )?
-                .clamp(0.0, 1.0);
-                let value = value_min + (value_max - value_min) * parameter;
-                let overrides = trace_driver_overrides(driver, value, *value_min, *value_max);
-                evaluate_object_program_point(
-                    "point-on-generated-trace",
-                    program,
-                    &graph,
-                    &parents[..program.source_ids.len()],
-                    &overrides,
-                )
-                .map(ObjectValue::point)
-            }
-            ObjectOp::PointOnPolylineSegment { segment_index } => {
-                expect_arity("point-on-polyline-segment", parents, 2)?;
-                let points = expect_points("point-on-polyline-segment", parents, 0)?;
-                if points.len() < 2 {
-                    return Err(ObjectOpError::Degenerate {
-                        op: "point-on-polyline-segment",
-                    });
-                }
-                let index = (*segment_index).min(points.len() - 2);
-                let t = expect_scalar("point-on-polyline-segment", parents, 1)?;
-                Ok(ObjectValue::point(lerp_point(
-                    points[index],
-                    points[index + 1],
-                    t.clamp(0.0, 1.0),
-                )))
-            }
-            ObjectOp::PointOnPolygonBoundary => {
-                if parents.len() < 3 {
-                    return Err(ObjectOpError::WrongArity {
-                        op: "point-on-polygon-boundary",
-                        expected: 3,
-                        actual: parents.len(),
-                    });
-                }
-                let vertex_count = parents.len() - 1;
-                let vertices = (0..vertex_count)
-                    .map(|index| expect_point("point-on-polygon-boundary", parents, index))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let parameter = expect_scalar("point-on-polygon-boundary", parents, vertex_count)?;
-                point_on_polygon_boundary(&vertices, parameter)
-                    .map(ObjectValue::point)
-                    .ok_or(ObjectOpError::Degenerate {
-                        op: "point-on-polygon-boundary",
+                ObjectOp::WrapUnitScalar => {
+                    expect_arity("wrap-unit-scalar", parents, 1)?;
+                    Ok(ObjectValue::Scalar {
+                        value: expect_scalar("wrap-unit-scalar", parents, 0)?.rem_euclid(1.0),
                     })
-            }
-            ObjectOp::Midpoint => {
-                expect_arity("midpoint", parents, 2)?;
-                Ok(ObjectValue::point(lerp_point(
-                    expect_point("midpoint", parents, 0)?,
-                    expect_point("midpoint", parents, 1)?,
-                    0.5,
-                )))
-            }
-            ObjectOp::Circumcenter => {
-                expect_arity("circumcenter", parents, 3)?;
-                let geometry = three_point_arc_geometry(
-                    expect_point("circumcenter", parents, 0)?,
-                    expect_point("circumcenter", parents, 1)?,
-                    expect_point("circumcenter", parents, 2)?,
-                )
-                .ok_or(ObjectOpError::Degenerate { op: "circumcenter" })?;
-                Ok(ObjectValue::point(geometry.center))
-            }
-            ObjectOp::MarkedAngleTranslationPoint => {
-                expect_arity("marked-angle-translation-point", parents, 5)?;
-                crate::marked_angle_translation_point(
-                    expect_point("marked-angle-translation-point", parents, 0)?,
-                    expect_point("marked-angle-translation-point", parents, 1)?,
-                    expect_point("marked-angle-translation-point", parents, 2)?,
-                    expect_point("marked-angle-translation-point", parents, 3)?,
-                    expect_scalar("marked-angle-translation-point", parents, 4)?,
-                )
-                .map(ObjectValue::point)
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "marked-angle-translation-point",
-                })
-            }
-            ObjectOp::Line { line_kind } => {
-                expect_arity("line", parents, 2)?;
-                Ok(ObjectValue::Line {
-                    line_kind: *line_kind,
-                    start: expect_point("line", parents, 0)?,
-                    end: expect_point("line", parents, 1)?,
-                })
-            }
-            ObjectOp::PerpendicularLine => {
-                expect_arity("perpendicular-line", parents, 2)?;
-                let through = expect_point("perpendicular-line", parents, 0)?;
-                let (_, start, end) = expect_line("perpendicular-line", parents, 1)?;
-                let dx = end.x - start.x;
-                let dy = end.y - start.y;
-                Ok(ObjectValue::Line {
-                    line_kind: LineKind::Line,
-                    start: through,
-                    end: if dx.hypot(dy) <= 1e-9 {
-                        through
-                    } else {
-                        Point {
-                            x: through.x - dy,
-                            y: through.y + dx,
-                        }
-                    },
-                })
-            }
-            ObjectOp::ParallelLine => {
-                expect_arity("parallel-line", parents, 2)?;
-                let through = expect_point("parallel-line", parents, 0)?;
-                let (_, start, end) = expect_line("parallel-line", parents, 1)?;
-                let dx = end.x - start.x;
-                let dy = end.y - start.y;
-                Ok(ObjectValue::Line {
-                    line_kind: LineKind::Line,
-                    start: through,
-                    end: if dx.hypot(dy) <= 1e-9 {
-                        through
-                    } else {
-                        Point {
-                            x: through.x + dx,
-                            y: through.y + dy,
-                        }
-                    },
-                })
-            }
-            ObjectOp::AngleBisectorRay => {
-                expect_arity("angle-bisector-ray", parents, 3)?;
-                let start = expect_point("angle-bisector-ray", parents, 0)?;
-                let vertex = expect_point("angle-bisector-ray", parents, 1)?;
-                let end = expect_point("angle-bisector-ray", parents, 2)?;
-                let direction = angle_bisector_direction(start, vertex, end);
-                Ok(ObjectValue::Line {
-                    line_kind: LineKind::Ray,
-                    start: vertex,
-                    end: direction.map_or(vertex, |direction| Point {
-                        x: vertex.x + direction.x,
-                        y: vertex.y + direction.y,
-                    }),
-                })
-            }
-            ObjectOp::AngleMarker { marker_class } => {
-                expect_arity("angle-marker", parents, 3)?;
-                let points = angle_marker_points(
-                    expect_point("angle-marker", parents, 0)?,
-                    expect_point("angle-marker", parents, 1)?,
-                    expect_point("angle-marker", parents, 2)?,
-                    *marker_class,
-                )
-                .unwrap_or_default();
-                Ok(ObjectValue::Points { points })
-            }
-            ObjectOp::SegmentMarker { t, marker_class } => {
-                expect_arity("segment-marker", parents, 2)?;
-                let points = segment_marker_points(
-                    expect_point("segment-marker", parents, 0)?,
-                    expect_point("segment-marker", parents, 1)?,
-                    *t,
-                    *marker_class,
-                )
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "segment-marker",
-                })?;
-                Ok(ObjectValue::Points { points })
-            }
-            ObjectOp::CoordinateTrace {
-                x_expression,
-                y_expression,
-                parameter_names,
-                trace_parameter_name,
-                value_min,
-                value_max,
-                sample_count,
-                mode,
-            } => {
-                expect_arity("coordinate-trace", parents, parameter_names.len() + 1)?;
-                let source = expect_point("coordinate-trace", parents, 0)?;
-                let parameters = parameter_names
-                    .iter()
-                    .enumerate()
-                    .map(|(index, name)| {
-                        expect_scalar("coordinate-trace", parents, index + 1)
-                            .map(|value| (name.clone(), value))
-                    })
-                    .collect::<Result<BTreeMap<_, _>, _>>()?;
-                let x_expression = FunctionExpr::Parsed(x_expression.to_function_ast());
-                let y_expression = y_expression
-                    .as_ref()
-                    .map(|expression| FunctionExpr::Parsed(expression.to_function_ast()));
-                let points = sample_coordinate_trace(
-                    &x_expression,
-                    y_expression.as_ref(),
-                    &parameters,
-                    y_expression.as_ref().map(|_| &parameters),
-                    Some(trace_parameter_name),
-                    y_expression.as_ref().map(|_| trace_parameter_name.as_str()),
-                    source,
-                    *value_min,
-                    *value_max,
-                    *sample_count,
-                    false,
-                    *mode,
-                );
-                if points.len() < 2 {
-                    return Err(ObjectOpError::Degenerate {
-                        op: "coordinate-trace",
-                    });
                 }
-                Ok(ObjectValue::Points { points })
-            }
-            ObjectOp::CartesianParameterTrace {
-                expression,
-                parameter_names,
-                trace_parameter_name,
-                value_min,
-                value_max,
-                sample_count,
-            } => {
-                expect_arity("cartesian-parameter-trace", parents, parameter_names.len())?;
-                let parameters = parameter_names
-                    .iter()
-                    .enumerate()
-                    .map(|(index, name)| {
-                        expect_scalar("cartesian-parameter-trace", parents, index)
-                            .map(|value| (name.clone(), value))
-                    })
-                    .collect::<Result<BTreeMap<_, _>, _>>()?;
-                let expression = FunctionExpr::Parsed(expression.to_function_ast());
-                let last = sample_count.saturating_sub(1).max(1) as f64;
-                let points = (0..*sample_count)
-                    .filter_map(|index| {
-                        let t = index as f64 / last;
-                        let value = value_min + (value_max - value_min) * t;
-                        let mut parameters = parameters.clone();
-                        parameters.insert(trace_parameter_name.clone(), value);
-                        Some(Point {
-                            x: value,
-                            y: evaluate_expr(&expression, 0.0, &parameters)?,
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                if points.len() < 2 {
-                    return Err(ObjectOpError::Degenerate {
-                        op: "cartesian-parameter-trace",
-                    });
-                }
-                Ok(ObjectValue::Points { points })
-            }
-            ObjectOp::ParametricCurve {
-                x_expression,
-                y_expression,
-                parameter_names,
-                value_min,
-                value_max,
-                sample_count,
-            } => {
-                expect_arity("parametric-curve", parents, parameter_names.len())?;
-                let parameters = parameter_names
-                    .iter()
-                    .enumerate()
-                    .map(|(index, name)| {
-                        expect_scalar("parametric-curve", parents, index)
-                            .map(|value| (name.clone(), value))
-                    })
-                    .collect::<Result<BTreeMap<_, _>, _>>()?;
-                let points = sample_parametric_curve(
-                    &FunctionExpr::Parsed(x_expression.to_function_ast()),
-                    &FunctionExpr::Parsed(y_expression.to_function_ast()),
-                    &parameters,
-                    &parameters,
-                    *value_min,
-                    *value_max,
-                    *sample_count,
-                );
-                if points.len() < 2 {
-                    return Err(ObjectOpError::Degenerate {
-                        op: "parametric-curve",
-                    });
-                }
-                Ok(ObjectValue::Points { points })
-            }
-            ObjectOp::FunctionPlot {
-                expression,
-                parameter_names,
-                value_min,
-                value_max,
-                sample_count,
-                plot_mode,
-            } => {
-                expect_arity("function-plot", parents, parameter_names.len())?;
-                let parameters = parameter_names
-                    .iter()
-                    .enumerate()
-                    .map(|(index, name)| {
-                        expect_scalar("function-plot", parents, index)
-                            .map(|value| (name.clone(), value))
-                    })
-                    .collect::<Result<BTreeMap<_, _>, _>>()?;
-                let points = crate::sample_expression(
-                    &FunctionExpr::Parsed(expression.to_function_ast()),
-                    &parameters,
-                    *value_min,
-                    *value_max,
-                    *sample_count,
-                    *plot_mode,
-                )
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>();
-                if points.len() < 2 {
-                    return Err(ObjectOpError::Degenerate {
-                        op: "function-plot",
-                    });
-                }
-                Ok(ObjectValue::Points { points })
-            }
-            ObjectOp::CustomTransformPoint {
-                distance_expression,
-                angle_expression,
-                distance_parameter_names,
-                angle_parameter_names,
-                distance_scale,
-                angle_degrees_scale,
-            } => {
-                expect_arity("custom-transform-point", parents, 3)?;
-                let origin = expect_point("custom-transform-point", parents, 0)?;
-                let axis_end = expect_point("custom-transform-point", parents, 1)?;
-                let value = expect_scalar("custom-transform-point", parents, 2)?;
-                sample_custom_transform_trace(
-                    &FunctionExpr::Parsed(distance_expression.to_function_ast()),
-                    &FunctionExpr::Parsed(angle_expression.to_function_ast()),
-                    &BTreeMap::new(),
-                    &BTreeMap::new(),
-                    distance_parameter_names,
-                    angle_parameter_names,
-                    origin,
-                    axis_end,
-                    value,
-                    value,
-                    value,
-                    1,
-                    *distance_scale,
-                    *angle_degrees_scale,
-                )
-                .first()
-                .copied()
-                .map(ObjectValue::point)
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "custom-transform-point",
-                })
-            }
-            ObjectOp::CustomTransformTrace {
-                distance_expression,
-                angle_expression,
-                distance_parameter_names,
-                angle_parameter_names,
-                value_min,
-                value_max,
-                sample_count,
-                distance_scale,
-                angle_degrees_scale,
-            } => {
-                expect_arity("custom-transform-trace", parents, 3)?;
-                let points = sample_custom_transform_trace(
-                    &FunctionExpr::Parsed(distance_expression.to_function_ast()),
-                    &FunctionExpr::Parsed(angle_expression.to_function_ast()),
-                    &BTreeMap::new(),
-                    &BTreeMap::new(),
-                    distance_parameter_names,
-                    angle_parameter_names,
-                    expect_point("custom-transform-trace", parents, 0)?,
-                    expect_point("custom-transform-trace", parents, 1)?,
-                    *value_min,
-                    *value_max,
-                    expect_scalar("custom-transform-trace", parents, 2)?,
-                    *sample_count,
-                    *distance_scale,
-                    *angle_degrees_scale,
-                );
-                if points.is_empty() {
-                    return Err(ObjectOpError::Degenerate {
-                        op: "custom-transform-trace",
-                    });
-                }
-                Ok(ObjectValue::Points { points })
-            }
-            ObjectOp::PointTrace {
-                program,
-                driver,
-                value_min,
-                value_max,
-                sample_count,
-            } => {
-                expect_arity("point-trace", parents, program.source_ids.len())?;
-                let graph = build_object_program("point-trace", program)?;
-                let last = sample_count.saturating_sub(1).max(1) as f64;
-                let mut points = Vec::with_capacity(*sample_count);
-                for index in 0..*sample_count {
-                    let value = value_min + (value_max - value_min) * index as f64 / last;
-                    let overrides = trace_driver_overrides(driver, value, *value_min, *value_max);
-                    points.push(evaluate_object_program_point(
-                        "point-trace",
-                        program,
-                        &graph,
-                        parents,
-                        &overrides,
-                    )?);
-                }
-                if points.len() < 2 {
-                    return Err(ObjectOpError::Degenerate { op: "point-trace" });
-                }
-                Ok(ObjectValue::Points { points })
-            }
-            ObjectOp::RepeatPoint { sample_count } => {
-                expect_arity("repeat-point", parents, 1)?;
-                let point = expect_point("repeat-point", parents, 0)?;
-                if *sample_count < 2 {
-                    return Err(ObjectOpError::Degenerate { op: "repeat-point" });
-                }
-                Ok(ObjectValue::Points {
-                    points: vec![point; *sample_count],
-                })
-            }
-            ObjectOp::ZipPointTraces => {
-                expect_arity("zip-point-traces", parents, 2)?;
-                let starts = expect_points("zip-point-traces", parents, 0)?;
-                let ends = expect_points("zip-point-traces", parents, 1)?;
-                if starts.len() != ends.len() || starts.is_empty() {
-                    return Err(ObjectOpError::Degenerate {
-                        op: "zip-point-traces",
-                    });
-                }
-                Ok(ObjectValue::Points {
-                    points: starts
-                        .iter()
-                        .zip(ends)
-                        .flat_map(|(start, end)| [*start, *end])
-                        .collect(),
-                })
-            }
-            ObjectOp::LinePolylineIntersection {
-                variant,
-                sample_hint,
-            } => {
-                expect_arity("line-polyline-intersection", parents, 2)?;
-                let (line_kind, start, end) =
-                    expect_line("line-polyline-intersection", parents, 0)?;
-                let points = expect_points("line-polyline-intersection", parents, 1)?;
-                let point = line_polyline_intersection(
-                    start,
-                    end,
-                    line_kind,
-                    points,
-                    *sample_hint,
-                    *variant,
-                )
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "line-polyline-intersection",
-                })?;
-                Ok(ObjectValue::point(point))
-            }
-            ObjectOp::CircularPolylineIntersection {
-                variant,
-                sample_hint,
-            } => {
-                expect_arity("circular-polyline-intersection", parents, 2)?;
-                let (center, radius) =
-                    circular_center_radius("circular-polyline-intersection", parents, 0)?;
-                let points = expect_points("circular-polyline-intersection", parents, 1)?;
-                let point = circular_polyline_intersection(
-                    parents[0],
-                    center,
-                    radius,
-                    points,
-                    *sample_hint,
-                    *variant,
-                )
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "circular-polyline-intersection",
-                })?;
-                Ok(ObjectValue::point(point))
-            }
-            ObjectOp::ColorizedSpectrumLine {
-                trace_endpoint_index,
-                step_index,
-                ray,
-                reflected,
-                sampled_reflection_axis,
-            } => colorized_spectrum_line(
-                parents,
-                *trace_endpoint_index,
-                *step_index,
-                *ray,
-                *reflected,
-                *sampled_reflection_axis,
-            ),
-            ObjectOp::CircleByPoints => {
-                expect_arity("circle-by-points", parents, 2)?;
-                Ok(ObjectValue::Circle {
-                    center: expect_point("circle-by-points", parents, 0)?,
-                    radius_point: expect_point("circle-by-points", parents, 1)?,
-                })
-            }
-            ObjectOp::CircleBySegmentRadius => {
-                expect_arity("circle-by-segment-radius", parents, 3)?;
-                let center = expect_point("circle-by-segment-radius", parents, 0)?;
-                let start = expect_point("circle-by-segment-radius", parents, 1)?;
-                let end = expect_point("circle-by-segment-radius", parents, 2)?;
-                let radius = (end.x - start.x).hypot(end.y - start.y);
-                Ok(ObjectValue::Circle {
-                    center,
-                    radius_point: Point {
-                        x: center.x + radius,
-                        y: center.y,
-                    },
-                })
-            }
-            ObjectOp::CircleByRadius => {
-                expect_arity("circle-by-radius", parents, 2)?;
-                let center = expect_point("circle-by-radius", parents, 0)?;
-                let radius = expect_scalar("circle-by-radius", parents, 1)?.abs();
-                Ok(ObjectValue::Circle {
-                    center,
-                    radius_point: Point {
-                        x: center.x + radius,
-                        y: center.y,
-                    },
-                })
-            }
-            ObjectOp::ThreePointArc { complement } => {
-                expect_arity("three-point-arc", parents, 3)?;
-                let start = expect_point("three-point-arc", parents, 0)?;
-                let mid = expect_point("three-point-arc", parents, 1)?;
-                let end = expect_point("three-point-arc", parents, 2)?;
-                Ok(ObjectValue::Arc {
-                    start,
-                    mid,
-                    end,
-                    center: None,
-                    counterclockwise: false,
-                    complement: *complement,
-                })
-            }
-            ObjectOp::CenterArc { y_up } => {
-                expect_arity("center-arc", parents, 3)?;
-                let center = expect_point("center-arc", parents, 0)?;
-                let start = expect_point("center-arc", parents, 1)?;
-                let end = expect_point("center-arc", parents, 2)?;
-                let [start, mid, end] = circle_arc_control_points(center, start, end, *y_up)
-                    .unwrap_or([start, start, end]);
-                Ok(ObjectValue::Arc {
-                    start,
-                    mid,
-                    end,
-                    center: Some(center),
-                    counterclockwise: true,
-                    complement: false,
-                })
-            }
-            ObjectOp::CircleArc { y_up } => {
-                expect_arity("circle-arc", parents, 3)?;
-                let (center, _) = expect_circle("circle-arc", parents, 0)?;
-                let start = expect_point("circle-arc", parents, 1)?;
-                let end = expect_point("circle-arc", parents, 2)?;
-                let [start, mid, end] = circle_arc_control_points(center, start, end, *y_up)
-                    .unwrap_or([start, start, end]);
-                Ok(ObjectValue::Arc {
-                    start,
-                    mid,
-                    end,
-                    center: Some(center),
-                    counterclockwise: true,
-                    complement: false,
-                })
-            }
-            ObjectOp::ArcBoundaryPoints {
-                center_arc,
-                sector,
-                reversed,
-                complement,
-                steps,
-                y_up,
-            } => {
-                expect_arity("arc-boundary-points", parents, 3)?;
-                let first = expect_point("arc-boundary-points", parents, 0)?;
-                let second = expect_point("arc-boundary-points", parents, 1)?;
-                let end = expect_point("arc-boundary-points", parents, 2)?;
-                let (center, start, mid, sampled) = if *center_arc {
-                    let sampled = sample_circle_arc(first, second, end, *steps, *y_up).ok_or(
-                        ObjectOpError::Degenerate {
-                            op: "arc-boundary-points",
-                        },
-                    )?;
-                    (Some(first), second, None, sampled)
-                } else {
-                    let sampled = sample_three_point_arc(first, second, end, *steps, *complement)
-                        .ok_or(ObjectOpError::Degenerate {
-                        op: "arc-boundary-points",
-                    })?;
-                    (None, first, Some(second), sampled)
-                };
-                let mut points = if let Some(center) = center {
-                    if *sector {
-                        if *reversed {
-                            vec![end, center, start]
-                        } else {
-                            vec![center, start]
-                        }
-                    } else if *reversed {
-                        vec![end, start]
-                    } else {
-                        vec![start]
-                    }
-                } else if *sector && *reversed {
-                    vec![
-                        end,
-                        mid.expect("three-point boundary has a midpoint"),
-                        start,
-                    ]
-                } else if *reversed {
-                    vec![end, start]
-                } else {
-                    vec![start]
-                };
-                points.extend_from_slice(&sampled[1..]);
-                if !*reversed && center.is_some() && *sector {
-                    points.push(center.expect("center boundary has a center"));
-                } else if !*reversed && !*sector {
-                    points.push(start);
-                }
-                Ok(ObjectValue::Points { points })
-            }
-            ObjectOp::ArcLength => {
-                expect_arity("arc-length", parents, 1)?;
-                let (start, mid, end, _, _, complement) = expect_arc("arc-length", parents, 0)?;
-                let geometry = three_point_arc_geometry(start, mid, end)
-                    .ok_or(ObjectOpError::Degenerate { op: "arc-length" })?;
-                let contains_mid = geometry.ccw_mid <= geometry.ccw_span + 1e-9;
-                let span = if contains_mid {
-                    geometry.ccw_span
-                } else {
-                    std::f64::consts::TAU - geometry.ccw_span
-                };
-                let span = if complement {
-                    std::f64::consts::TAU - span
-                } else {
-                    span
-                };
-                Ok(ObjectValue::Scalar {
-                    value: geometry.radius * span,
-                })
-            }
-            ObjectOp::ArcAngleDegrees => {
-                expect_arity("arc-angle-degrees", parents, 1)?;
-                let (start, mid, end, _, _, complement) =
-                    expect_arc("arc-angle-degrees", parents, 0)?;
-                let geometry =
-                    three_point_arc_geometry(start, mid, end).ok_or(ObjectOpError::Degenerate {
-                        op: "arc-angle-degrees",
-                    })?;
-                let contains_mid = geometry.ccw_mid <= geometry.ccw_span + 1e-9;
-                let span = if contains_mid {
-                    geometry.ccw_span
-                } else {
-                    std::f64::consts::TAU - geometry.ccw_span
-                };
-                let span = if complement {
-                    std::f64::consts::TAU - span
-                } else {
-                    span
-                };
-                Ok(ObjectValue::Scalar {
-                    value: span.to_degrees(),
-                })
-            }
-            ObjectOp::CircularRadius => {
-                expect_arity("circular-radius", parents, 1)?;
-                let value = match parents[0] {
-                    ObjectValue::Circle {
-                        center,
-                        radius_point,
-                    } => (radius_point.x - center.x).hypot(radius_point.y - center.y),
-                    ObjectValue::Arc { start, center, .. } => {
-                        let center = center.ok_or(ObjectOpError::Degenerate {
-                            op: "circular-radius",
-                        })?;
-                        (start.x - center.x).hypot(start.y - center.y)
-                    }
-                    _ => {
-                        return Err(ObjectOpError::ExpectedShape {
-                            op: "circular-radius",
-                            parent: 0,
-                        });
-                    }
-                };
-                Ok(ObjectValue::Scalar { value })
-            }
-            ObjectOp::Polygon => Ok(ObjectValue::Points {
-                points: parents
-                    .iter()
-                    .enumerate()
-                    .map(|(index, _)| expect_point("polygon", parents, index))
-                    .collect::<Result<_, _>>()?,
-            }),
-            ObjectOp::SimilarityPolygonIteration { inverse } => {
-                expect_arity("similarity-polygon-iteration", parents, 6)?;
-                let source = expect_points("similarity-polygon-iteration", parents, 0)?;
-                let source_start = expect_point("similarity-polygon-iteration", parents, 1)?;
-                let source_end = expect_point("similarity-polygon-iteration", parents, 2)?;
-                let target_start = expect_point("similarity-polygon-iteration", parents, 3)?;
-                let target_end = expect_point("similarity-polygon-iteration", parents, 4)?;
-                let depth = expect_scalar("similarity-polygon-iteration", parents, 5)?;
-                let depth = if depth.is_finite() {
-                    (depth + 1e-9).floor().max(0.0) as usize
-                } else {
-                    0
-                };
-                let (basis_start, basis_end, image_start, image_end) = if *inverse {
-                    (target_start, target_end, source_start, source_end)
-                } else {
-                    (source_start, source_end, target_start, target_end)
-                };
-                let basis_dx = basis_end.x - basis_start.x;
-                let basis_dy = basis_end.y - basis_start.y;
-                let basis_length_squared = basis_dx * basis_dx + basis_dy * basis_dy;
-                if basis_length_squared <= 1e-9 {
-                    return Err(ObjectOpError::Degenerate {
-                        op: "similarity-polygon-iteration",
-                    });
-                }
-                let image_dx = image_end.x - image_start.x;
-                let image_dy = image_end.y - image_start.y;
-                let transform = |point: Point| {
-                    let relative_x = point.x - basis_start.x;
-                    let relative_y = point.y - basis_start.y;
-                    let alpha =
-                        (relative_x * basis_dx + relative_y * basis_dy) / basis_length_squared;
-                    let beta =
-                        (relative_x * -basis_dy + relative_y * basis_dx) / basis_length_squared;
-                    Point {
-                        x: image_start.x + alpha * image_dx - beta * image_dy,
-                        y: image_start.y + alpha * image_dy + beta * image_dx,
-                    }
-                };
-                let mut current = source.to_vec();
-                let mut polygons = Vec::with_capacity(depth);
-                for _ in 0..depth {
-                    current = current.into_iter().map(transform).collect();
-                    polygons.push(current.clone());
-                }
-                Ok(ObjectValue::Polygons { polygons })
-            }
-            ObjectOp::PointIteration { program } => {
-                let source_count = program.source_ids.len();
-                let state_count = program.state_source_ids.len();
-                if state_count == 0 || state_count != program.state_target_ids.len() {
-                    return Err(ObjectOpError::InvalidProgram {
-                        op: "point-iteration",
-                        message: "iteration state sources and targets must be non-empty and paired"
-                            .to_string(),
-                    });
-                }
-                expect_arity("point-iteration", parents, source_count + state_count + 1)?;
-                let depth = discrete_depth(expect_scalar(
-                    "point-iteration",
-                    parents,
-                    source_count + state_count,
-                )?);
-                let graph = ObjectGraph::build(program.nodes.clone()).map_err(|error| {
-                    ObjectOpError::InvalidProgram {
-                        op: "point-iteration",
-                        message: error.to_string(),
-                    }
-                })?;
-                let source_parents = &parents[..source_count];
-                let mut state = parents[source_count..source_count + state_count]
-                    .iter()
+                ObjectOp::SelectParent { index } => parents
+                    .get(*index)
                     .map(|value| (*value).clone())
-                    .collect::<Vec<_>>();
-                let mut points = Vec::with_capacity(depth);
-                for _ in 0..depth {
-                    let mut values = ObjectValues::new(&graph);
-                    for (source_id, parent) in program.source_ids.iter().zip(source_parents) {
-                        values
-                            .set_source::<_, ObjectOpError>(&graph, source_id, (*parent).clone())
-                            .map_err(|error| ObjectOpError::InvalidProgram {
-                                op: "point-iteration",
-                                message: error.to_string(),
-                            })?;
-                    }
-                    for (source_id, value) in program.state_source_ids.iter().zip(&state) {
-                        values
-                            .set_source::<_, ObjectOpError>(&graph, source_id, value.clone())
-                            .map_err(|error| ObjectOpError::InvalidProgram {
-                                op: "point-iteration",
-                                message: error.to_string(),
-                            })?;
-                    }
-                    values
-                        .evaluate_all(&graph, &mut BuiltinOperationTable)
-                        .map_err(|error| ObjectOpError::InvalidProgram {
-                            op: "point-iteration",
-                            message: error.to_string(),
-                        })?;
-                    points.push(
-                        values
-                            .get(&graph, &program.output_id)
-                            .and_then(ObjectValue::as_point)
-                            .ok_or_else(|| ObjectOpError::InvalidProgram {
-                                op: "point-iteration",
-                                message: format!(
-                                    "iteration output {} is not a point",
-                                    program.output_id
-                                ),
-                            })?,
-                    );
-                    state = program
-                        .state_target_ids
-                        .iter()
-                        .map(|target_id| {
-                            values.get(&graph, target_id).cloned().ok_or_else(|| {
-                                ObjectOpError::InvalidProgram {
-                                    op: "point-iteration",
-                                    message: format!("missing iteration state target {target_id}"),
-                                }
-                            })
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-                }
-                Ok(ObjectValue::Points { points })
-            }
-            ObjectOp::LineTranslateIteration {
-                dx,
-                dy,
-                secondary_dx,
-                secondary_dy,
-                bidirectional,
-                vector_from_parents,
-            } => {
-                expect_arity(
-                    "line-translate-iteration",
-                    parents,
-                    if *vector_from_parents { 5 } else { 3 },
-                )?;
-                let start = expect_point("line-translate-iteration", parents, 0)?;
-                let end = expect_point("line-translate-iteration", parents, 1)?;
-                let depth = discrete_depth(expect_scalar("line-translate-iteration", parents, 2)?);
-                let primary = if *vector_from_parents {
-                    let vector_start = expect_point("line-translate-iteration", parents, 3)?;
-                    let vector_end = expect_point("line-translate-iteration", parents, 4)?;
-                    Point {
-                        x: vector_end.x - vector_start.x,
-                        y: vector_end.y - vector_start.y,
-                    }
-                } else {
-                    Point { x: *dx, y: *dy }
-                };
-                let secondary = secondary_dx.zip(*secondary_dy).map(|(x, y)| Point { x, y });
-                Ok(ObjectValue::Points {
-                    points: translation_iteration_deltas(
-                        depth,
-                        primary,
-                        secondary,
-                        *bidirectional,
-                        false,
-                    )
-                    .into_iter()
-                    .flat_map(|delta| {
-                        [
-                            Point {
-                                x: start.x + delta.x,
-                                y: start.y + delta.y,
-                            },
-                            Point {
-                                x: end.x + delta.x,
-                                y: end.y + delta.y,
-                            },
-                        ]
-                    })
-                    .collect(),
-                })
-            }
-            ObjectOp::LineRotateIteration => {
-                expect_arity("line-rotate-iteration", parents, 4)?;
-                let (_, start, end) = expect_line("line-rotate-iteration", parents, 0)?;
-                let center = expect_point("line-rotate-iteration", parents, 1)?;
-                let angle = expect_scalar("line-rotate-iteration", parents, 2)?.to_radians();
-                let depth = discrete_depth(expect_scalar("line-rotate-iteration", parents, 3)?);
-                Ok(ObjectValue::Points {
-                    points: (1..=depth)
-                        .flat_map(|step| {
-                            let radians = angle * step as f64;
-                            [
-                                rotate_around(start, center, radians),
-                                rotate_around(end, center, radians),
-                            ]
-                        })
-                        .collect(),
-                })
-            }
-            ObjectOp::LineAffineIteration { target_handles } => {
-                let dynamic_target_count = target_handles
-                    .iter()
-                    .filter(|handle| !matches!(handle, AffineTargetHandle::Fixed { .. }))
-                    .count();
-                expect_arity("line-affine-iteration", parents, 6 + dynamic_target_count)?;
-                let mut target_parent_index = 5;
-                let mut target_triangle = [Point { x: 0.0, y: 0.0 }; 3];
-                for (target_index, handle) in target_handles.iter().enumerate() {
-                    target_triangle[target_index] = match handle {
-                        AffineTargetHandle::ParentPoint => {
-                            let point = expect_point(
-                                "line-affine-iteration",
-                                parents,
-                                target_parent_index,
-                            )?;
-                            target_parent_index += 1;
-                            point
-                        }
-                        AffineTargetHandle::ParentLinePoint { segment_index, t } => {
-                            let point = point_on_parent_shape(
-                                "line-affine-iteration",
-                                parents,
-                                target_parent_index,
-                                *segment_index,
-                                *t,
-                            )?;
-                            target_parent_index += 1;
-                            point
-                        }
-                        AffineTargetHandle::Fixed { point } => *point,
-                    };
-                }
-                let depth = discrete_depth(expect_scalar(
-                    "line-affine-iteration",
-                    parents,
-                    target_parent_index,
-                )?);
-                let points = affine_iteration_segment(
-                    expect_point("line-affine-iteration", parents, 0)?,
-                    expect_point("line-affine-iteration", parents, 1)?,
-                    [
-                        expect_point("line-affine-iteration", parents, 2)?,
-                        expect_point("line-affine-iteration", parents, 3)?,
-                        expect_point("line-affine-iteration", parents, 4)?,
-                    ],
-                    target_triangle,
-                    depth,
-                )
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "line-affine-iteration",
-                })?;
-                Ok(ObjectValue::Points { points })
-            }
-            ObjectOp::TranslatePolygonIteration {
-                vertex_count,
-                dx,
-                dy,
-                secondary_dx,
-                secondary_dy,
-                bidirectional,
-                vector_from_parents,
-            } => {
-                let expected = vertex_count + 1 + if *vector_from_parents { 2 } else { 0 };
-                expect_arity("translate-polygon-iteration", parents, expected)?;
-                let vertices = (0..*vertex_count)
-                    .map(|index| expect_point("translate-polygon-iteration", parents, index))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let depth = discrete_depth(expect_scalar(
-                    "translate-polygon-iteration",
-                    parents,
-                    *vertex_count,
-                )?);
-                let primary = if *vector_from_parents {
-                    let start =
-                        expect_point("translate-polygon-iteration", parents, *vertex_count + 1)?;
-                    let end =
-                        expect_point("translate-polygon-iteration", parents, *vertex_count + 2)?;
-                    Point {
-                        x: end.x - start.x,
-                        y: end.y - start.y,
-                    }
-                } else {
-                    Point { x: *dx, y: *dy }
-                };
-                let secondary = secondary_dx.zip(*secondary_dy).map(|(x, y)| Point { x, y });
-                let polygons =
-                    translation_iteration_deltas(depth, primary, secondary, *bidirectional, true)
-                        .into_iter()
-                        .map(|delta| {
-                            vertices
-                                .iter()
-                                .map(|point| Point {
-                                    x: point.x + delta.x,
-                                    y: point.y + delta.y,
-                                })
-                                .collect()
-                        })
-                        .collect();
-                Ok(ObjectValue::Polygons { polygons })
-            }
-            ObjectOp::CircleIteration { vertex_count } => {
-                expect_arity("circle-iteration", parents, vertex_count + 4)?;
-                let (source_center, source_radius_point) =
-                    expect_circle("circle-iteration", parents, 0)?;
-                let vertices = (0..*vertex_count)
-                    .map(|index| expect_point("circle-iteration", parents, index + 1))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let seed = expect_scalar("circle-iteration", parents, vertex_count + 1)?;
-                let next = expect_scalar("circle-iteration", parents, vertex_count + 2)?;
-                let depth = discrete_depth(expect_scalar(
-                    "circle-iteration",
-                    parents,
-                    vertex_count + 3,
-                )?);
-                let step = (next - seed).rem_euclid(1.0);
-                let radius_delta = Point {
-                    x: source_radius_point.x - source_center.x,
-                    y: source_radius_point.y - source_center.y,
-                };
-                let circles = (1..=depth)
-                    .filter_map(|index| {
-                        point_on_polygon_boundary(&vertices, seed + step * index as f64).map(
-                            |center| ObjectCircle {
-                                center,
-                                radius_point: Point {
-                                    x: center.x + radius_delta.x,
-                                    y: center.y + radius_delta.y,
-                                },
-                            },
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                if depth > 0 && circles.is_empty() {
-                    return Err(ObjectOpError::Degenerate {
-                        op: "circle-iteration",
-                    });
-                }
-                Ok(ObjectValue::Circles { circles })
-            }
-            ObjectOp::LineIntersection => {
-                expect_arity("line-intersection", parents, 2)?;
-                let (left_kind, left_start, left_end) =
-                    expect_line("line-intersection", parents, 0)?;
-                let (right_kind, right_start, right_end) =
-                    expect_line("line-intersection", parents, 1)?;
-                let point = line_line_intersection(
-                    left_start,
-                    left_end,
-                    left_kind,
-                    right_start,
-                    right_end,
-                    right_kind,
-                )
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "line-intersection",
-                })?;
-                Ok(ObjectValue::point(point))
-            }
-            ObjectOp::LineCircleIntersection { variant } => {
-                expect_arity("line-circle-intersection", parents, 2)?;
-                let (line_kind, start, end) = expect_line("line-circle-intersection", parents, 0)?;
-                let (center, radius) =
-                    circular_center_radius("line-circle-intersection", parents, 1)?;
-                let point = if matches!(parents[1], ObjectValue::Arc { .. }) {
-                    line_circle_intersections(start, end, line_kind, center, radius)
-                        .into_iter()
-                        .filter(|point| point_lies_on_circular_value(*point, parents[1]))
-                        .nth(*variant)
-                } else {
-                    line_circle_intersection_candidate(
-                        start, end, line_kind, center, radius, *variant,
-                    )
-                }
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "line-circle-intersection",
-                })?;
-                Ok(ObjectValue::point(point))
-            }
-            ObjectOp::CircleCircleIntersection { variant } => {
-                expect_arity("circle-circle-intersection", parents, 2)?;
-                let (left_center, left_radius) =
-                    circular_center_radius("circle-circle-intersection", parents, 0)?;
-                let (right_center, right_radius) =
-                    circular_center_radius("circle-circle-intersection", parents, 1)?;
-                let candidates = circle_circle_intersections(
-                    left_center,
-                    left_radius,
-                    right_center,
-                    right_radius,
-                );
-                let point = candidates
-                    .into_iter()
-                    .filter(|point| point_lies_on_circular_value(*point, parents[0]))
-                    .filter(|point| point_lies_on_circular_value(*point, parents[1]))
-                    .nth(*variant)
                     .ok_or(ObjectOpError::Degenerate {
-                        op: "circle-circle-intersection",
+                        op: "select-parent",
+                    }),
+                ObjectOp::ProjectedCoordinatePoint { source_parent } => Ok(ObjectValue::point(
+                    expect_point("projected-coordinate-point", parents, *source_parent)?,
+                )),
+                ObjectOp::PointFromScalars => {
+                    expect_arity("point-from-scalars", parents, 2)?;
+                    Ok(ObjectValue::point(Point {
+                        x: expect_scalar("point-from-scalars", parents, 0)?,
+                        y: expect_scalar("point-from-scalars", parents, 1)?,
+                    }))
+                }
+                ObjectOp::DirectedAngleAnchor {
+                    distance,
+                    parameter,
+                } => {
+                    expect_arity("directed-angle-anchor", parents, 4)?;
+                    let point = directed_angle_anchor(
+                        expect_point("directed-angle-anchor", parents, 0)?,
+                        expect_point("directed-angle-anchor", parents, 1)?,
+                        expect_point("directed-angle-anchor", parents, 2)?,
+                        expect_point("directed-angle-anchor", parents, 3)?,
+                        *distance,
+                        *parameter,
+                    )
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "directed-angle-anchor",
                     })?;
-                Ok(ObjectValue::point(point))
-            }
-            ObjectOp::PointCircleTangent { variant } => {
-                expect_arity("point-circle-tangent", parents, 2)?;
-                let point = expect_point("point-circle-tangent", parents, 0)?;
-                let (center, radius_point) = expect_circle("point-circle-tangent", parents, 1)?;
-                let candidates = point_circle_tangents(
-                    point,
-                    center,
-                    (radius_point.x - center.x).hypot(radius_point.y - center.y),
-                );
-                let tangent = choose_point_candidate(&candidates, None, *variant).ok_or(
-                    ObjectOpError::Degenerate {
-                        op: "point-circle-tangent",
-                    },
-                )?;
-                Ok(ObjectValue::point(tangent))
-            }
-            ObjectOp::PointDistance { value_scale } => {
-                expect_arity("point-distance", parents, 2)?;
-                let value = point_distance(
-                    expect_point("point-distance", parents, 0)?,
-                    expect_point("point-distance", parents, 1)?,
-                    *value_scale,
-                )
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "point-distance",
-                })?;
-                Ok(ObjectValue::Scalar { value })
-            }
-            ObjectOp::PointDistanceRatio { clamp_to_unit } => {
-                expect_arity("point-distance-ratio", parents, 3)?;
-                let value = point_distance_ratio(
-                    expect_point("point-distance-ratio", parents, 0)?,
-                    expect_point("point-distance-ratio", parents, 1)?,
-                    expect_point("point-distance-ratio", parents, 2)?,
-                    *clamp_to_unit,
-                )
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "point-distance-ratio",
-                })?;
-                Ok(ObjectValue::Scalar { value })
-            }
-            ObjectOp::PointAngleDegrees => {
-                expect_arity("point-angle-degrees", parents, 3)?;
-                let value = point_angle_degrees(
-                    expect_point("point-angle-degrees", parents, 0)?,
-                    expect_point("point-angle-degrees", parents, 1)?,
-                    expect_point("point-angle-degrees", parents, 2)?,
-                )
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "point-angle-degrees",
-                })?;
-                Ok(ObjectValue::Scalar { value })
-            }
-            ObjectOp::PointCoordinate { vertical } => {
-                expect_arity("point-coordinate", parents, 1)?;
-                let point = expect_point("point-coordinate", parents, 0)?;
-                Ok(ObjectValue::Scalar {
-                    value: if *vertical { point.y } else { point.x },
-                })
-            }
-            ObjectOp::MeasuredRotationDegrees => {
-                expect_arity("measured-rotation-degrees", parents, 3)?;
-                let value = measured_rotation_radians(
-                    expect_point("measured-rotation-degrees", parents, 0)?,
-                    expect_point("measured-rotation-degrees", parents, 1)?,
-                    expect_point("measured-rotation-degrees", parents, 2)?,
-                )
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "measured-rotation-degrees",
-                })?
-                .to_degrees();
-                Ok(ObjectValue::Scalar { value })
-            }
-            ObjectOp::PointLineParameter => {
-                expect_arity("point-line-parameter", parents, 2)?;
-                let point = expect_point("point-line-parameter", parents, 0)?;
-                let (line_kind, start, end) = expect_line("point-line-parameter", parents, 1)?;
-                let projection = project_to_line_like(point, start, end, line_kind).ok_or(
-                    ObjectOpError::Degenerate {
-                        op: "point-line-parameter",
-                    },
-                )?;
-                Ok(ObjectValue::Scalar {
-                    value: projection.t,
-                })
-            }
-            ObjectOp::PolylineParameterFromPoint => {
-                expect_arity("polyline-parameter-from-point", parents, 2)?;
-                let points = expect_points("polyline-parameter-from-point", parents, 0)?;
-                let point = expect_point("polyline-parameter-from-point", parents, 1)?;
-                if points.len() < 2 {
-                    return Err(ObjectOpError::Degenerate {
-                        op: "polyline-parameter-from-point",
-                    });
+                    Ok(ObjectValue::point(point))
                 }
-                let mut closest = None::<(f64, usize, f64)>;
-                for (segment_index, segment) in points.windows(2).enumerate() {
-                    let start = segment[0];
-                    let end = segment[1];
-                    let dx = end.x - start.x;
-                    let dy = end.y - start.y;
-                    let length_squared = dx * dx + dy * dy;
-                    if length_squared <= 1e-18 {
-                        continue;
-                    }
-                    let t = (((point.x - start.x) * dx + (point.y - start.y) * dy)
-                        / length_squared)
-                        .clamp(0.0, 1.0);
-                    let projected = Point {
-                        x: start.x + t * dx,
-                        y: start.y + t * dy,
+                ObjectOp::PointOnLine => {
+                    expect_arity("point-on-line", parents, 2)?;
+                    let (line_kind, start, end) = expect_line("point-on-line", parents, 0)?;
+                    let t = expect_scalar("point-on-line", parents, 1)?;
+                    let point = match line_kind {
+                        LineKind::Segment => lerp_point(start, end, t.clamp(0.0, 1.0)),
+                        LineKind::Ray => lerp_point(start, end, t.max(0.0)),
+                        LineKind::Line => lerp_point(start, end, t),
                     };
-                    let distance_squared =
-                        (point.x - projected.x).powi(2) + (point.y - projected.y).powi(2);
-                    if closest.is_none_or(|(best, _, _)| distance_squared < best) {
-                        closest = Some((distance_squared, segment_index, t));
-                    }
+                    Ok(ObjectValue::point(point))
                 }
-                let (_, segment_index, t) = closest.ok_or(ObjectOpError::Degenerate {
-                    op: "polyline-parameter-from-point",
-                })?;
-                Ok(ObjectValue::Scalar {
-                    value: (segment_index as f64 + t) / (points.len() - 1) as f64,
-                })
-            }
-            ObjectOp::CircleParameter { invert_y } => {
-                expect_arity("circle-parameter", parents, 2)?;
-                let point = expect_point("circle-parameter", parents, 0)?;
-                let (center, _) = expect_circle("circle-parameter", parents, 1)?;
-                let dx = point.x - center.x;
-                let dy = point.y - center.y;
-                if dx.hypot(dy) <= 1e-9 {
-                    return Err(ObjectOpError::Degenerate {
-                        op: "circle-parameter",
-                    });
+                ObjectOp::PointOnCircle { invert_y } => {
+                    expect_arity("point-on-circle", parents, 3)?;
+                    let (center, radius_point) = expect_circle("point-on-circle", parents, 0)?;
+                    let unit_x = expect_scalar("point-on-circle", parents, 1)?;
+                    let unit_y = expect_scalar("point-on-circle", parents, 2)?;
+                    let radius = (radius_point.x - center.x).hypot(radius_point.y - center.y);
+                    Ok(ObjectValue::point(Point {
+                        x: center.x + unit_x * radius,
+                        y: center.y + if *invert_y { -unit_y } else { unit_y } * radius,
+                    }))
                 }
-                let angle = (if *invert_y { -dy } else { dy }).atan2(dx);
-                Ok(ObjectValue::Scalar {
-                    value: angle.rem_euclid(std::f64::consts::TAU) / std::f64::consts::TAU,
-                })
-            }
-            ObjectOp::ArcParameterFromPoint => {
-                expect_arity("arc-parameter-from-point", parents, 2)?;
-                let (start, mid, end, _, _, complement) =
-                    expect_arc("arc-parameter-from-point", parents, 0)?;
-                let point = expect_point("arc-parameter-from-point", parents, 1)?;
-                let mut best = None::<(f64, f64)>;
-                for step in 0..=256 {
-                    let t = step as f64 / 256.0;
-                    let projected = if complement {
+                ObjectOp::PointOnCircleParameter { invert_y } => {
+                    expect_arity("point-on-circle-parameter", parents, 2)?;
+                    let (center, radius_point) =
+                        expect_circle("point-on-circle-parameter", parents, 0)?;
+                    let parameter = expect_scalar("point-on-circle-parameter", parents, 1)?;
+                    let angle = parameter.rem_euclid(1.0) * std::f64::consts::TAU;
+                    let radius = (radius_point.x - center.x).hypot(radius_point.y - center.y);
+                    Ok(ObjectValue::point(Point {
+                        x: center.x + angle.cos() * radius,
+                        y: center.y + if *invert_y { -angle.sin() } else { angle.sin() } * radius,
+                    }))
+                }
+                ObjectOp::PointOnArc => {
+                    expect_arity("point-on-arc", parents, 2)?;
+                    let (start, mid, end, _, _, complement) =
+                        expect_arc("point-on-arc", parents, 0)?;
+                    let t = expect_scalar("point-on-arc", parents, 1)?;
+                    let point = if complement {
                         point_on_three_point_arc_complement(start, mid, end, t)
                     } else {
                         point_on_three_point_arc(start, mid, end, t)
                     }
-                    .ok_or(ObjectOpError::Degenerate {
-                        op: "arc-parameter-from-point",
-                    })?;
-                    let distance_squared =
-                        (point.x - projected.x).powi(2) + (point.y - projected.y).powi(2);
-                    if best.is_none_or(|(best_distance, _)| distance_squared < best_distance) {
-                        best = Some((distance_squared, t));
-                    }
+                    .unwrap_or(start);
+                    Ok(ObjectValue::point(point))
                 }
-                Ok(ObjectValue::Scalar {
-                    value: best
+                ObjectOp::PointOnPolyline => {
+                    expect_arity("point-on-polyline", parents, 2)?;
+                    let points = expect_points("point-on-polyline", parents, 0)?;
+                    if points.len() < 2 {
+                        return Err(ObjectOpError::Degenerate {
+                            op: "point-on-polyline",
+                        });
+                    }
+                    let parameter = expect_scalar("point-on-polyline", parents, 1)?.clamp(0.0, 1.0);
+                    let scaled = parameter * (points.len() - 1) as f64;
+                    let segment_index = (scaled.floor() as usize).min(points.len() - 2);
+                    let t = scaled - segment_index as f64;
+                    Ok(ObjectValue::point(lerp_point(
+                        points[segment_index],
+                        points[segment_index + 1],
+                        t,
+                    )))
+                }
+                ObjectOp::PointOnGeneratedTrace {
+                    program,
+                    driver,
+                    value_min,
+                    value_max,
+                } => {
+                    expect_arity(
+                        "point-on-generated-trace",
+                        parents,
+                        program.source_ids.len() + 1,
+                    )?;
+                    let graph = build_object_program("point-on-generated-trace", program)?;
+                    let parameter = expect_scalar(
+                        "point-on-generated-trace",
+                        parents,
+                        program.source_ids.len(),
+                    )?
+                    .clamp(0.0, 1.0);
+                    let value = value_min + (value_max - value_min) * parameter;
+                    let overrides = trace_driver_overrides(driver, value, *value_min, *value_max);
+                    evaluate_object_program_point(
+                        "point-on-generated-trace",
+                        program,
+                        &graph,
+                        &parents[..program.source_ids.len()],
+                        &overrides,
+                    )
+                    .map(|point| point.map_or(ObjectValue::Undefined, ObjectValue::point))
+                }
+                ObjectOp::PointOnPolylineSegment { segment_index } => {
+                    expect_arity("point-on-polyline-segment", parents, 2)?;
+                    let points = expect_points("point-on-polyline-segment", parents, 0)?;
+                    if points.len() < 2 {
+                        return Err(ObjectOpError::Degenerate {
+                            op: "point-on-polyline-segment",
+                        });
+                    }
+                    let index = (*segment_index).min(points.len() - 2);
+                    let t = expect_scalar("point-on-polyline-segment", parents, 1)?;
+                    Ok(ObjectValue::point(lerp_point(
+                        points[index],
+                        points[index + 1],
+                        t.clamp(0.0, 1.0),
+                    )))
+                }
+                ObjectOp::PointOnPolygonBoundary => {
+                    if parents.len() < 3 {
+                        return Err(ObjectOpError::WrongArity {
+                            op: "point-on-polygon-boundary",
+                            expected: 3,
+                            actual: parents.len(),
+                        });
+                    }
+                    let vertex_count = parents.len() - 1;
+                    let vertices = (0..vertex_count)
+                        .map(|index| expect_point("point-on-polygon-boundary", parents, index))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let parameter =
+                        expect_scalar("point-on-polygon-boundary", parents, vertex_count)?;
+                    point_on_polygon_boundary(&vertices, parameter)
+                        .map(ObjectValue::point)
+                        .ok_or(ObjectOpError::Degenerate {
+                            op: "point-on-polygon-boundary",
+                        })
+                }
+                ObjectOp::Midpoint => {
+                    expect_arity("midpoint", parents, 2)?;
+                    Ok(ObjectValue::point(lerp_point(
+                        expect_point("midpoint", parents, 0)?,
+                        expect_point("midpoint", parents, 1)?,
+                        0.5,
+                    )))
+                }
+                ObjectOp::Circumcenter => {
+                    expect_arity("circumcenter", parents, 3)?;
+                    let geometry = three_point_arc_geometry(
+                        expect_point("circumcenter", parents, 0)?,
+                        expect_point("circumcenter", parents, 1)?,
+                        expect_point("circumcenter", parents, 2)?,
+                    )
+                    .ok_or(ObjectOpError::Degenerate { op: "circumcenter" })?;
+                    Ok(ObjectValue::point(geometry.center))
+                }
+                ObjectOp::MarkedAngleTranslationPoint => {
+                    expect_arity("marked-angle-translation-point", parents, 5)?;
+                    crate::marked_angle_translation_point(
+                        expect_point("marked-angle-translation-point", parents, 0)?,
+                        expect_point("marked-angle-translation-point", parents, 1)?,
+                        expect_point("marked-angle-translation-point", parents, 2)?,
+                        expect_point("marked-angle-translation-point", parents, 3)?,
+                        expect_scalar("marked-angle-translation-point", parents, 4)?,
+                    )
+                    .map(ObjectValue::point)
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "marked-angle-translation-point",
+                    })
+                }
+                ObjectOp::Line { line_kind } => {
+                    expect_arity("line", parents, 2)?;
+                    Ok(ObjectValue::Line {
+                        line_kind: *line_kind,
+                        start: expect_point("line", parents, 0)?,
+                        end: expect_point("line", parents, 1)?,
+                    })
+                }
+                ObjectOp::PerpendicularLine => {
+                    expect_arity("perpendicular-line", parents, 2)?;
+                    let through = expect_point("perpendicular-line", parents, 0)?;
+                    let (_, start, end) = expect_line("perpendicular-line", parents, 1)?;
+                    let dx = end.x - start.x;
+                    let dy = end.y - start.y;
+                    Ok(ObjectValue::Line {
+                        line_kind: LineKind::Line,
+                        start: through,
+                        end: if dx.hypot(dy) <= 1e-9 {
+                            through
+                        } else {
+                            Point {
+                                x: through.x - dy,
+                                y: through.y + dx,
+                            }
+                        },
+                    })
+                }
+                ObjectOp::ParallelLine => {
+                    expect_arity("parallel-line", parents, 2)?;
+                    let through = expect_point("parallel-line", parents, 0)?;
+                    let (_, start, end) = expect_line("parallel-line", parents, 1)?;
+                    let dx = end.x - start.x;
+                    let dy = end.y - start.y;
+                    Ok(ObjectValue::Line {
+                        line_kind: LineKind::Line,
+                        start: through,
+                        end: if dx.hypot(dy) <= 1e-9 {
+                            through
+                        } else {
+                            Point {
+                                x: through.x + dx,
+                                y: through.y + dy,
+                            }
+                        },
+                    })
+                }
+                ObjectOp::AngleBisectorRay => {
+                    expect_arity("angle-bisector-ray", parents, 3)?;
+                    let start = expect_point("angle-bisector-ray", parents, 0)?;
+                    let vertex = expect_point("angle-bisector-ray", parents, 1)?;
+                    let end = expect_point("angle-bisector-ray", parents, 2)?;
+                    let direction = angle_bisector_direction(start, vertex, end);
+                    Ok(ObjectValue::Line {
+                        line_kind: LineKind::Ray,
+                        start: vertex,
+                        end: direction.map_or(vertex, |direction| Point {
+                            x: vertex.x + direction.x,
+                            y: vertex.y + direction.y,
+                        }),
+                    })
+                }
+                ObjectOp::AngleMarker { marker_class } => {
+                    expect_arity("angle-marker", parents, 3)?;
+                    let points = angle_marker_points(
+                        expect_point("angle-marker", parents, 0)?,
+                        expect_point("angle-marker", parents, 1)?,
+                        expect_point("angle-marker", parents, 2)?,
+                        *marker_class,
+                    )
+                    .unwrap_or_default();
+                    Ok(ObjectValue::Points { points })
+                }
+                ObjectOp::SegmentMarker { t, marker_class } => {
+                    expect_arity("segment-marker", parents, 2)?;
+                    let points = segment_marker_points(
+                        expect_point("segment-marker", parents, 0)?,
+                        expect_point("segment-marker", parents, 1)?,
+                        *t,
+                        *marker_class,
+                    )
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "segment-marker",
+                    })?;
+                    Ok(ObjectValue::Points { points })
+                }
+                ObjectOp::CustomTransformPoint { transform } => {
+                    expect_arity("custom-transform-point", parents, 3)?;
+                    let origin = expect_point("custom-transform-point", parents, 0)?;
+                    let axis_end = expect_point("custom-transform-point", parents, 1)?;
+                    let value = expect_scalar("custom-transform-point", parents, 2)?;
+                    sample_custom_transform_trace(
+                        &FunctionExpr::Parsed(transform.distance_expression.to_function_ast()),
+                        &FunctionExpr::Parsed(transform.angle_expression.to_function_ast()),
+                        &BTreeMap::new(),
+                        &BTreeMap::new(),
+                        &transform.distance_parameter_names,
+                        &transform.angle_parameter_names,
+                        origin,
+                        axis_end,
+                        value,
+                        value,
+                        value,
+                        1,
+                        transform.distance_scale,
+                        transform.angle_degrees_scale,
+                    )
+                    .first()
+                    .copied()
+                    .map(ObjectValue::point)
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "custom-transform-point",
+                    })
+                }
+                ObjectOp::Curve { curve } => match curve {
+                    CurveOp::CoordinateTrace {
+                        x_expression,
+                        y_expression,
+                        parameter_names,
+                        trace_parameter_name,
+                        value_min,
+                        value_max,
+                        sample_count,
+                        mode,
+                    } => {
+                        expect_arity("coordinate-trace", parents, parameter_names.len() + 1)?;
+                        let source = expect_point("coordinate-trace", parents, 0)?;
+                        let parameters = parameter_names
+                            .iter()
+                            .enumerate()
+                            .map(|(index, name)| {
+                                expect_scalar("coordinate-trace", parents, index + 1)
+                                    .map(|value| (name.clone(), value))
+                            })
+                            .collect::<Result<BTreeMap<_, _>, _>>()?;
+                        let x_expression = FunctionExpr::Parsed(x_expression.to_function_ast());
+                        let y_expression = y_expression
+                            .as_ref()
+                            .map(|expression| FunctionExpr::Parsed(expression.to_function_ast()));
+                        let points = sample_coordinate_trace(
+                            &x_expression,
+                            y_expression.as_ref(),
+                            &parameters,
+                            y_expression.as_ref().map(|_| &parameters),
+                            Some(trace_parameter_name),
+                            y_expression.as_ref().map(|_| trace_parameter_name.as_str()),
+                            source,
+                            *value_min,
+                            *value_max,
+                            *sample_count,
+                            false,
+                            *mode,
+                        );
+                        if points.len() < 2 {
+                            return Err(ObjectOpError::Degenerate {
+                                op: "coordinate-trace",
+                            });
+                        }
+                        Ok(ObjectValue::Curve { points })
+                    }
+                    CurveOp::CartesianParameterTrace {
+                        expression,
+                        parameter_names,
+                        trace_parameter_name,
+                        value_min,
+                        value_max,
+                        sample_count,
+                    } => {
+                        expect_arity("cartesian-parameter-trace", parents, parameter_names.len())?;
+                        let parameters = parameter_names
+                            .iter()
+                            .enumerate()
+                            .map(|(index, name)| {
+                                expect_scalar("cartesian-parameter-trace", parents, index)
+                                    .map(|value| (name.clone(), value))
+                            })
+                            .collect::<Result<BTreeMap<_, _>, _>>()?;
+                        let expression = FunctionExpr::Parsed(expression.to_function_ast());
+                        let last = sample_count.saturating_sub(1).max(1) as f64;
+                        let points = (0..*sample_count)
+                            .filter_map(|index| {
+                                let t = index as f64 / last;
+                                let value = value_min + (value_max - value_min) * t;
+                                let mut parameters = parameters.clone();
+                                parameters.insert(trace_parameter_name.clone(), value);
+                                Some(Point {
+                                    x: value,
+                                    y: evaluate_expr(&expression, 0.0, &parameters)?,
+                                })
+                            })
+                            .collect::<Vec<_>>();
+                        if points.len() < 2 {
+                            return Err(ObjectOpError::Degenerate {
+                                op: "cartesian-parameter-trace",
+                            });
+                        }
+                        Ok(ObjectValue::Curve { points })
+                    }
+                    CurveOp::ParametricCurve {
+                        x_expression,
+                        y_expression,
+                        parameter_names,
+                        value_min,
+                        value_max,
+                        sample_count,
+                    } => {
+                        expect_arity("parametric-curve", parents, parameter_names.len())?;
+                        let parameters = parameter_names
+                            .iter()
+                            .enumerate()
+                            .map(|(index, name)| {
+                                expect_scalar("parametric-curve", parents, index)
+                                    .map(|value| (name.clone(), value))
+                            })
+                            .collect::<Result<BTreeMap<_, _>, _>>()?;
+                        let points = sample_parametric_curve(
+                            &FunctionExpr::Parsed(x_expression.to_function_ast()),
+                            &FunctionExpr::Parsed(y_expression.to_function_ast()),
+                            &parameters,
+                            &parameters,
+                            *value_min,
+                            *value_max,
+                            *sample_count,
+                        );
+                        if points.len() < 2 {
+                            return Err(ObjectOpError::Degenerate {
+                                op: "parametric-curve",
+                            });
+                        }
+                        Ok(ObjectValue::Curve { points })
+                    }
+                    CurveOp::FunctionPlot {
+                        expression,
+                        parameter_names,
+                        value_min,
+                        value_max,
+                        sample_count,
+                        plot_mode,
+                    } => {
+                        expect_arity("function-plot", parents, parameter_names.len())?;
+                        let parameters = parameter_names
+                            .iter()
+                            .enumerate()
+                            .map(|(index, name)| {
+                                expect_scalar("function-plot", parents, index)
+                                    .map(|value| (name.clone(), value))
+                            })
+                            .collect::<Result<BTreeMap<_, _>, _>>()?;
+                        let points = crate::sample_expression(
+                            &FunctionExpr::Parsed(expression.to_function_ast()),
+                            &parameters,
+                            *value_min,
+                            *value_max,
+                            *sample_count,
+                            *plot_mode,
+                        )
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>();
+                        if points.len() < 2 {
+                            return Err(ObjectOpError::Degenerate {
+                                op: "function-plot",
+                            });
+                        }
+                        Ok(ObjectValue::Curve { points })
+                    }
+                    CurveOp::CustomTransformTrace {
+                        transform,
+                        value_min,
+                        value_max,
+                        sample_count,
+                    } => {
+                        expect_arity("custom-transform-trace", parents, 3)?;
+                        let points = sample_custom_transform_trace(
+                            &FunctionExpr::Parsed(transform.distance_expression.to_function_ast()),
+                            &FunctionExpr::Parsed(transform.angle_expression.to_function_ast()),
+                            &BTreeMap::new(),
+                            &BTreeMap::new(),
+                            &transform.distance_parameter_names,
+                            &transform.angle_parameter_names,
+                            expect_point("custom-transform-trace", parents, 0)?,
+                            expect_point("custom-transform-trace", parents, 1)?,
+                            *value_min,
+                            *value_max,
+                            expect_scalar("custom-transform-trace", parents, 2)?,
+                            *sample_count,
+                            transform.distance_scale,
+                            transform.angle_degrees_scale,
+                        );
+                        if points.is_empty() {
+                            return Err(ObjectOpError::Degenerate {
+                                op: "custom-transform-trace",
+                            });
+                        }
+                        Ok(ObjectValue::Curve { points })
+                    }
+                    CurveOp::PointTrace {
+                        program,
+                        driver,
+                        value_min,
+                        value_max,
+                        sample_count,
+                    } => {
+                        expect_arity("point-trace", parents, program.source_ids.len())?;
+                        let graph = build_object_program("point-trace", program)?;
+                        let last = sample_count.saturating_sub(1).max(1) as f64;
+                        let mut points = Vec::with_capacity(*sample_count);
+                        let mut sample_indices = Vec::with_capacity(*sample_count);
+                        for index in 0..*sample_count {
+                            let value = value_min + (value_max - value_min) * index as f64 / last;
+                            let overrides =
+                                trace_driver_overrides(driver, value, *value_min, *value_max);
+                            if let Some(point) = evaluate_object_program_point(
+                                "point-trace",
+                                program,
+                                &graph,
+                                parents,
+                                &overrides,
+                            )? {
+                                points.push(point);
+                                sample_indices.push(index);
+                            }
+                        }
+                        if points.len() < 2 {
+                            return Err(ObjectOpError::Degenerate { op: "point-trace" });
+                        }
+                        Ok(ObjectValue::SampledCurve {
+                            points,
+                            sample_indices,
+                        })
+                    }
+                    CurveOp::RepeatPoint { sample_count } => {
+                        expect_arity("repeat-point", parents, 1)?;
+                        let point = expect_point("repeat-point", parents, 0)?;
+                        if *sample_count < 2 {
+                            return Err(ObjectOpError::Degenerate { op: "repeat-point" });
+                        }
+                        Ok(ObjectValue::SampledCurve {
+                            points: vec![point; *sample_count],
+                            sample_indices: (0..*sample_count).collect(),
+                        })
+                    }
+                    CurveOp::ZipPointTraces => {
+                        expect_arity("zip-point-traces", parents, 2)?;
+                        let (start_points, start_indices) =
+                            expect_sampled_curve("zip-point-traces", parents, 0)?;
+                        let (end_points, end_indices) =
+                            expect_sampled_curve("zip-point-traces", parents, 1)?;
+                        let mut points = Vec::new();
+                        let mut start_cursor = 0;
+                        let mut end_cursor = 0;
+                        while start_cursor < start_indices.len() && end_cursor < end_indices.len() {
+                            match start_indices[start_cursor].cmp(&end_indices[end_cursor]) {
+                                std::cmp::Ordering::Less => start_cursor += 1,
+                                std::cmp::Ordering::Greater => end_cursor += 1,
+                                std::cmp::Ordering::Equal => {
+                                    points.push(start_points[start_cursor]);
+                                    points.push(end_points[end_cursor]);
+                                    start_cursor += 1;
+                                    end_cursor += 1;
+                                }
+                            }
+                        }
+                        if points.is_empty() {
+                            return Err(ObjectOpError::Degenerate {
+                                op: "zip-point-traces",
+                            });
+                        }
+                        Ok(ObjectValue::Curve { points })
+                    }
+                },
+                ObjectOp::LinePolylineIntersection {
+                    variant,
+                    sample_hint,
+                } => {
+                    expect_arity("line-polyline-intersection", parents, 2)?;
+                    let (line_kind, start, end) =
+                        expect_line("line-polyline-intersection", parents, 0)?;
+                    let points = expect_points("line-polyline-intersection", parents, 1)?;
+                    let point = line_polyline_intersection(
+                        start,
+                        end,
+                        line_kind,
+                        points,
+                        *sample_hint,
+                        *variant,
+                    )
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "line-polyline-intersection",
+                    })?;
+                    Ok(ObjectValue::point(point))
+                }
+                ObjectOp::CircularPolylineIntersection {
+                    variant,
+                    sample_hint,
+                } => {
+                    expect_arity("circular-polyline-intersection", parents, 2)?;
+                    let (center, radius) =
+                        circular_center_radius("circular-polyline-intersection", parents, 0)?;
+                    let points = expect_points("circular-polyline-intersection", parents, 1)?;
+                    let point = circular_polyline_intersection(
+                        parents[0],
+                        center,
+                        radius,
+                        points,
+                        *sample_hint,
+                        *variant,
+                    )
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "circular-polyline-intersection",
+                    })?;
+                    Ok(ObjectValue::point(point))
+                }
+                ObjectOp::ColorizedSpectrumLine {
+                    trace_endpoint_index,
+                    step_index,
+                    ray,
+                    reflected,
+                    sampled_reflection_axis,
+                } => colorized_spectrum_line(
+                    parents,
+                    *trace_endpoint_index,
+                    *step_index,
+                    *ray,
+                    *reflected,
+                    *sampled_reflection_axis,
+                ),
+                ObjectOp::CircleByPoints => {
+                    expect_arity("circle-by-points", parents, 2)?;
+                    Ok(ObjectValue::Circle {
+                        center: expect_point("circle-by-points", parents, 0)?,
+                        radius_point: expect_point("circle-by-points", parents, 1)?,
+                    })
+                }
+                ObjectOp::CircleBySegmentRadius => {
+                    expect_arity("circle-by-segment-radius", parents, 3)?;
+                    let center = expect_point("circle-by-segment-radius", parents, 0)?;
+                    let start = expect_point("circle-by-segment-radius", parents, 1)?;
+                    let end = expect_point("circle-by-segment-radius", parents, 2)?;
+                    let radius = (end.x - start.x).hypot(end.y - start.y);
+                    Ok(ObjectValue::Circle {
+                        center,
+                        radius_point: Point {
+                            x: center.x + radius,
+                            y: center.y,
+                        },
+                    })
+                }
+                ObjectOp::CircleByRadius => {
+                    expect_arity("circle-by-radius", parents, 2)?;
+                    let center = expect_point("circle-by-radius", parents, 0)?;
+                    let radius = expect_scalar("circle-by-radius", parents, 1)?.abs();
+                    Ok(ObjectValue::Circle {
+                        center,
+                        radius_point: Point {
+                            x: center.x + radius,
+                            y: center.y,
+                        },
+                    })
+                }
+                ObjectOp::ThreePointArc { complement } => {
+                    expect_arity("three-point-arc", parents, 3)?;
+                    let start = expect_point("three-point-arc", parents, 0)?;
+                    let mid = expect_point("three-point-arc", parents, 1)?;
+                    let end = expect_point("three-point-arc", parents, 2)?;
+                    Ok(ObjectValue::Arc {
+                        start,
+                        mid,
+                        end,
+                        center: None,
+                        counterclockwise: false,
+                        complement: *complement,
+                    })
+                }
+                ObjectOp::CenterArc { y_up } => {
+                    expect_arity("center-arc", parents, 3)?;
+                    let center = expect_point("center-arc", parents, 0)?;
+                    let start = expect_point("center-arc", parents, 1)?;
+                    let end = expect_point("center-arc", parents, 2)?;
+                    let [start, mid, end] = circle_arc_control_points(center, start, end, *y_up)
+                        .unwrap_or([start, start, end]);
+                    Ok(ObjectValue::Arc {
+                        start,
+                        mid,
+                        end,
+                        center: Some(center),
+                        counterclockwise: true,
+                        complement: false,
+                    })
+                }
+                ObjectOp::CircleArc { y_up } => {
+                    expect_arity("circle-arc", parents, 3)?;
+                    let (center, _) = expect_circle("circle-arc", parents, 0)?;
+                    let start = expect_point("circle-arc", parents, 1)?;
+                    let end = expect_point("circle-arc", parents, 2)?;
+                    let [start, mid, end] = circle_arc_control_points(center, start, end, *y_up)
+                        .unwrap_or([start, start, end]);
+                    Ok(ObjectValue::Arc {
+                        start,
+                        mid,
+                        end,
+                        center: Some(center),
+                        counterclockwise: true,
+                        complement: false,
+                    })
+                }
+                ObjectOp::ArcBoundaryPoints {
+                    center_arc,
+                    sector,
+                    reversed,
+                    complement,
+                    steps,
+                    y_up,
+                } => {
+                    expect_arity("arc-boundary-points", parents, 3)?;
+                    let first = expect_point("arc-boundary-points", parents, 0)?;
+                    let second = expect_point("arc-boundary-points", parents, 1)?;
+                    let end = expect_point("arc-boundary-points", parents, 2)?;
+                    let (center, start, mid, sampled) =
+                        if *center_arc {
+                            let sampled = sample_circle_arc(first, second, end, *steps, *y_up)
+                                .ok_or(ObjectOpError::Degenerate {
+                                    op: "arc-boundary-points",
+                                })?;
+                            (Some(first), second, None, sampled)
+                        } else {
+                            let sampled =
+                                sample_three_point_arc(first, second, end, *steps, *complement)
+                                    .ok_or(ObjectOpError::Degenerate {
+                                        op: "arc-boundary-points",
+                                    })?;
+                            (None, first, Some(second), sampled)
+                        };
+                    let mut points = if let Some(center) = center {
+                        if *sector {
+                            if *reversed {
+                                vec![end, center, start]
+                            } else {
+                                vec![center, start]
+                            }
+                        } else if *reversed {
+                            vec![end, start]
+                        } else {
+                            vec![start]
+                        }
+                    } else if *sector && *reversed {
+                        vec![
+                            end,
+                            mid.expect("three-point boundary has a midpoint"),
+                            start,
+                        ]
+                    } else if *reversed {
+                        vec![end, start]
+                    } else {
+                        vec![start]
+                    };
+                    points.extend_from_slice(&sampled[1..]);
+                    if !*reversed && center.is_some() && *sector {
+                        points.push(center.expect("center boundary has a center"));
+                    } else if !*reversed && !*sector {
+                        points.push(start);
+                    }
+                    Ok(ObjectValue::Points { points })
+                }
+                ObjectOp::ArcLength => {
+                    expect_arity("arc-length", parents, 1)?;
+                    let (start, mid, end, _, _, complement) = expect_arc("arc-length", parents, 0)?;
+                    let geometry = three_point_arc_geometry(start, mid, end)
+                        .ok_or(ObjectOpError::Degenerate { op: "arc-length" })?;
+                    let contains_mid = geometry.ccw_mid <= geometry.ccw_span + 1e-9;
+                    let span = if contains_mid {
+                        geometry.ccw_span
+                    } else {
+                        std::f64::consts::TAU - geometry.ccw_span
+                    };
+                    let span = if complement {
+                        std::f64::consts::TAU - span
+                    } else {
+                        span
+                    };
+                    Ok(ObjectValue::Scalar {
+                        value: geometry.radius * span,
+                    })
+                }
+                ObjectOp::ArcAngleDegrees => {
+                    expect_arity("arc-angle-degrees", parents, 1)?;
+                    let (start, mid, end, _, _, complement) =
+                        expect_arc("arc-angle-degrees", parents, 0)?;
+                    let geometry = three_point_arc_geometry(start, mid, end).ok_or(
+                        ObjectOpError::Degenerate {
+                            op: "arc-angle-degrees",
+                        },
+                    )?;
+                    let contains_mid = geometry.ccw_mid <= geometry.ccw_span + 1e-9;
+                    let span = if contains_mid {
+                        geometry.ccw_span
+                    } else {
+                        std::f64::consts::TAU - geometry.ccw_span
+                    };
+                    let span = if complement {
+                        std::f64::consts::TAU - span
+                    } else {
+                        span
+                    };
+                    Ok(ObjectValue::Scalar {
+                        value: span.to_degrees(),
+                    })
+                }
+                ObjectOp::CircularRadius => {
+                    expect_arity("circular-radius", parents, 1)?;
+                    let value = match parents[0] {
+                        ObjectValue::Circle {
+                            center,
+                            radius_point,
+                        } => (radius_point.x - center.x).hypot(radius_point.y - center.y),
+                        ObjectValue::Arc { start, center, .. } => {
+                            let center = center.ok_or(ObjectOpError::Degenerate {
+                                op: "circular-radius",
+                            })?;
+                            (start.x - center.x).hypot(start.y - center.y)
+                        }
+                        _ => {
+                            return Err(ObjectOpError::ExpectedShape {
+                                op: "circular-radius",
+                                parent: 0,
+                            });
+                        }
+                    };
+                    Ok(ObjectValue::Scalar { value })
+                }
+                ObjectOp::Polygon => Ok(ObjectValue::Points {
+                    points: parents
+                        .iter()
+                        .enumerate()
+                        .map(|(index, _)| expect_point("polygon", parents, index))
+                        .collect::<Result<_, _>>()?,
+                }),
+                ObjectOp::SimilarityPolygonIteration { inverse } => {
+                    expect_arity("similarity-polygon-iteration", parents, 6)?;
+                    let source = expect_points("similarity-polygon-iteration", parents, 0)?;
+                    let source_start = expect_point("similarity-polygon-iteration", parents, 1)?;
+                    let source_end = expect_point("similarity-polygon-iteration", parents, 2)?;
+                    let target_start = expect_point("similarity-polygon-iteration", parents, 3)?;
+                    let target_end = expect_point("similarity-polygon-iteration", parents, 4)?;
+                    let depth = expect_scalar("similarity-polygon-iteration", parents, 5)?;
+                    let depth = if depth.is_finite() {
+                        (depth + 1e-9).floor().max(0.0) as usize
+                    } else {
+                        0
+                    };
+                    let (basis_start, basis_end, image_start, image_end) = if *inverse {
+                        (target_start, target_end, source_start, source_end)
+                    } else {
+                        (source_start, source_end, target_start, target_end)
+                    };
+                    let basis_dx = basis_end.x - basis_start.x;
+                    let basis_dy = basis_end.y - basis_start.y;
+                    let basis_length_squared = basis_dx * basis_dx + basis_dy * basis_dy;
+                    if basis_length_squared <= 1e-9 {
+                        return Err(ObjectOpError::Degenerate {
+                            op: "similarity-polygon-iteration",
+                        });
+                    }
+                    let image_dx = image_end.x - image_start.x;
+                    let image_dy = image_end.y - image_start.y;
+                    let transform = |point: Point| {
+                        let relative_x = point.x - basis_start.x;
+                        let relative_y = point.y - basis_start.y;
+                        let alpha =
+                            (relative_x * basis_dx + relative_y * basis_dy) / basis_length_squared;
+                        let beta =
+                            (relative_x * -basis_dy + relative_y * basis_dx) / basis_length_squared;
+                        Point {
+                            x: image_start.x + alpha * image_dx - beta * image_dy,
+                            y: image_start.y + alpha * image_dy + beta * image_dx,
+                        }
+                    };
+                    let mut current = source.to_vec();
+                    let mut polygons = Vec::with_capacity(depth);
+                    for _ in 0..depth {
+                        current = current.into_iter().map(transform).collect();
+                        polygons.push(current.clone());
+                    }
+                    Ok(ObjectValue::Polygons { polygons })
+                }
+                ObjectOp::PointIteration { program } => {
+                    let source_count = program.source_ids.len();
+                    let state_count = program.state_source_ids.len();
+                    if state_count == 0 || state_count != program.state_target_ids.len() {
+                        return Err(ObjectOpError::InvalidProgram {
+                            op: "point-iteration",
+                            message:
+                                "iteration state sources and targets must be non-empty and paired"
+                                    .to_string(),
+                        });
+                    }
+                    expect_arity("point-iteration", parents, source_count + state_count + 1)?;
+                    let depth = discrete_depth(expect_scalar(
+                        "point-iteration",
+                        parents,
+                        source_count + state_count,
+                    )?);
+                    let graph = ObjectGraph::build(program.nodes.clone()).map_err(|error| {
+                        ObjectOpError::InvalidProgram {
+                            op: "point-iteration",
+                            message: error.to_string(),
+                        }
+                    })?;
+                    let source_parents = &parents[..source_count];
+                    let mut state = parents[source_count..source_count + state_count]
+                        .iter()
+                        .map(|value| (*value).clone())
+                        .collect::<Vec<_>>();
+                    let mut points = Vec::with_capacity(depth);
+                    for _ in 0..depth {
+                        let mut values = ObjectValues::new(&graph);
+                        for (source_id, parent) in program.source_ids.iter().zip(source_parents) {
+                            values
+                                .set_source::<_, ObjectOpError>(
+                                    &graph,
+                                    source_id,
+                                    (*parent).clone(),
+                                )
+                                .map_err(|error| ObjectOpError::InvalidProgram {
+                                    op: "point-iteration",
+                                    message: error.to_string(),
+                                })?;
+                        }
+                        for (source_id, value) in program.state_source_ids.iter().zip(&state) {
+                            values
+                                .set_source::<_, ObjectOpError>(&graph, source_id, value.clone())
+                                .map_err(|error| ObjectOpError::InvalidProgram {
+                                    op: "point-iteration",
+                                    message: error.to_string(),
+                                })?;
+                        }
+                        values
+                            .evaluate_all(&graph, &mut BuiltinOperationTable)
+                            .map_err(|error| ObjectOpError::InvalidProgram {
+                                op: "point-iteration",
+                                message: error.to_string(),
+                            })?;
+                        points.push(
+                            values
+                                .get(&graph, &program.output_id)
+                                .and_then(ObjectValue::as_point)
+                                .ok_or_else(|| ObjectOpError::InvalidProgram {
+                                    op: "point-iteration",
+                                    message: format!(
+                                        "iteration output {} is not a point",
+                                        program.output_id
+                                    ),
+                                })?,
+                        );
+                        state = program
+                            .state_target_ids
+                            .iter()
+                            .map(|target_id| {
+                                values.get(&graph, target_id).cloned().ok_or_else(|| {
+                                    ObjectOpError::InvalidProgram {
+                                        op: "point-iteration",
+                                        message: format!(
+                                            "missing iteration state target {target_id}"
+                                        ),
+                                    }
+                                })
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                    }
+                    Ok(ObjectValue::Points { points })
+                }
+                ObjectOp::LineTranslateIteration {
+                    dx,
+                    dy,
+                    secondary_dx,
+                    secondary_dy,
+                    bidirectional,
+                    vector_from_parents,
+                } => {
+                    expect_arity(
+                        "line-translate-iteration",
+                        parents,
+                        if *vector_from_parents { 5 } else { 3 },
+                    )?;
+                    let start = expect_point("line-translate-iteration", parents, 0)?;
+                    let end = expect_point("line-translate-iteration", parents, 1)?;
+                    let depth =
+                        discrete_depth(expect_scalar("line-translate-iteration", parents, 2)?);
+                    let primary = if *vector_from_parents {
+                        let vector_start = expect_point("line-translate-iteration", parents, 3)?;
+                        let vector_end = expect_point("line-translate-iteration", parents, 4)?;
+                        Point {
+                            x: vector_end.x - vector_start.x,
+                            y: vector_end.y - vector_start.y,
+                        }
+                    } else {
+                        Point { x: *dx, y: *dy }
+                    };
+                    let secondary = secondary_dx.zip(*secondary_dy).map(|(x, y)| Point { x, y });
+                    Ok(ObjectValue::Points {
+                        points: translation_iteration_deltas(
+                            depth,
+                            primary,
+                            secondary,
+                            *bidirectional,
+                            false,
+                        )
+                        .into_iter()
+                        .flat_map(|delta| {
+                            [
+                                Point {
+                                    x: start.x + delta.x,
+                                    y: start.y + delta.y,
+                                },
+                                Point {
+                                    x: end.x + delta.x,
+                                    y: end.y + delta.y,
+                                },
+                            ]
+                        })
+                        .collect(),
+                    })
+                }
+                ObjectOp::LineRotateIteration => {
+                    expect_arity("line-rotate-iteration", parents, 4)?;
+                    let (_, start, end) = expect_line("line-rotate-iteration", parents, 0)?;
+                    let center = expect_point("line-rotate-iteration", parents, 1)?;
+                    let angle = expect_scalar("line-rotate-iteration", parents, 2)?.to_radians();
+                    let depth = discrete_depth(expect_scalar("line-rotate-iteration", parents, 3)?);
+                    Ok(ObjectValue::Points {
+                        points: (1..=depth)
+                            .flat_map(|step| {
+                                let radians = angle * step as f64;
+                                [
+                                    rotate_around(start, center, radians),
+                                    rotate_around(end, center, radians),
+                                ]
+                            })
+                            .collect(),
+                    })
+                }
+                ObjectOp::LineAffineIteration { target_handles } => {
+                    let dynamic_target_count = target_handles
+                        .iter()
+                        .filter(|handle| !matches!(handle, AffineTargetHandle::Fixed { .. }))
+                        .count();
+                    expect_arity("line-affine-iteration", parents, 6 + dynamic_target_count)?;
+                    let mut target_parent_index = 5;
+                    let mut target_triangle = [Point { x: 0.0, y: 0.0 }; 3];
+                    for (target_index, handle) in target_handles.iter().enumerate() {
+                        target_triangle[target_index] = match handle {
+                            AffineTargetHandle::ParentPoint => {
+                                let point = expect_point(
+                                    "line-affine-iteration",
+                                    parents,
+                                    target_parent_index,
+                                )?;
+                                target_parent_index += 1;
+                                point
+                            }
+                            AffineTargetHandle::ParentLinePoint { segment_index, t } => {
+                                let point = point_on_parent_shape(
+                                    "line-affine-iteration",
+                                    parents,
+                                    target_parent_index,
+                                    *segment_index,
+                                    *t,
+                                )?;
+                                target_parent_index += 1;
+                                point
+                            }
+                            AffineTargetHandle::Fixed { point } => *point,
+                        };
+                    }
+                    let depth = discrete_depth(expect_scalar(
+                        "line-affine-iteration",
+                        parents,
+                        target_parent_index,
+                    )?);
+                    let points = affine_iteration_segment(
+                        expect_point("line-affine-iteration", parents, 0)?,
+                        expect_point("line-affine-iteration", parents, 1)?,
+                        [
+                            expect_point("line-affine-iteration", parents, 2)?,
+                            expect_point("line-affine-iteration", parents, 3)?,
+                            expect_point("line-affine-iteration", parents, 4)?,
+                        ],
+                        target_triangle,
+                        depth,
+                    )
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "line-affine-iteration",
+                    })?;
+                    Ok(ObjectValue::Points { points })
+                }
+                ObjectOp::TranslatePolygonIteration {
+                    vertex_count,
+                    dx,
+                    dy,
+                    secondary_dx,
+                    secondary_dy,
+                    bidirectional,
+                    vector_from_parents,
+                } => {
+                    let expected = vertex_count + 1 + if *vector_from_parents { 2 } else { 0 };
+                    expect_arity("translate-polygon-iteration", parents, expected)?;
+                    let vertices = (0..*vertex_count)
+                        .map(|index| expect_point("translate-polygon-iteration", parents, index))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let depth = discrete_depth(expect_scalar(
+                        "translate-polygon-iteration",
+                        parents,
+                        *vertex_count,
+                    )?);
+                    let primary = if *vector_from_parents {
+                        let start = expect_point(
+                            "translate-polygon-iteration",
+                            parents,
+                            *vertex_count + 1,
+                        )?;
+                        let end = expect_point(
+                            "translate-polygon-iteration",
+                            parents,
+                            *vertex_count + 2,
+                        )?;
+                        Point {
+                            x: end.x - start.x,
+                            y: end.y - start.y,
+                        }
+                    } else {
+                        Point { x: *dx, y: *dy }
+                    };
+                    let secondary = secondary_dx.zip(*secondary_dy).map(|(x, y)| Point { x, y });
+                    let polygons = translation_iteration_deltas(
+                        depth,
+                        primary,
+                        secondary,
+                        *bidirectional,
+                        true,
+                    )
+                    .into_iter()
+                    .map(|delta| {
+                        vertices
+                            .iter()
+                            .map(|point| Point {
+                                x: point.x + delta.x,
+                                y: point.y + delta.y,
+                            })
+                            .collect()
+                    })
+                    .collect();
+                    Ok(ObjectValue::Polygons { polygons })
+                }
+                ObjectOp::CircleIteration { vertex_count } => {
+                    expect_arity("circle-iteration", parents, vertex_count + 4)?;
+                    let (source_center, source_radius_point) =
+                        expect_circle("circle-iteration", parents, 0)?;
+                    let vertices = (0..*vertex_count)
+                        .map(|index| expect_point("circle-iteration", parents, index + 1))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let seed = expect_scalar("circle-iteration", parents, vertex_count + 1)?;
+                    let next = expect_scalar("circle-iteration", parents, vertex_count + 2)?;
+                    let depth = discrete_depth(expect_scalar(
+                        "circle-iteration",
+                        parents,
+                        vertex_count + 3,
+                    )?);
+                    let step = (next - seed).rem_euclid(1.0);
+                    let radius_delta = Point {
+                        x: source_radius_point.x - source_center.x,
+                        y: source_radius_point.y - source_center.y,
+                    };
+                    let circles = (1..=depth)
+                        .filter_map(|index| {
+                            point_on_polygon_boundary(&vertices, seed + step * index as f64).map(
+                                |center| ObjectCircle {
+                                    center,
+                                    radius_point: Point {
+                                        x: center.x + radius_delta.x,
+                                        y: center.y + radius_delta.y,
+                                    },
+                                },
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    if depth > 0 && circles.is_empty() {
+                        return Err(ObjectOpError::Degenerate {
+                            op: "circle-iteration",
+                        });
+                    }
+                    Ok(ObjectValue::Circles { circles })
+                }
+                ObjectOp::LineIntersection => {
+                    expect_arity("line-intersection", parents, 2)?;
+                    let (left_kind, left_start, left_end) =
+                        expect_line("line-intersection", parents, 0)?;
+                    let (right_kind, right_start, right_end) =
+                        expect_line("line-intersection", parents, 1)?;
+                    let point = line_line_intersection(
+                        left_start,
+                        left_end,
+                        left_kind,
+                        right_start,
+                        right_end,
+                        right_kind,
+                    )
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "line-intersection",
+                    })?;
+                    Ok(ObjectValue::point(point))
+                }
+                ObjectOp::LineCircleIntersection { variant } => {
+                    expect_arity("line-circle-intersection", parents, 2)?;
+                    let (line_kind, start, end) =
+                        expect_line("line-circle-intersection", parents, 0)?;
+                    let (center, radius) =
+                        circular_center_radius("line-circle-intersection", parents, 1)?;
+                    let point = if matches!(parents[1], ObjectValue::Arc { .. }) {
+                        line_circle_intersections(start, end, line_kind, center, radius)
+                            .into_iter()
+                            .filter(|point| point_lies_on_circular_value(*point, parents[1]))
+                            .nth(*variant)
+                    } else {
+                        line_circle_intersection_candidate(
+                            start, end, line_kind, center, radius, *variant,
+                        )
+                    }
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "line-circle-intersection",
+                    })?;
+                    Ok(ObjectValue::point(point))
+                }
+                ObjectOp::CircleCircleIntersection { variant } => {
+                    expect_arity("circle-circle-intersection", parents, 2)?;
+                    let (left_center, left_radius) =
+                        circular_center_radius("circle-circle-intersection", parents, 0)?;
+                    let (right_center, right_radius) =
+                        circular_center_radius("circle-circle-intersection", parents, 1)?;
+                    let candidates = circle_circle_intersections(
+                        left_center,
+                        left_radius,
+                        right_center,
+                        right_radius,
+                    );
+                    let point = candidates
+                        .into_iter()
+                        .filter(|point| point_lies_on_circular_value(*point, parents[0]))
+                        .filter(|point| point_lies_on_circular_value(*point, parents[1]))
+                        .nth(*variant)
+                        .ok_or(ObjectOpError::Degenerate {
+                            op: "circle-circle-intersection",
+                        })?;
+                    Ok(ObjectValue::point(point))
+                }
+                ObjectOp::PointCircleTangent { variant } => {
+                    expect_arity("point-circle-tangent", parents, 2)?;
+                    let point = expect_point("point-circle-tangent", parents, 0)?;
+                    let (center, radius_point) = expect_circle("point-circle-tangent", parents, 1)?;
+                    let candidates = point_circle_tangents(
+                        point,
+                        center,
+                        (radius_point.x - center.x).hypot(radius_point.y - center.y),
+                    );
+                    let tangent = choose_point_candidate(&candidates, None, *variant).ok_or(
+                        ObjectOpError::Degenerate {
+                            op: "point-circle-tangent",
+                        },
+                    )?;
+                    Ok(ObjectValue::point(tangent))
+                }
+                ObjectOp::PointDistance { value_scale } => {
+                    expect_arity("point-distance", parents, 2)?;
+                    let value = point_distance(
+                        expect_point("point-distance", parents, 0)?,
+                        expect_point("point-distance", parents, 1)?,
+                        *value_scale,
+                    )
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "point-distance",
+                    })?;
+                    Ok(ObjectValue::Scalar { value })
+                }
+                ObjectOp::PointDistanceRatio { clamp_to_unit } => {
+                    expect_arity("point-distance-ratio", parents, 3)?;
+                    let value = point_distance_ratio(
+                        expect_point("point-distance-ratio", parents, 0)?,
+                        expect_point("point-distance-ratio", parents, 1)?,
+                        expect_point("point-distance-ratio", parents, 2)?,
+                        *clamp_to_unit,
+                    )
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "point-distance-ratio",
+                    })?;
+                    Ok(ObjectValue::Scalar { value })
+                }
+                ObjectOp::PointAngleDegrees => {
+                    expect_arity("point-angle-degrees", parents, 3)?;
+                    let value = point_angle_degrees(
+                        expect_point("point-angle-degrees", parents, 0)?,
+                        expect_point("point-angle-degrees", parents, 1)?,
+                        expect_point("point-angle-degrees", parents, 2)?,
+                    )
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "point-angle-degrees",
+                    })?;
+                    Ok(ObjectValue::Scalar { value })
+                }
+                ObjectOp::PointCoordinate { vertical } => {
+                    expect_arity("point-coordinate", parents, 1)?;
+                    let point = expect_point("point-coordinate", parents, 0)?;
+                    Ok(ObjectValue::Scalar {
+                        value: if *vertical { point.y } else { point.x },
+                    })
+                }
+                ObjectOp::MeasuredRotationDegrees => {
+                    expect_arity("measured-rotation-degrees", parents, 3)?;
+                    let value = measured_rotation_radians(
+                        expect_point("measured-rotation-degrees", parents, 0)?,
+                        expect_point("measured-rotation-degrees", parents, 1)?,
+                        expect_point("measured-rotation-degrees", parents, 2)?,
+                    )
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "measured-rotation-degrees",
+                    })?
+                    .to_degrees();
+                    Ok(ObjectValue::Scalar { value })
+                }
+                ObjectOp::PointLineParameter => {
+                    expect_arity("point-line-parameter", parents, 2)?;
+                    let point = expect_point("point-line-parameter", parents, 0)?;
+                    let (line_kind, start, end) = expect_line("point-line-parameter", parents, 1)?;
+                    let projection = project_to_line_like(point, start, end, line_kind).ok_or(
+                        ObjectOpError::Degenerate {
+                            op: "point-line-parameter",
+                        },
+                    )?;
+                    Ok(ObjectValue::Scalar {
+                        value: projection.t,
+                    })
+                }
+                ObjectOp::PolylineParameterFromPoint => {
+                    expect_arity("polyline-parameter-from-point", parents, 2)?;
+                    let points = expect_points("polyline-parameter-from-point", parents, 0)?;
+                    let point = expect_point("polyline-parameter-from-point", parents, 1)?;
+                    if points.len() < 2 {
+                        return Err(ObjectOpError::Degenerate {
+                            op: "polyline-parameter-from-point",
+                        });
+                    }
+                    let mut closest = None::<(f64, usize, f64)>;
+                    for (segment_index, segment) in points.windows(2).enumerate() {
+                        let start = segment[0];
+                        let end = segment[1];
+                        let dx = end.x - start.x;
+                        let dy = end.y - start.y;
+                        let length_squared = dx * dx + dy * dy;
+                        if length_squared <= 1e-18 {
+                            continue;
+                        }
+                        let t = (((point.x - start.x) * dx + (point.y - start.y) * dy)
+                            / length_squared)
+                            .clamp(0.0, 1.0);
+                        let projected = Point {
+                            x: start.x + t * dx,
+                            y: start.y + t * dy,
+                        };
+                        let distance_squared =
+                            (point.x - projected.x).powi(2) + (point.y - projected.y).powi(2);
+                        if closest.is_none_or(|(best, _, _)| distance_squared < best) {
+                            closest = Some((distance_squared, segment_index, t));
+                        }
+                    }
+                    let (_, segment_index, t) = closest.ok_or(ObjectOpError::Degenerate {
+                        op: "polyline-parameter-from-point",
+                    })?;
+                    Ok(ObjectValue::Scalar {
+                        value: (segment_index as f64 + t) / (points.len() - 1) as f64,
+                    })
+                }
+                ObjectOp::CircleParameter { invert_y } => {
+                    expect_arity("circle-parameter", parents, 2)?;
+                    let point = expect_point("circle-parameter", parents, 0)?;
+                    let (center, _) = expect_circle("circle-parameter", parents, 1)?;
+                    let dx = point.x - center.x;
+                    let dy = point.y - center.y;
+                    if dx.hypot(dy) <= 1e-9 {
+                        return Err(ObjectOpError::Degenerate {
+                            op: "circle-parameter",
+                        });
+                    }
+                    let angle = (if *invert_y { -dy } else { dy }).atan2(dx);
+                    Ok(ObjectValue::Scalar {
+                        value: angle.rem_euclid(std::f64::consts::TAU) / std::f64::consts::TAU,
+                    })
+                }
+                ObjectOp::ArcParameterFromPoint => {
+                    expect_arity("arc-parameter-from-point", parents, 2)?;
+                    let (start, mid, end, _, _, complement) =
+                        expect_arc("arc-parameter-from-point", parents, 0)?;
+                    let point = expect_point("arc-parameter-from-point", parents, 1)?;
+                    let mut best = None::<(f64, f64)>;
+                    for step in 0..=256 {
+                        let t = step as f64 / 256.0;
+                        let projected = if complement {
+                            point_on_three_point_arc_complement(start, mid, end, t)
+                        } else {
+                            point_on_three_point_arc(start, mid, end, t)
+                        }
                         .ok_or(ObjectOpError::Degenerate {
                             op: "arc-parameter-from-point",
-                        })?
-                        .1,
-                })
-            }
-            ObjectOp::PolygonBoundaryParameter { edge_index } => {
-                if parents.len() < 3 {
-                    return Err(ObjectOpError::WrongArity {
-                        op: "polygon-boundary-parameter",
-                        expected: 3,
-                        actual: parents.len(),
-                    });
-                }
-                let vertex_count = parents.len() - 1;
-                let vertices = (0..vertex_count)
-                    .map(|index| expect_point("polygon-boundary-parameter", parents, index))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let local_t = expect_scalar("polygon-boundary-parameter", parents, vertex_count)?
-                    .clamp(0.0, 1.0);
-                let lengths = vertices
-                    .iter()
-                    .zip(vertices.iter().cycle().skip(1))
-                    .take(vertex_count)
-                    .map(|(start, end)| (end.x - start.x).hypot(end.y - start.y))
-                    .collect::<Vec<_>>();
-                let perimeter = lengths.iter().sum::<f64>();
-                if perimeter <= 1e-9 {
-                    return Err(ObjectOpError::Degenerate {
-                        op: "polygon-boundary-parameter",
-                    });
-                }
-                let edge_index = edge_index % vertex_count;
-                Ok(ObjectValue::Scalar {
-                    value: (lengths[..edge_index].iter().sum::<f64>()
-                        + local_t * lengths[edge_index])
-                        / perimeter,
-                })
-            }
-            ObjectOp::PolygonBoundaryParameterFromPoint => {
-                if parents.len() < 3 {
-                    return Err(ObjectOpError::WrongArity {
-                        op: "polygon-boundary-parameter-from-point",
-                        expected: 3,
-                        actual: parents.len(),
-                    });
-                }
-                let point_index = parents.len() - 1;
-                let vertices = (0..point_index)
-                    .map(|index| {
-                        expect_point("polygon-boundary-parameter-from-point", parents, index)
+                        })?;
+                        let distance_squared =
+                            (point.x - projected.x).powi(2) + (point.y - projected.y).powi(2);
+                        if best.is_none_or(|(best_distance, _)| distance_squared < best_distance) {
+                            best = Some((distance_squared, t));
+                        }
+                    }
+                    Ok(ObjectValue::Scalar {
+                        value: best
+                            .ok_or(ObjectOpError::Degenerate {
+                                op: "arc-parameter-from-point",
+                            })?
+                            .1,
                     })
-                    .collect::<Result<Vec<_>, _>>()?;
-                let point = expect_point(
-                    "polygon-boundary-parameter-from-point",
-                    parents,
-                    point_index,
-                )?;
-                polygon_boundary_parameter_from_point(&vertices, point)
-                    .map(|value| ObjectValue::Scalar { value })
-                    .ok_or(ObjectOpError::Degenerate {
-                        op: "polygon-boundary-parameter-from-point",
-                    })
-            }
-            ObjectOp::PolygonArea { value_scale } => {
-                let points = parents
-                    .iter()
-                    .enumerate()
-                    .map(|(index, _)| expect_point("polygon-area", parents, index))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let value = polygon_area(&points, *value_scale)
-                    .ok_or(ObjectOpError::Degenerate { op: "polygon-area" })?;
-                Ok(ObjectValue::Scalar { value })
-            }
-            ObjectOp::EvaluateExpression {
-                expression,
-                parameter_names,
-                x,
-            } => {
-                expect_arity("evaluate-expression", parents, parameter_names.len())?;
-                let parameters = parameter_names
-                    .iter()
-                    .enumerate()
-                    .map(|(index, name)| {
-                        expect_scalar("evaluate-expression", parents, index)
-                            .map(|value| (name.clone(), value))
-                    })
-                    .collect::<Result<BTreeMap<_, _>, _>>()?;
-                let value = evaluate_expr(
-                    &FunctionExpr::Parsed(expression.to_function_ast()),
-                    *x,
-                    &parameters,
-                )
-                .ok_or(ObjectOpError::Degenerate {
-                    op: "evaluate-expression",
-                })?;
-                Ok(ObjectValue::Scalar { value })
-            }
-            ObjectOp::ScaleScalar { factor } => {
-                expect_arity("scale-scalar", parents, 1)?;
-                Ok(ObjectValue::Scalar {
-                    value: expect_scalar("scale-scalar", parents, 0)? * factor,
-                })
-            }
-            ObjectOp::AbsoluteScalar => {
-                expect_arity("absolute-scalar", parents, 1)?;
-                Ok(ObjectValue::Scalar {
-                    value: expect_scalar("absolute-scalar", parents, 0)?.abs(),
-                })
-            }
-            ObjectOp::SpectrumColor {
-                base_value,
-                period,
-                base_color,
-            } => {
-                expect_arity("spectrum-color", parents, 1)?;
-                if !period.is_finite() || *period <= 1e-9 {
-                    return Err(ObjectOpError::Degenerate {
-                        op: "spectrum-color",
-                    });
                 }
-                let value = expect_scalar("spectrum-color", parents, 0)?;
-                let (hue, saturation, brightness) = rgba_to_hsb(*base_color);
-                Ok(ObjectValue::Color {
-                    color: hsb_to_rgba(
-                        hue + (value - base_value) / period,
-                        saturation,
-                        brightness,
-                        base_color[3],
-                    ),
-                })
-            }
-            ObjectOp::RgbColor { alpha } => {
-                expect_arity("rgb-color", parents, 3)?;
-                let component = |index| {
-                    Ok(
-                        (expect_scalar("rgb-color", parents, index)?.clamp(0.0, 1.0) * 255.0)
-                            .round() as u8,
+                ObjectOp::PolygonBoundaryParameter { edge_index } => {
+                    if parents.len() < 3 {
+                        return Err(ObjectOpError::WrongArity {
+                            op: "polygon-boundary-parameter",
+                            expected: 3,
+                            actual: parents.len(),
+                        });
+                    }
+                    let vertex_count = parents.len() - 1;
+                    let vertices = (0..vertex_count)
+                        .map(|index| expect_point("polygon-boundary-parameter", parents, index))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let local_t =
+                        expect_scalar("polygon-boundary-parameter", parents, vertex_count)?
+                            .clamp(0.0, 1.0);
+                    let lengths = vertices
+                        .iter()
+                        .zip(vertices.iter().cycle().skip(1))
+                        .take(vertex_count)
+                        .map(|(start, end)| (end.x - start.x).hypot(end.y - start.y))
+                        .collect::<Vec<_>>();
+                    let perimeter = lengths.iter().sum::<f64>();
+                    if perimeter <= 1e-9 {
+                        return Err(ObjectOpError::Degenerate {
+                            op: "polygon-boundary-parameter",
+                        });
+                    }
+                    let edge_index = edge_index % vertex_count;
+                    Ok(ObjectValue::Scalar {
+                        value: (lengths[..edge_index].iter().sum::<f64>()
+                            + local_t * lengths[edge_index])
+                            / perimeter,
+                    })
+                }
+                ObjectOp::PolygonBoundaryParameterFromPoint => {
+                    if parents.len() < 3 {
+                        return Err(ObjectOpError::WrongArity {
+                            op: "polygon-boundary-parameter-from-point",
+                            expected: 3,
+                            actual: parents.len(),
+                        });
+                    }
+                    let point_index = parents.len() - 1;
+                    let vertices = (0..point_index)
+                        .map(|index| {
+                            expect_point("polygon-boundary-parameter-from-point", parents, index)
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let point = expect_point(
+                        "polygon-boundary-parameter-from-point",
+                        parents,
+                        point_index,
+                    )?;
+                    polygon_boundary_parameter_from_point(&vertices, point)
+                        .map(|value| ObjectValue::Scalar { value })
+                        .ok_or(ObjectOpError::Degenerate {
+                            op: "polygon-boundary-parameter-from-point",
+                        })
+                }
+                ObjectOp::PolygonArea { value_scale } => {
+                    let points = parents
+                        .iter()
+                        .enumerate()
+                        .map(|(index, _)| expect_point("polygon-area", parents, index))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let value = polygon_area(&points, *value_scale)
+                        .ok_or(ObjectOpError::Degenerate { op: "polygon-area" })?;
+                    Ok(ObjectValue::Scalar { value })
+                }
+                ObjectOp::EvaluateExpression {
+                    expression,
+                    parameter_names,
+                    x,
+                } => {
+                    expect_arity("evaluate-expression", parents, parameter_names.len())?;
+                    let parameters = parameter_names
+                        .iter()
+                        .enumerate()
+                        .map(|(index, name)| {
+                            expect_scalar("evaluate-expression", parents, index)
+                                .map(|value| (name.clone(), value))
+                        })
+                        .collect::<Result<BTreeMap<_, _>, _>>()?;
+                    let value = evaluate_expr(
+                        &FunctionExpr::Parsed(expression.to_function_ast()),
+                        *x,
+                        &parameters,
                     )
-                };
-                Ok(ObjectValue::Color {
-                    color: [component(0)?, component(1)?, component(2)?, *alpha],
-                })
+                    .ok_or(ObjectOpError::Degenerate {
+                        op: "evaluate-expression",
+                    })?;
+                    Ok(ObjectValue::Scalar { value })
+                }
+                ObjectOp::ScaleScalar { factor } => {
+                    expect_arity("scale-scalar", parents, 1)?;
+                    Ok(ObjectValue::Scalar {
+                        value: expect_scalar("scale-scalar", parents, 0)? * factor,
+                    })
+                }
+                ObjectOp::AbsoluteScalar => {
+                    expect_arity("absolute-scalar", parents, 1)?;
+                    Ok(ObjectValue::Scalar {
+                        value: expect_scalar("absolute-scalar", parents, 0)?.abs(),
+                    })
+                }
+                ObjectOp::SpectrumColor {
+                    base_value,
+                    period,
+                    base_color,
+                } => {
+                    expect_arity("spectrum-color", parents, 1)?;
+                    if !period.is_finite() || *period <= 1e-9 {
+                        return Err(ObjectOpError::Degenerate {
+                            op: "spectrum-color",
+                        });
+                    }
+                    let value = expect_scalar("spectrum-color", parents, 0)?;
+                    let (hue, saturation, brightness) = rgba_to_hsb(*base_color);
+                    Ok(ObjectValue::Color {
+                        color: hsb_to_rgba(
+                            hue + (value - base_value) / period,
+                            saturation,
+                            brightness,
+                            base_color[3],
+                        ),
+                    })
+                }
+                ObjectOp::RgbColor { alpha } => {
+                    expect_arity("rgb-color", parents, 3)?;
+                    let component = |index| {
+                        Ok(
+                            (expect_scalar("rgb-color", parents, index)?.clamp(0.0, 1.0) * 255.0)
+                                .round() as u8,
+                        )
+                    };
+                    Ok(ObjectValue::Color {
+                        color: [component(0)?, component(1)?, component(2)?, *alpha],
+                    })
+                }
+                ObjectOp::HsbColor { alpha } => {
+                    expect_arity("hsb-color", parents, 3)?;
+                    Ok(ObjectValue::Color {
+                        color: hsb_to_rgba(
+                            expect_scalar("hsb-color", parents, 0)?.clamp(0.0, 1.0),
+                            expect_scalar("hsb-color", parents, 1)?.clamp(0.0, 1.0),
+                            expect_scalar("hsb-color", parents, 2)?.clamp(0.0, 1.0),
+                            *alpha,
+                        ),
+                    })
+                }
+                ObjectOp::TransformObject { transform } => {
+                    transform_object("transform-object", *transform, parents)
+                }
             }
-            ObjectOp::HsbColor { alpha } => {
-                expect_arity("hsb-color", parents, 3)?;
-                Ok(ObjectValue::Color {
-                    color: hsb_to_rgba(
-                        expect_scalar("hsb-color", parents, 0)?.clamp(0.0, 1.0),
-                        expect_scalar("hsb-color", parents, 1)?.clamp(0.0, 1.0),
-                        expect_scalar("hsb-color", parents, 2)?.clamp(0.0, 1.0),
-                        *alpha,
-                    ),
-                })
-            }
-            ObjectOp::TransformObject { transform } => {
-                transform_object("transform-object", *transform, parents)
-            }
+        };
+        match evaluate_defined() {
+            Err(ObjectOpError::Degenerate { .. }) => Ok(ObjectValue::Undefined),
+            result => result,
         }
     }
 }
@@ -2330,7 +2397,7 @@ fn evaluate_object_program_point(
     graph: &ObjectGraph<ObjectOp>,
     source_parents: &[&ObjectValue],
     overrides: &[(String, ObjectValue)],
-) -> Result<Point, ObjectOpError> {
+) -> Result<Option<Point>, ObjectOpError> {
     if source_parents.len() != program.source_ids.len() {
         return Err(ObjectOpError::InvalidProgram {
             op,
@@ -2364,9 +2431,19 @@ fn evaluate_object_program_point(
             op,
             message: error.to_string(),
         })?;
-    values
-        .get(graph, &program.target_id)
-        .and_then(ObjectValue::as_point)
+    let target =
+        values
+            .get(graph, &program.target_id)
+            .ok_or_else(|| ObjectOpError::InvalidProgram {
+                op,
+                message: format!("target {} has no value", program.target_id),
+            })?;
+    if matches!(target, ObjectValue::Undefined) {
+        return Ok(None);
+    }
+    target
+        .as_point()
+        .map(Some)
         .ok_or_else(|| ObjectOpError::InvalidProgram {
             op,
             message: format!("target {} is not a point", program.target_id),
@@ -2647,6 +2724,9 @@ fn colorized_spectrum_line(
     }
     let base_parameter = expect_scalar("colorized-spectrum-line", parents, 2)?;
     let depth = discrete_depth(expect_scalar("colorized-spectrum-line", parents, 3)?).max(1);
+    if step_index >= depth {
+        return Ok(ObjectValue::Undefined);
+    }
     let parameter = (base_parameter + step_index as f64 / depth as f64).rem_euclid(1.0);
     let scaled = parameter * (trace.len() - 1) as f64;
     let segment_index = (scaled.floor() as usize).min(trace.len() - 2);
@@ -2741,9 +2821,11 @@ fn expect_line_endpoints(
 ) -> Result<(Point, Point), ObjectOpError> {
     match parents.get(index).copied() {
         Some(ObjectValue::Line { start, end, .. }) => Ok((*start, *end)),
-        Some(ObjectValue::Points { points }) if points.len() >= 2 => {
-            Ok((points[0], points[points.len() - 1]))
-        }
+        Some(
+            ObjectValue::Points { points }
+            | ObjectValue::Curve { points }
+            | ObjectValue::SampledCurve { points, .. },
+        ) if points.len() >= 2 => Ok((points[0], points[points.len() - 1])),
         _ => Err(ObjectOpError::ExpectedLine { op, parent: index }),
     }
 }
@@ -2754,7 +2836,25 @@ fn expect_points<'a>(
     index: usize,
 ) -> Result<&'a [Point], ObjectOpError> {
     match parents.get(index).copied() {
-        Some(ObjectValue::Points { points }) => Ok(points),
+        Some(
+            ObjectValue::Points { points }
+            | ObjectValue::Curve { points }
+            | ObjectValue::SampledCurve { points, .. },
+        ) => Ok(points),
+        _ => Err(ObjectOpError::ExpectedShape { op, parent: index }),
+    }
+}
+
+fn expect_sampled_curve<'a>(
+    op: &'static str,
+    parents: &'a [&ObjectValue],
+    index: usize,
+) -> Result<(&'a [Point], &'a [usize]), ObjectOpError> {
+    match parents.get(index).copied() {
+        Some(ObjectValue::SampledCurve {
+            points,
+            sample_indices,
+        }) if points.len() == sample_indices.len() => Ok((points, sample_indices)),
         _ => Err(ObjectOpError::ExpectedShape { op, parent: index }),
     }
 }
@@ -2935,6 +3035,7 @@ fn transform_shape(
 ) -> Result<ObjectValue, ObjectOpError> {
     let map_point = |point| transform(point).ok_or(ObjectOpError::Degenerate { op });
     match value {
+        ObjectValue::Undefined => Ok(ObjectValue::Undefined),
         ObjectValue::Point { .. } => Ok(ObjectValue::point(map_point(
             value
                 .as_point()
@@ -2977,6 +3078,24 @@ fn transform_shape(
                 .copied()
                 .map(map_point)
                 .collect::<Result<_, _>>()?,
+        }),
+        ObjectValue::Curve { points } => Ok(ObjectValue::Curve {
+            points: points
+                .iter()
+                .copied()
+                .map(map_point)
+                .collect::<Result<_, _>>()?,
+        }),
+        ObjectValue::SampledCurve {
+            points,
+            sample_indices,
+        } => Ok(ObjectValue::SampledCurve {
+            points: points
+                .iter()
+                .copied()
+                .map(map_point)
+                .collect::<Result<_, _>>()?,
+            sample_indices: sample_indices.clone(),
         }),
         ObjectValue::Circles { circles } => Ok(ObjectValue::Circles {
             circles: circles
@@ -3337,6 +3456,38 @@ mod tests {
     }
 
     #[test]
+    fn degenerate_geometry_is_a_typed_undefined_value_and_propagates() {
+        let horizontal = ObjectValue::Line {
+            line_kind: LineKind::Line,
+            start: Point { x: 0.0, y: 0.0 },
+            end: Point { x: 1.0, y: 0.0 },
+        };
+        let parallel = ObjectValue::Line {
+            line_kind: LineKind::Line,
+            start: Point { x: 0.0, y: 1.0 },
+            end: Point { x: 1.0, y: 1.0 },
+        };
+        let undefined = BuiltinOperationTable
+            .evaluate(
+                "parallel-intersection",
+                &ObjectOp::LineIntersection,
+                &[&horizontal, &parallel],
+            )
+            .unwrap();
+        assert_eq!(undefined, ObjectValue::Undefined);
+        assert_eq!(
+            BuiltinOperationTable
+                .evaluate(
+                    "dependent-midpoint",
+                    &ObjectOp::Midpoint,
+                    &[&undefined, &ObjectValue::point(Point { x: 2.0, y: 2.0 })],
+                )
+                .unwrap(),
+            ObjectValue::Undefined,
+        );
+    }
+
+    #[test]
     fn line_projection_op_respects_payload_domain() {
         let segment = ObjectValue::Line {
             line_kind: LineKind::Segment,
@@ -3507,25 +3658,27 @@ mod tests {
             ),
             ObjectNode::derived(
                 "trace",
-                ObjectOp::CoordinateTrace {
-                    x_expression: ObjectExpression::Binary {
-                        left: Box::new(ObjectExpression::Parameter {
-                            name: "t".into(),
-                            default: 0.0,
-                        }),
-                        op: BinaryOp::Mul,
-                        right: Box::new(ObjectExpression::Parameter {
-                            name: "scale".into(),
-                            default: 1.0,
-                        }),
+                ObjectOp::Curve {
+                    curve: CurveOp::CoordinateTrace {
+                        x_expression: ObjectExpression::Binary {
+                            left: Box::new(ObjectExpression::Parameter {
+                                name: "t".into(),
+                                default: 0.0,
+                            }),
+                            op: BinaryOp::Mul,
+                            right: Box::new(ObjectExpression::Parameter {
+                                name: "scale".into(),
+                                default: 1.0,
+                            }),
+                        },
+                        y_expression: None,
+                        parameter_names: vec!["scale".into()],
+                        trace_parameter_name: "t".into(),
+                        value_min: 0.0,
+                        value_max: 5.0,
+                        sample_count: 11,
+                        mode: CoordinateTraceMode::Vertical,
                     },
-                    y_expression: None,
-                    parameter_names: vec!["scale".into()],
-                    trace_parameter_name: "t".into(),
-                    value_min: 0.0,
-                    value_max: 5.0,
-                    sample_count: 11,
-                    mode: CoordinateTraceMode::Vertical,
                 },
                 ["origin", "scale"],
             ),
@@ -3637,6 +3790,22 @@ mod tests {
                 end: Point { x: 0.0, y: 10.0 },
             }
         );
+        assert_eq!(
+            BuiltinOperationTable
+                .evaluate(
+                    "spectrum-past-depth",
+                    &ObjectOp::ColorizedSpectrumLine {
+                        trace_endpoint_index: 0,
+                        step_index: 4,
+                        ray: false,
+                        reflected: false,
+                        sampled_reflection_axis: false,
+                    },
+                    &[&host, &trace, &parameter, &depth],
+                )
+                .unwrap(),
+            ObjectValue::Undefined,
+        );
     }
 
     #[test]
@@ -3698,14 +3867,97 @@ mod tests {
         let repeated = BuiltinOperationTable
             .evaluate(
                 "trace",
-                &ObjectOp::RepeatPoint { sample_count: 3 },
+                &ObjectOp::Curve {
+                    curve: CurveOp::RepeatPoint { sample_count: 3 },
+                },
                 &[&point],
             )
             .unwrap();
         assert_eq!(
             repeated,
-            ObjectValue::Points {
-                points: vec![Point { x: 3.0, y: 4.0 }; 3]
+            ObjectValue::SampledCurve {
+                points: vec![Point { x: 3.0, y: 4.0 }; 3],
+                sample_indices: vec![0, 1, 2],
+            }
+        );
+    }
+
+    #[test]
+    fn segment_trace_pairs_only_samples_defined_on_both_sides() {
+        let starts = ObjectValue::SampledCurve {
+            points: vec![Point { x: 0.0, y: 0.0 }, Point { x: 2.0, y: 0.0 }],
+            sample_indices: vec![0, 2],
+        };
+        let ends = ObjectValue::SampledCurve {
+            points: vec![Point { x: 1.0, y: 1.0 }, Point { x: 2.0, y: 1.0 }],
+            sample_indices: vec![1, 2],
+        };
+        assert_eq!(
+            BuiltinOperationTable
+                .evaluate(
+                    "segment-trace",
+                    &ObjectOp::Curve {
+                        curve: CurveOp::ZipPointTraces,
+                    },
+                    &[&starts, &ends],
+                )
+                .unwrap(),
+            ObjectValue::Curve {
+                points: vec![Point { x: 2.0, y: 0.0 }, Point { x: 2.0, y: 1.0 }],
+            },
+        );
+    }
+
+    #[test]
+    fn custom_transform_point_and_trace_share_one_transform_program() {
+        let transform = CustomTransformProgram {
+            distance_expression: ObjectExpression::Parameter {
+                name: "t".into(),
+                default: 0.0,
+            },
+            angle_expression: ObjectExpression::Constant { value: 0.0 },
+            distance_parameter_names: vec!["t".into()],
+            angle_parameter_names: Vec::new(),
+            distance_scale: 1.0,
+            angle_degrees_scale: 1.0,
+        };
+        let origin = ObjectValue::point(Point { x: 0.0, y: 0.0 });
+        let axis_end = ObjectValue::point(Point { x: 1.0, y: 0.0 });
+        let parameter = ObjectValue::Scalar { value: 2.0 };
+
+        let point = BuiltinOperationTable
+            .evaluate(
+                "point",
+                &ObjectOp::CustomTransformPoint {
+                    transform: transform.clone(),
+                },
+                &[&origin, &axis_end, &parameter],
+            )
+            .unwrap();
+        let trace = BuiltinOperationTable
+            .evaluate(
+                "trace",
+                &ObjectOp::Curve {
+                    curve: CurveOp::CustomTransformTrace {
+                        transform,
+                        value_min: 0.0,
+                        value_max: 2.0,
+                        sample_count: 3,
+                    },
+                },
+                &[&origin, &axis_end, &parameter],
+            )
+            .unwrap();
+
+        assert_eq!(point, ObjectValue::point(Point { x: 2.0, y: 0.0 }));
+        assert_eq!(
+            trace,
+            ObjectValue::Curve {
+                points: vec![
+                    Point { x: 0.0, y: 0.0 },
+                    Point { x: 1.0, y: 0.0 },
+                    Point { x: 2.0, y: 0.0 },
+                ],
             }
         );
     }

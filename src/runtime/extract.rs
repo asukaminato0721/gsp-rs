@@ -18,6 +18,7 @@ mod htm_reference;
 mod images;
 mod iteration_depth;
 mod labels;
+mod object_graph;
 #[cfg(test)]
 mod payload_log_tests;
 mod payload_report;

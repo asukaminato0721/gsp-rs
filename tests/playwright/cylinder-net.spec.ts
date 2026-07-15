@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
-import path from 'node:path';
+import { compileFixtureToTempHtml } from './compile-fixture';
 
 test('cylinder net move buttons keep the calculated radius and traces live', async ({ page }) => {
-  const file = path.resolve(
-    'tests/Samples/个人专栏/侯仰顺作品/圆柱侧面展开图(蚂蚁制作).html',
+  const file = compileFixtureToTempHtml(
+    'tests/Samples/个人专栏/侯仰顺作品/圆柱侧面展开图(蚂蚁制作).gsp',
   );
   await page.goto(`file://${file}`);
 

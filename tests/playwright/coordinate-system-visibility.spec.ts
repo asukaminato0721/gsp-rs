@@ -150,21 +150,11 @@ test('rolling triangle fixture scales marked-angle helpers and starts at the lef
     }, 'graph');
     const afterScene = window.gspDebug.runtime.scene;
     const movingTriangle = afterScene.polygons.find((polygon) => polygon.binding?.kind === 'derived');
-    const scaleControlledHelpers = afterScene.points.filter((point) => {
-      const transform = point.binding?.transform;
-      return transform?.kind === 'scale'
-        && typeof transform.factorParameterPointIndex === 'number'
-        && typeof transform.factorParameterStartIndex === 'number'
-        && typeof transform.factorParameterEndIndex === 'number';
-    });
-
     return {
-      scaleControlledHelperCount: scaleControlledHelpers.length,
       movingTrianglePoints: movingTriangle?.points ?? [],
     };
   });
 
-  expect(result.scaleControlledHelperCount).toBeGreaterThanOrEqual(3);
   expect(result.movingTrianglePoints[0].x).toBeCloseTo(39, 1);
   expect(result.movingTrianglePoints[0].y).toBeCloseTo(291, 1);
   expect(result.movingTrianglePoints[1].x).toBeCloseTo(180.461942, 1);

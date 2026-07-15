@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
-import path from 'node:path';
+import { compileFixtureToTempHtml } from './compile-fixture';
 
 test('icosahedron projection rotates when dragging point A', async ({ page }) => {
-  const file = path.resolve('tests/Samples/个人专栏/向忠作品/正二十面体.html');
+  const file = compileFixtureToTempHtml('tests/Samples/个人专栏/向忠作品/正二十面体.gsp');
   await page.goto(`file://${file}`);
 
   const result = await page.evaluate(() => {

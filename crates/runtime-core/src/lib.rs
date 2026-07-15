@@ -20,10 +20,10 @@ pub use geometry::{
     scale_by_three_point_ratio, three_point_arc_geometry,
 };
 pub use object_ops::{
-    AffineTargetHandle, BuiltinOperationTable, ObjectCircle, ObjectExpression,
-    ObjectGraphEvaluationInput, ObjectIterationProgram, ObjectNodeValue, ObjectOp, ObjectOpError,
-    ObjectProgram, ObjectSourceValue, ObjectTransform, ObjectValue, TraceDriver,
-    evaluate_object_graph_json,
+    AffineTargetHandle, BuiltinOperationTable, CurveOp, CustomTransformProgram, ObjectCircle,
+    ObjectExpression, ObjectGraphEvaluationInput, ObjectIterationProgram, ObjectNodeValue,
+    ObjectOp, ObjectOpError, ObjectProgram, ObjectSourceValue, ObjectTransform, ObjectValue,
+    TraceDriver, evaluate_object_graph_json,
 };
 pub use point_constraints::{
     inverse_point_transform_json, resolve_point_constraints_json, transform_points_json,

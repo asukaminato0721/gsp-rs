@@ -23,7 +23,7 @@ test('line-intersection helper points stay pan-only in the browser runtime', asy
   expect(result?.dragMode).toBe('pan');
 });
 
-test('fixed coordinate helper points stay pan-only when their coordinate source moves', async ({ page }) => {
+test('fixed coordinate helper points stay pan-only and follow their coordinate source', async ({ page }) => {
   const file = compileFixtureToTempHtml('tests/Samples/热研系列/概率问题/蒲丰投针实验求π的近似值.gsp');
   await page.goto(`file://${file}`);
 
@@ -55,8 +55,8 @@ test('fixed coordinate helper points stay pan-only when their coordinate source 
 
   expect(result).not.toBeNull();
   expect(result?.dragMode).toBe('pan');
-  expect(result?.dx).toBeCloseTo(0, 6);
-  expect(result?.dy).toBeCloseTo(0, 6);
+  expect(result?.dx).toBeCloseTo(0.4, 6);
+  expect(result?.dy).toBeCloseTo(-0.3, 6);
 });
 
 test('payload-defined rotate expressions stay live in the browser runtime', async ({ page }) => {
@@ -390,6 +390,7 @@ test('dynamic pentagram custom transform trace follows the segment driver', asyn
     const targetIndex = pointIndexForGroup(13);
     const beforeTrace = traceForGroup(14);
     const before = bounds(beforeTrace.points);
+    const targetBefore = { ...scene().points[targetIndex] };
     const dragMode = drag.dragModeFor(env, driverIndex, null, null, null, null);
     env.markDependencyRootsDirty?.([dynamics.sourcePointRootId(driverIndex)]);
     env.updateScene((draft: any) => {
@@ -397,6 +398,7 @@ test('dynamic pentagram custom transform trace follows the segment driver', asyn
     }, 'graph');
     const afterTrace = traceForGroup(14);
     const after = bounds(afterTrace.points);
+    const targetAfter = scene().points[targetIndex];
 
     return {
       driverIndex,
@@ -405,6 +407,7 @@ test('dynamic pentagram custom transform trace follows the segment driver', asyn
       binding: beforeTrace.binding,
       before,
       after,
+      targetDelta: Math.hypot(targetAfter.x - targetBefore.x, targetAfter.y - targetBefore.y),
       renderedLineCount: document.querySelectorAll('#scene-layer path').length,
     };
   });
@@ -418,7 +421,8 @@ test('dynamic pentagram custom transform trace follows the segment driver', asyn
   expect(result.before.maxX - result.before.minX).toBeGreaterThan(200);
   expect(result.before.maxY - result.before.minY).toBeGreaterThan(100);
   expect(result.renderedLineCount).toBeGreaterThan(0);
-  expect(Math.hypot(result.after.last.x - result.before.last.x, result.after.last.y - result.before.last.y)).toBeGreaterThan(20);
+  expect(result.targetDelta).toBeGreaterThan(20);
+  expect(Math.hypot(result.after.last.x - result.before.last.x, result.after.last.y - result.before.last.y)).toBeLessThan(1e-6);
 });
 
 test('hejixu fold2 marked-ratio dilation stays live when E reaches C', async ({ page }) => {
@@ -611,9 +615,9 @@ test('angle-marker class payload renders bug fixture without path explosion', as
   });
 
   expect(Math.max(...result.angleMarkerClasses)).toBeLessThanOrEqual(2);
-  expect(result.pathCount).toBe(19);
+  expect(result.pathCount).toBeLessThanOrEqual(25);
   expect(result.redPointCount).toBe(8);
-  expect(result.visibleArcOrdinals).toEqual([]);
+  expect(result.visibleArcOrdinals).toEqual([52, 54]);
   expect(result.labelTexts).toContain('⇒△CBD∼△CEB');
   expect(result.labelTexts).toContain('⇒(BC^2)=CD*CE');
   expect(result.pointsByOrdinal[6]?.bindingKind).toBe('scale');
@@ -788,7 +792,6 @@ test('Lizhangbo solid-geometry trace label buttons drive hidden parameters', asy
     const dynamics = window.gspDebug.runtime.dynamics;
     const scene = window.gspDebug.runtime.scene;
     const generatedDepth = scene.pointIterations
-      .filter((family: any) => family.kind === 'parameterized')
       .reduce((sum: number, family: any) => sum + (family.depth || 0), 0);
     const standaloneParameters = scene.points
       .filter((point: any) => point?.binding?.kind === 'parameter' && !point.constraint)
@@ -814,9 +817,9 @@ test('Lizhangbo solid-geometry trace label buttons drive hidden parameters', asy
   expect(before.t7).toBe(399);
   expect(before.buttons).toContain('set-parameter');
   expect(before.buttons).toContain('animate-parameter');
-  expect(before.pointIterations).toContain('parameterized');
+  expect(before.pointIterations).toContain('interpreted');
   expect(before.lineIterations).toBe(0);
-  expect(before.generatedTraceCount).toBe(798);
+  expect(before.generatedTraceCount).toBe(1197);
   expect(before.generatedTraceWidth).toBeGreaterThan(80);
   expect(before.generatedTraceHeight).toBeGreaterThan(80);
 

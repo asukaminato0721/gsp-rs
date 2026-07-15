@@ -13,6 +13,8 @@ use crate::runtime::scene::{
     LineLikeKind, ScenePointBinding, ScenePointConstraint, SceneScalarBinding, ShapeBinding,
     TextLabelBinding,
 };
+use gsp_runtime_core::ObjectOp;
+use gsp_runtime_core::object_graph::ObjectDefinition;
 
 #[test]
 fn point_trace_constraint_keeps_its_payload_parameter() {
@@ -2562,6 +2564,28 @@ fn preserves_parameter_controlled_point_on_segment_gsp() {
             ScenePointConstraint::OnSegment { t, .. } if (t - 0.7).abs() < 0.001
         )
     }));
+
+    let controlled_index = scene
+        .points
+        .iter()
+        .position(|point| {
+            matches!(point.binding, Some(ScenePointBinding::Parameter { ref name }) if name == "t₁")
+                && matches!(point.constraint, ScenePointConstraint::OnSegment { .. })
+        })
+        .expect("expected the parameter-controlled point on the segment");
+    let controlled_node = scene
+        .object_graph
+        .nodes
+        .iter()
+        .find(|node| node.id == format!("point:{controlled_index}"))
+        .expect("controlled point belongs to the object graph");
+    assert!(matches!(
+        &controlled_node.definition,
+        ObjectDefinition::Derived {
+            op: ObjectOp::PointOnLine,
+            parents,
+        } if parents.iter().any(|parent| parent == "parameter:t₁")
+    ));
 }
 
 #[test]

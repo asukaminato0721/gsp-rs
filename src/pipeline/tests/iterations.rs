@@ -96,7 +96,8 @@ fn static_fixture_embeds_full_viewer_runtime() {
     );
 
     assert!(html.contains("viewer-runtime: full"));
-    assert!(html.contains("function sampleDynamicFunction("));
+    assert!(html.contains("function evaluateObjectGraph("));
+    assert!(!html.contains("function sampleDynamicFunction("));
     assert!(html.contains("function drawCircles(env)"));
     assert!(html.contains("function circleArcControlPoints("));
 }
@@ -110,9 +111,10 @@ fn parameter_fixture_embeds_full_viewer_runtime() {
 
     assert!(html.contains("viewer-runtime: full"));
     assert!(
-        html.contains("function sampleDynamicFunction("),
-        "parameter fixture should keep the full dynamics runtime"
+        html.contains("function evaluateObjectGraph("),
+        "parameter fixture should keep the Rust object-graph runtime"
     );
+    assert!(!html.contains("function sampleDynamicFunction("));
 }
 
 #[test]

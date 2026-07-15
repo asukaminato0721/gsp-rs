@@ -30,11 +30,34 @@ fn js_runtime_covers_exported_payload_kinds() {
         })
         .collect::<BTreeSet<_>>();
 
-    let allowed_missing = BTreeSet::new();
+    let rust_object_graph_kinds = BTreeSet::from([
+        "arc-boundary-polygon".to_string(),
+        "boundary-length-offset".to_string(),
+        "circumcenter".to_string(),
+        "constraint-parameter-expr".to_string(),
+        "constraint-parameter-from-point-expr".to_string(),
+        "constraint-parameter-point-distance-ratio".to_string(),
+        "custom-transform".to_string(),
+        "derived-parameter".to_string(),
+        "directed-angle-anchor".to_string(),
+        "interpreted".to_string(),
+        "marked-angle-translation".to_string(),
+        "parametric-curve".to_string(),
+        "payload-alias".to_string(),
+        "point-polygon".to_string(),
+        "point-radius-circle".to_string(),
+        "polar-offset".to_string(),
+        "polar-transform".to_string(),
+        "scale-by-ratio".to_string(),
+        "translate".to_string(),
+    ]);
     assert_eq!(
-        runtime_missing, allowed_missing,
-        "exported payload kinds should have explicit JS runtime coverage unless intentionally static",
+        runtime_missing, rust_object_graph_kinds,
+        "geometry kinds delegated to the Rust object graph must not regain TypeScript evaluators",
     );
+    assert!(runtime_sources.contains("function evaluateObjectGraph("));
+    assert!(!runtime_sources.contains("createDynamicsGeometry"));
+    assert!(!runtime_sources.contains("LINE_BINDING_REFRESHERS"));
 }
 
 #[test]

@@ -26,6 +26,12 @@ pub(super) fn fixture_scene(data: &[u8], message: &str) -> Value {
         .expect("scene json should be valid json")
 }
 
+pub(super) fn fixture_scene_error(data: &[u8]) -> String {
+    compile_bytes_to_scene_json(data, FIXTURE_WIDTH, FIXTURE_HEIGHT)
+        .expect_err("fixture should be rejected before export")
+        .to_string()
+}
+
 pub(super) fn fixture_bytes(path: &str) -> Option<Vec<u8>> {
     fs::read(path).ok()
 }

@@ -12,11 +12,9 @@ test('circle formation fixture keeps rebuilt polygon edges and non-draggable ite
   const renderedBlueSegments = page.locator('#scene-layer path[stroke=\"rgba(0, 0, 128, 1.000)\"]');
   await expect(renderedBlueSegments).toHaveCount(5);
 
-  const rotatePoints = runtime.scene.points.filter((point: { binding?: { kind?: string } | null }) =>
-    point.binding?.kind === 'rotate',
-  );
-  expect(rotatePoints.length).toBeGreaterThan(0);
-  expect(rotatePoints.every((point: { draggable?: boolean }) => point.draggable === false)).toBe(true);
+  const generatedPoints = runtime.scene.points.filter((point: { debug?: unknown }) => point.debug == null);
+  expect(generatedPoints.length).toBeGreaterThan(0);
+  expect(generatedPoints.every((point: { draggable?: boolean }) => point.draggable === false)).toBe(true);
 
   const table = runtime.scene.iterationTables[0];
   expect(table.rows.map((row: any) => row.values[0])).toEqual([6, 7, 8, 9, 10]);
