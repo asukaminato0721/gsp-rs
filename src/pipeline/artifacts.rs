@@ -1,5 +1,4 @@
 use crate::export::html::write_standalone_html;
-use crate::gsp;
 use crate::runtime::render_payload_log;
 use miette::{IntoDiagnostic, Report, Result, WrapErr, miette};
 use std::fs;
@@ -38,54 +37,35 @@ pub(super) fn write_html(html_path: &Path, html: &str) -> Result<()> {
     write_standalone_html(html_path, html).map_err(|error| miette!("{error}"))
 }
 
-pub(super) fn write_debug_json(
-    paths: &ArtifactPaths,
-    data: &[u8],
-    width: u32,
-    height: u32,
-) -> Result<PathBuf> {
-    let debug_json = super::compile_bytes_to_scene_json(data, width, height)?;
+pub(super) fn write_debug_json(paths: &ArtifactPaths, debug_json: &str) -> Result<PathBuf> {
     fs::write(&paths.debug_json_path, debug_json)
         .into_diagnostic()
         .wrap_err_with(|| format!("failed to write {}", paths.debug_json_path.display()))?;
     Ok(paths.debug_json_path.clone())
 }
 
-pub(super) fn write_standard_sidecars(
+pub(super) fn write_payload_log(
     gsp_path: &Path,
     paths: &ArtifactPaths,
-    data: &[u8],
-    width: u32,
-    height: u32,
-) -> Result<()> {
-    write_debug_json(paths, data, width, height)?;
-    write_payload_log(gsp_path, paths, data)?;
-    Ok(())
+    file: &crate::format::GspFile,
+) -> Result<PathBuf> {
+    let log_body = render_payload_log(gsp_path, file);
+    fs::write(&paths.payload_log_path, log_body)
+        .into_diagnostic()
+        .wrap_err_with(|| format!("failed to write {}", paths.payload_log_path.display()))?;
+    Ok(paths.payload_log_path.clone())
 }
 
 pub(super) fn attach_payload_log(
     gsp_path: &Path,
     paths: &ArtifactPaths,
-    data: &[u8],
+    file: &crate::format::GspFile,
     error: Report,
 ) -> Report {
-    match write_payload_log(gsp_path, paths, data) {
+    match write_payload_log(gsp_path, paths, file) {
         Ok(log_path) => miette!("{error}\npayload log: {}", log_path.display()),
         Err(_) => error,
     }
-}
-
-pub(super) fn write_payload_log(
-    gsp_path: &Path,
-    paths: &ArtifactPaths,
-    data: &[u8],
-) -> Result<PathBuf> {
-    let file = gsp::parse(data).map_err(miette::Report::new)?;
-    let log_body = render_payload_log(gsp_path, &file);
-    fs::write(&paths.payload_log_path, log_body)
-        .into_diagnostic()
-        .wrap_err_with(|| format!("failed to write {}", paths.payload_log_path.display()))?;
-    Ok(paths.payload_log_path.clone())
 }
 
 #[cfg(test)]

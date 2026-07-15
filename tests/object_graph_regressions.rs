@@ -67,6 +67,27 @@ fn evaluate_scene_object_graph(scene: &Value) -> Vec<ObjectNodeValue> {
 }
 
 #[test]
+fn dense_numeric_dag_samples_compile_to_complete_object_graphs() {
+    for path in [
+        "tests/Samples/个人专栏/向忠作品/立几最小值问题一例.gsp",
+        "tests/Samples/个人专栏/向忠作品/立方.gsp",
+        "tests/Samples/个人专栏/向忠作品/立方2.gsp",
+        "tests/Samples/个人专栏/向忠作品/立方八面体-正二十面体-正八面体.gsp",
+    ] {
+        let scene = compile_fixture(path);
+        assert_eq!(
+            scene["objectGraph"]["geometryComplete"], true,
+            "incomplete object graph for {path}"
+        );
+        assert_eq!(
+            scene["objectGraph"]["pendingOperations"],
+            serde_json::json!([]),
+            "pending object graph operations for {path}"
+        );
+    }
+}
+
+#[test]
 fn n_leaf_trace_point_is_derived_from_trace_and_payload_parameter() {
     let scene = compile_fixture("tests/Samples/个人专栏/向忠作品/n叶草系列迭代.gsp");
     assert_eq!(scene["objectGraph"]["geometryComplete"], true);

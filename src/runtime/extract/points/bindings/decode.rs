@@ -134,7 +134,7 @@ pub(crate) fn try_decode_parameter_rotation_binding(
     if (angle_group.header.kind()) != crate::format::GroupKind::Point {
         return Err(TransformBindingDecodeError::InvalidParameterRotationAngleSource);
     }
-    if let Some(angle_degrees) = decode_angle_parameter_value_for_group(file, angle_group) {
+    if let Some(angle_degrees) = decode_angle_parameter_value_for_group(file, groups, angle_group) {
         if !angle_degrees.is_finite() {
             return Err(TransformBindingDecodeError::NonFiniteParameterRotationAngle);
         }

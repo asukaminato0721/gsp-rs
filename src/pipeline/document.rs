@@ -18,18 +18,7 @@ pub(crate) fn compile_bytes_to_html_document_with_reference(
     reference_htm: Option<&str>,
 ) -> Result<String> {
     let file = gsp::parse(data).map_err(miette::Report::new)?;
-    let compiled_pages = compile_pages(&file, width, height, reference_htm)?;
-    let html_pages = compiled_pages
-        .iter()
-        .map(|page| StandaloneHtmlPage {
-            title: &page.title,
-            scene: &page.scene,
-            width: page.width,
-            height: page.height,
-            document_layout: page.document_layout,
-        })
-        .collect::<Vec<_>>();
-    Ok(render_standalone_html_pages(&html_pages))
+    Ok(CompiledDocument::compile(&file, width, height, reference_htm)?.render_html())
 }
 
 pub fn compile_bytes_to_scene_json(data: &[u8], width: u32, height: u32) -> Result<String> {
@@ -43,17 +32,35 @@ pub(crate) fn compile_bytes_to_scene_json_with_reference(
     reference_htm: Option<&str>,
 ) -> Result<String> {
     let file = gsp::parse(data).map_err(miette::Report::new)?;
-    let compiled_pages = compile_pages(&file, width, height, reference_htm)?;
-    if let [page] = compiled_pages.as_slice() {
-        return Ok(render_scene_json(
-            &page.scene,
-            page.width,
-            page.height,
-            true,
-        ));
+    Ok(CompiledDocument::compile(&file, width, height, reference_htm)?.render_scene_json())
+}
+
+pub(super) struct CompiledDocument {
+    pages: Vec<CompiledHtmlPage>,
+}
+
+impl CompiledDocument {
+    pub(super) fn compile(
+        file: &crate::format::GspFile,
+        width: u32,
+        height: u32,
+        reference_htm: Option<&str>,
+    ) -> Result<Self> {
+        Ok(Self {
+            pages: compile_pages(file, width, height, reference_htm)?,
+        })
     }
-    let html_pages = as_html_pages(&compiled_pages);
-    Ok(render_document_scene_json(&html_pages))
+
+    pub(super) fn render_html(&self) -> String {
+        render_standalone_html_pages(&as_html_pages(&self.pages))
+    }
+
+    pub(super) fn render_scene_json(&self) -> String {
+        if let [page] = self.pages.as_slice() {
+            return render_scene_json(&page.scene, page.width, page.height, true);
+        }
+        render_document_scene_json(&as_html_pages(&self.pages))
+    }
 }
 
 fn compile_pages(

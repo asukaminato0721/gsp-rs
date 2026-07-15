@@ -790,7 +790,7 @@ pub(crate) fn decode_expression_rotation_binding(
         let angle_expr = try_decode_function_expr(file, groups, expr_group)
             .ok()
             .or_else(|| {
-                let angle_value = decode_angle_parameter_value_for_group(file, expr_group)
+                let angle_value = decode_angle_parameter_value_for_group(file, groups, expr_group)
                     .or_else(|| {
                         let control = try_decode_payload_anchor_point(file, expr_group)
                             .ok()

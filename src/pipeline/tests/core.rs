@@ -108,6 +108,17 @@ fn compiles_fixture_and_also_writes_payload_log_and_debug_json() {
     assert!(output.debug_json.contains("\n  \"width\": 1637,"));
     assert!(output.debug_json.contains("\"points\": ["));
     assert_eq!(output.scene["width"].as_u64(), Some(1637));
+
+    let embedded_scene = output
+        .html
+        .split_once("<script id=\"scene-data\" type=\"application/json\">")
+        .and_then(|(_, rest)| rest.split_once("</script>"))
+        .map(|(json, _)| serde_json::from_str::<Value>(json).expect("embedded scene JSON"))
+        .expect("HTML should contain embedded scene JSON");
+    assert_eq!(
+        embedded_scene, output.scene,
+        "HTML and debug JSON must be rendered from the same compiled scene"
+    );
 }
 
 #[test]

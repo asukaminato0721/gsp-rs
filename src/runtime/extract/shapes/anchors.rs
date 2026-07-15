@@ -19,8 +19,18 @@ use crate::runtime::extract::points::{
 use crate::runtime::extract::points::{
     decode_directed_angle_anchor_raw, decode_legacy_angle_rotation_anchor_raw,
 };
+use crate::runtime::functions::with_function_expr_cache;
 
 pub(crate) fn collect_raw_object_anchors(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    point_map: &[Option<PointRecord>],
+    graph: Option<&GraphTransform>,
+) -> Vec<Option<PointRecord>> {
+    with_function_expr_cache(|| collect_raw_object_anchors_inner(file, groups, point_map, graph))
+}
+
+fn collect_raw_object_anchors_inner(
     file: &GspFile,
     groups: &[ObjectGroup],
     point_map: &[Option<PointRecord>],

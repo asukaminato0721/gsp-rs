@@ -127,7 +127,7 @@ fn decode_non_graph_parameter(
     let value = if allow_orphan_parameter_controls && has_parameter_control_payload(group) {
         decode_orphan_parameter_control_value_for_group(file, group)?
     } else if is_angle_parameter_group(file, groups, group_index) {
-        decode_angle_parameter_value_for_group(file, group)?
+        decode_angle_parameter_value_for_group(file, groups, group)?
     } else {
         try_decode_parameter_control_value_for_group(file, groups, group).ok()?
     };
@@ -168,7 +168,7 @@ fn is_angle_parameter_group(file: &GspFile, groups: &[ObjectGroup], target_index
     let Some(target_group) = groups.get(target_index) else {
         return false;
     };
-    if decode_angle_parameter_value_for_group(file, target_group).is_none() {
+    if decode_angle_parameter_value_for_group(file, groups, target_group).is_none() {
         return false;
     }
     groups.iter().any(|group| {
@@ -467,6 +467,7 @@ fn parameter_unit_for_group(
 
 pub(super) fn decode_angle_parameter_value_for_group(
     file: &GspFile,
+    groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Option<f64> {
     let payload = group
@@ -477,7 +478,7 @@ pub(super) fn decode_angle_parameter_value_for_group(
         })
         .map(|record| record.payload(&file.data))?;
     if decode_parameter_unit_from_payload(payload) == Some("degree") {
-        return try_decode_parameter_control_value_for_group(file, &[], group).ok();
+        return try_decode_parameter_control_value_for_group(file, groups, group).ok();
     }
     let current = decode_non_graph_parameter_value(payload)?;
     let max = (payload.len() >= 76)

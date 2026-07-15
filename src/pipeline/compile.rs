@@ -55,21 +55,35 @@ impl<'a> FileCompileJob<'a> {
 
     fn compile_standard(&self) -> Result<()> {
         let data = self.read_source()?;
-        match self.write_html(&data) {
-            Ok(()) => artifacts::write_standard_sidecars(
+        let file = crate::gsp::parse(&data).map_err(miette::Report::new)?;
+        let reference_htm = self.read_reference_definitions();
+        let document = match document::CompiledDocument::compile(
+            &file,
+            self.width,
+            self.height,
+            reference_htm.as_deref(),
+        ) {
+            Ok(document) => document,
+            Err(error) => {
+                return Err(artifacts::attach_payload_log(
+                    self.gsp_path,
+                    &self.paths,
+                    &file,
+                    error,
+                ));
+            }
+        };
+        if let Err(error) = artifacts::write_html(&self.paths.html_path, &document.render_html()) {
+            return Err(artifacts::attach_payload_log(
                 self.gsp_path,
                 &self.paths,
-                &data,
-                self.width,
-                self.height,
-            ),
-            Err(error) => Err(artifacts::attach_payload_log(
-                self.gsp_path,
-                &self.paths,
-                &data,
+                &file,
                 error,
-            )),
+            ));
         }
+        artifacts::write_debug_json(&self.paths, &document.render_scene_json())?;
+        artifacts::write_payload_log(self.gsp_path, &self.paths, &file)?;
+        Ok(())
     }
 
     fn compile_html_only(&self) -> Result<()> {

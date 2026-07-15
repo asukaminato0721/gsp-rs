@@ -611,10 +611,14 @@ fn try_decode_discrete_parameter_value(
     try_decode_continuous_parameter_value(payload)
 }
 
-fn parameter_group_drives_coordinate_value(file: &GspFile, target_ordinal: usize) -> bool {
-    file.object_groups().into_iter().any(|group| {
+fn parameter_group_drives_coordinate_value(
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    target_ordinal: usize,
+) -> bool {
+    groups.iter().any(|group| {
         group.header.kind() == GroupKind::CoordinatePoint
-            && find_indexed_path(file, &group).and_then(|path| path.refs.first().copied())
+            && find_indexed_path(file, group).and_then(|path| path.refs.first().copied())
                 == Some(target_ordinal)
     })
 }
@@ -718,7 +722,7 @@ fn decode_decimal_digit_parameter_tail_value(payload: &[u8]) -> Option<f64> {
 
 pub(crate) fn try_decode_parameter_control_value_for_group(
     file: &GspFile,
-    _groups: &[ObjectGroup],
+    groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Result<f64, ParameterControlDecodeError> {
     let payload = group
@@ -747,7 +751,7 @@ pub(crate) fn try_decode_parameter_control_value_for_group(
     let discrete = try_decode_discrete_parameter_value(payload);
     let decimal_digits = decode_decimal_digit_parameter_tail_value(payload);
 
-    if parameter_group_drives_coordinate_value(file, group.ordinal) {
+    if parameter_group_drives_coordinate_value(file, groups, group.ordinal) {
         return continuous
             .or_else(|| discrete.ok().flatten())
             .or(decimal_digits)

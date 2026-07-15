@@ -13,6 +13,7 @@ use self::htm::{
     htm_function_plot_mode, read_reference_htm_construction_lines,
 };
 use self::validation::collect_unsupported_payload_issues;
+use crate::runtime::functions::{with_function_expr_cache, with_numeric_helper_cache};
 
 pub(super) fn validate_scene_payloads(file: &GspFile, groups: &[ObjectGroup]) -> Result<()> {
     let issues = collect_unsupported_payload_issues(file, groups);
@@ -30,6 +31,10 @@ pub(super) fn validate_scene_payloads(file: &GspFile, groups: &[ObjectGroup]) ->
 }
 
 pub(crate) fn render_payload_log(source_path: &Path, file: &GspFile) -> String {
+    with_numeric_helper_cache(|| render_payload_log_inner(source_path, file))
+}
+
+fn render_payload_log_inner(source_path: &Path, file: &GspFile) -> String {
     let groups = file.object_groups();
     let issues = collect_unsupported_payload_issues(file, &groups);
 
@@ -69,7 +74,7 @@ pub(crate) fn render_payload_log(source_path: &Path, file: &GspFile) -> String {
             let _ = writeln!(output, "   原始载荷：");
             for ordinal in &issue.group_ordinals {
                 if let Some(group) = groups.get(ordinal.saturating_sub(1)) {
-                    write_group_detail(&mut output, file, group, "   ");
+                    write_group_detail(&mut output, file, &groups, group, "   ");
                 }
             }
         }
@@ -105,24 +110,28 @@ pub(crate) fn render_payload_log(source_path: &Path, file: &GspFile) -> String {
                     && htm_function_plot_mode(file, group) == Some(FunctionPlotMode::Cartesian)
             }),
         };
-        for (index, group) in construction_groups.iter().enumerate() {
-            let _ = writeln!(
-                output,
-                "{}",
-                describe_group_as_htm_payload(file, &groups, group, index + 1, &htm_context)
-            );
-        }
+        with_function_expr_cache(|| {
+            for (index, group) in construction_groups.iter().enumerate() {
+                let _ = writeln!(
+                    output,
+                    "{}",
+                    describe_group_as_htm_payload(file, &groups, group, index + 1, &htm_context)
+                );
+            }
+        });
     }
     let _ = writeln!(output);
     let _ = writeln!(output, "Payload Objects");
-    for (index, group) in groups.iter().enumerate() {
-        let _ = writeln!(
-            output,
-            "{}. {}",
-            index + 1,
-            describe_group_in_chinese(file, &groups, group)
-        );
-    }
+    with_function_expr_cache(|| {
+        for (index, group) in groups.iter().enumerate() {
+            let _ = writeln!(
+                output,
+                "{}. {}",
+                index + 1,
+                describe_group_in_chinese(file, &groups, group)
+            );
+        }
+    });
 
     output
 }
@@ -1133,7 +1142,13 @@ fn format_htm_significant(value: f64, significant_digits: usize) -> String {
     text.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
-fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup, indent: &str) {
+fn write_group_detail(
+    output: &mut String,
+    file: &GspFile,
+    groups: &[ObjectGroup],
+    group: &ObjectGroup,
+    indent: &str,
+) {
     let _ = writeln!(output, "{indent}对象 #{}：", group.ordinal);
     let _ = writeln!(
         output,
@@ -1311,7 +1326,7 @@ fn write_group_detail(output: &mut String, file: &GspFile, group: &ObjectGroup, 
         }
     }
     if self::decode::is_parameter_control_group(group) {
-        match try_decode_parameter_control_value_for_group(file, &[], group) {
+        match try_decode_parameter_control_value_for_group(file, groups, group) {
             Ok(value) => {
                 let _ = writeln!(output, "{indent}  参数值: {:.6}", value);
             }

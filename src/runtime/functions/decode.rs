@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u16, read_u32};
@@ -46,23 +46,93 @@ use self::parser::{
 use self::parser::parse_function_expr;
 
 thread_local! {
-    static RESOLVING_MEASURED_VALUES: RefCell<BTreeSet<usize>> = RefCell::new(BTreeSet::new());
+    static DECODE_CACHE_ACTIVE: Cell<bool> = const { Cell::new(false) };
+    static FUNCTION_EXPR_CACHE_ACTIVE: Cell<bool> = const { Cell::new(false) };
+    static RESOLVING_MEASURED_VALUES: RefCell<BTreeSet<usize>> = const { RefCell::new(BTreeSet::new()) };
     static MEASURED_VALUE_ANCHORS_CACHE: RefCell<Option<Vec<Option<PointRecord>>>> = const { RefCell::new(None) };
-    static RESOLVING_NUMERIC_HELPERS: RefCell<BTreeSet<usize>> = RefCell::new(BTreeSet::new());
-    static NUMERIC_HELPER_CACHE: RefCell<BTreeMap<usize, Option<FunctionExpr>>> = RefCell::new(BTreeMap::new());
+    static RESOLVING_NUMERIC_HELPERS: RefCell<BTreeSet<usize>> = const { RefCell::new(BTreeSet::new()) };
+    static NUMERIC_HELPER_CACHE: RefCell<BTreeMap<usize, Option<FunctionExpr>>> = const { RefCell::new(BTreeMap::new()) };
+    static FUNCTION_EXPR_CACHE: RefCell<BTreeMap<(usize, usize), Result<FunctionExpr, FunctionExprParseError>>> = const { RefCell::new(BTreeMap::new()) };
+    static RAW_FUNCTION_EXPR_CACHE: RefCell<BTreeMap<(usize, bool, usize), FunctionExpr>> = const { RefCell::new(BTreeMap::new()) };
+    static DEGREE_UNITS_CACHE: RefCell<BTreeMap<(usize, usize), bool>> = const { RefCell::new(BTreeMap::new()) };
 }
 
 pub(crate) fn with_numeric_helper_cache<T>(f: impl FnOnce() -> T) -> T {
-    NUMERIC_HELPER_CACHE.with(|cache| cache.borrow_mut().clear());
-    MEASURED_VALUE_ANCHORS_CACHE.with(|cache| *cache.borrow_mut() = None);
-    RESOLVING_NUMERIC_HELPERS.with(|resolving| resolving.borrow_mut().clear());
-    RESOLVING_MEASURED_VALUES.with(|resolving| resolving.borrow_mut().clear());
+    let guard = DecodeCacheGuard::enter();
     let result = f();
+    drop(guard);
+    result
+}
+
+struct DecodeCacheGuard {
+    outermost: bool,
+}
+
+impl DecodeCacheGuard {
+    fn enter() -> Self {
+        let outermost = DECODE_CACHE_ACTIVE.with(|active| !active.replace(true));
+        if outermost {
+            clear_decode_caches();
+        }
+        Self { outermost }
+    }
+}
+
+impl Drop for DecodeCacheGuard {
+    fn drop(&mut self) {
+        if self.outermost {
+            clear_decode_caches();
+            DECODE_CACHE_ACTIVE.with(|active| active.set(false));
+        }
+    }
+}
+
+fn decode_cache_is_active() -> bool {
+    DECODE_CACHE_ACTIVE.with(Cell::get)
+}
+
+fn clear_decode_caches() {
     NUMERIC_HELPER_CACHE.with(|cache| cache.borrow_mut().clear());
+    DEGREE_UNITS_CACHE.with(|cache| cache.borrow_mut().clear());
     MEASURED_VALUE_ANCHORS_CACHE.with(|cache| *cache.borrow_mut() = None);
     RESOLVING_NUMERIC_HELPERS.with(|resolving| resolving.borrow_mut().clear());
     RESOLVING_MEASURED_VALUES.with(|resolving| resolving.borrow_mut().clear());
+}
+
+pub(crate) fn with_function_expr_cache<T>(f: impl FnOnce() -> T) -> T {
+    let guard = FunctionExprCacheGuard::enter();
+    let result = f();
+    drop(guard);
     result
+}
+
+struct FunctionExprCacheGuard {
+    outermost: bool,
+}
+
+impl FunctionExprCacheGuard {
+    fn enter() -> Self {
+        let outermost = FUNCTION_EXPR_CACHE_ACTIVE.with(|active| !active.replace(true));
+        if outermost {
+            FUNCTION_EXPR_CACHE.with(|cache| cache.borrow_mut().clear());
+            RAW_FUNCTION_EXPR_CACHE.with(|cache| cache.borrow_mut().clear());
+        }
+        Self { outermost }
+    }
+}
+
+impl Drop for FunctionExprCacheGuard {
+    fn drop(&mut self) {
+        if self.outermost {
+            FUNCTION_EXPR_CACHE.with(|cache| cache.borrow_mut().clear());
+            RAW_FUNCTION_EXPR_CACHE.with(|cache| cache.borrow_mut().clear());
+            FUNCTION_EXPR_CACHE_ACTIVE.with(|active| active.set(false));
+        }
+    }
+}
+
+fn function_expr_cache_is_active() -> bool {
+    FUNCTION_EXPR_CACHE_ACTIVE.with(Cell::get)
 }
 
 fn is_function_like_group(group: &ObjectGroup) -> bool {
@@ -121,8 +191,22 @@ pub(crate) fn try_decode_function_expr(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> Result<FunctionExpr, FunctionExprParseError> {
-    let expr = decode_function_expr_recursive(file, groups, group, &mut BTreeSet::new())?;
-    Ok(apply_payload_angle_units(file, groups, group, expr))
+    if function_expr_cache_is_active()
+        && let Some(cached) = FUNCTION_EXPR_CACHE
+            .with(|cache| cache.borrow().get(&(group.ordinal, groups.len())).cloned())
+    {
+        return cached;
+    }
+    let decoded = decode_function_expr_recursive(file, groups, group, &mut BTreeSet::new())
+        .map(|expr| apply_payload_angle_units(file, groups, group, expr));
+    if function_expr_cache_is_active() {
+        FUNCTION_EXPR_CACHE.with(|cache| {
+            cache
+                .borrow_mut()
+                .insert((group.ordinal, groups.len()), decoded.clone());
+        });
+    }
+    decoded
 }
 
 fn apply_payload_angle_units(
@@ -201,6 +285,12 @@ pub(crate) fn function_expr_uses_degree_units(
         group: &ObjectGroup,
         visiting: &mut BTreeSet<usize>,
     ) -> bool {
+        if decode_cache_is_active()
+            && let Some(cached) = DEGREE_UNITS_CACHE
+                .with(|cache| cache.borrow().get(&(group.ordinal, groups.len())).copied())
+        {
+            return cached;
+        }
         if !visiting.insert(group.ordinal) {
             return false;
         }
@@ -227,7 +317,15 @@ pub(crate) fn function_expr_uses_degree_units(
             })
         });
         visiting.remove(&group.ordinal);
-        has_degree_literal || inherited_degree_unit
+        let result = has_degree_literal || inherited_degree_unit;
+        if decode_cache_is_active() {
+            DEGREE_UNITS_CACHE.with(|cache| {
+                cache
+                    .borrow_mut()
+                    .insert((group.ordinal, groups.len()), result);
+            });
+        }
+        result
     }
 
     visit(file, groups, group, &mut BTreeSet::new())
@@ -416,6 +514,19 @@ fn decode_function_expr_recursive_impl(
     visiting: &mut BTreeSet<usize>,
     inline_function_refs: bool,
 ) -> Result<FunctionExpr, FunctionExprParseError> {
+    if visiting.contains(&group.ordinal) {
+        return Err(FunctionExprParseError::NoExpressionFound { word_len: 0 });
+    }
+    if function_expr_cache_is_active()
+        && let Some(cached) = RAW_FUNCTION_EXPR_CACHE.with(|cache| {
+            cache
+                .borrow()
+                .get(&(group.ordinal, inline_function_refs, groups.len()))
+                .cloned()
+        })
+    {
+        return Ok(cached);
+    }
     if !visiting.insert(group.ordinal) {
         return Err(FunctionExprParseError::NoExpressionFound { word_len: 0 });
     }
@@ -446,6 +557,16 @@ fn decode_function_expr_recursive_impl(
         )
     })();
     visiting.remove(&group.ordinal);
+    if function_expr_cache_is_active()
+        && let Ok(expr) = &expr
+    {
+        RAW_FUNCTION_EXPR_CACHE.with(|cache| {
+            cache.borrow_mut().insert(
+                (group.ordinal, inline_function_refs, groups.len()),
+                expr.clone(),
+            );
+        });
+    }
     expr
 }
 
@@ -1983,7 +2104,7 @@ fn decode_runtime_parameter_binding(
         return Some(ParameterBinding::value(name, value));
     }
     if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
-        let binding = decode_parameter_anchor_binding(file, group, false)?;
+        let binding = decode_parameter_anchor_binding(file, groups, group, false)?;
         let value = overrides
             .get(&binding.name)
             .copied()
@@ -2063,7 +2184,12 @@ fn decode_parameter_binding_recursive(
         return Some(ParameterBinding::value(name, value));
     }
     if (group.header.kind()) == crate::format::GroupKind::ParameterAnchor {
-        return decode_parameter_anchor_binding(file, group, allow_constraint_anchor_bindings);
+        return decode_parameter_anchor_binding(
+            file,
+            groups,
+            group,
+            allow_constraint_anchor_bindings,
+        );
     }
     if group.header.kind() == crate::format::GroupKind::ParameterControlledPoint
         && let Some(path) = find_indexed_path(file, group)
@@ -2130,10 +2256,10 @@ fn decode_parameter_binding_recursive(
 
 fn decode_parameter_anchor_binding(
     file: &GspFile,
+    groups: &[ObjectGroup],
     group: &ObjectGroup,
     allow_constraint_anchor_bindings: bool,
 ) -> Option<ParameterBinding> {
-    let groups = file.object_groups();
     let path = find_indexed_path(file, group)?;
     let point_group = groups.get(path.refs.first()?.checked_sub(1)?)?;
     let name = group
@@ -2151,7 +2277,7 @@ fn decode_parameter_anchor_binding(
         .unwrap_or_else(|| format!("__param_anchor_{}", group.ordinal));
     let value = match point_group.header.kind() {
         kind if kind.is_point_constraint() && allow_constraint_anchor_bindings => {
-            decode_parameter_anchor_constraint_value(file, &groups, point_group)?
+            decode_parameter_anchor_constraint_value(file, groups, point_group)?
         }
         kind if kind.is_point_constraint() => point_group
             .records
@@ -2172,8 +2298,8 @@ fn decode_parameter_anchor_binding(
                 }
             })
             .filter(|value| value.is_finite())
-            .or_else(|| decode_parameter_anchor_host_value(file, &groups, &path))?,
-        _ => decode_parameter_anchor_host_value(file, &groups, &path)?,
+            .or_else(|| decode_parameter_anchor_host_value(file, groups, &path))?,
+        _ => decode_parameter_anchor_host_value(file, groups, &path)?,
     };
     Some(ParameterBinding::value(name, value))
 }

@@ -88,6 +88,7 @@ impl Config {
             "",
             "--upload uploads each successfully compiled .gsp file.",
             "--html only writes the bundled .html output.",
+            "GSP_RS_WORKER_TIMEOUT_MS optionally sets a per-file compiler timeout; unset means no timeout.",
         ]
         .join("\n")
     }

@@ -10,7 +10,7 @@ pub(crate) use decode::{
     try_decode_embedded_calculate_expr, try_decode_function_expr,
     try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
     try_decode_numeric_helper_group, try_decode_parameter_control_expr,
-    try_decode_standalone_function_expr, with_numeric_helper_cache,
+    try_decode_standalone_function_expr, with_function_expr_cache, with_numeric_helper_cache,
 };
 pub(crate) use eval::evaluate_expr_with_parameters;
 pub(crate) use expr::{

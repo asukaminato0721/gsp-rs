@@ -1,5 +1,5 @@
 use std::env;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::process::Child;
 use std::process::Command;
 use std::thread;
@@ -13,7 +13,7 @@ use gsp_rs::{
 use miette::{Result, miette};
 
 const WORKER_ENV: &str = "GSP_RS_WORKER";
-const WORKER_TIMEOUT: Duration = Duration::from_secs(15);
+const WORKER_TIMEOUT_ENV: &str = "GSP_RS_WORKER_TIMEOUT_MS";
 
 fn main() -> Result<()> {
     run()
@@ -91,6 +91,7 @@ fn run_jobs_out_of_process(config: &Config) -> Result<()> {
         miette!("failed to resolve current executable for isolated job execution: {error}")
     })?;
     let mut failures = Vec::new();
+    let worker_timeout = worker_timeout_from_env()?;
 
     for job in &config.jobs {
         let mut child = Command::new(&exe_path)
@@ -104,7 +105,7 @@ fn run_jobs_out_of_process(config: &Config) -> Result<()> {
                 )
             })?;
 
-        let Some(status) = wait_for_child_exit(&mut child, WORKER_TIMEOUT).map_err(|error| {
+        let Some(status) = wait_for_child_exit(&mut child, worker_timeout).map_err(|error| {
             miette!(
                 "failed while waiting for isolated compiler process for {}: {error}",
                 job.gsp_path.display()
@@ -114,9 +115,11 @@ fn run_jobs_out_of_process(config: &Config) -> Result<()> {
             let _ = child.kill();
             let _ = child.wait();
             failures.push(format!(
-                "{}: compiler process timed out after {}s",
+                "{}: compiler process timed out after {} ms",
                 job.gsp_path.display(),
-                WORKER_TIMEOUT.as_secs()
+                worker_timeout
+                    .expect("a timeout is required for timeout status")
+                    .as_millis()
             ));
             continue;
         };
@@ -174,18 +177,38 @@ fn format_job_error(job_path: &std::path::Path, error: &miette::Report) -> Strin
 
 fn wait_for_child_exit(
     child: &mut Child,
-    timeout: Duration,
+    timeout: Option<Duration>,
 ) -> std::io::Result<Option<std::process::ExitStatus>> {
     let start = Instant::now();
     loop {
         if let Some(status) = child.try_wait()? {
             return Ok(Some(status));
         }
-        if start.elapsed() >= timeout {
+        if timeout.is_some_and(|timeout| start.elapsed() >= timeout) {
             return Ok(None);
         }
         thread::sleep(Duration::from_millis(10));
     }
+}
+
+fn worker_timeout_from_env() -> Result<Option<Duration>> {
+    parse_worker_timeout(env::var_os(WORKER_TIMEOUT_ENV).as_deref())
+}
+
+fn parse_worker_timeout(raw: Option<&OsStr>) -> Result<Option<Duration>> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let raw = raw.to_string_lossy();
+    let millis = raw.parse::<u64>().map_err(|_| {
+        miette!("{WORKER_TIMEOUT_ENV} must be a positive integer number of milliseconds")
+    })?;
+    if millis == 0 {
+        return Err(miette!(
+            "{WORKER_TIMEOUT_ENV} must be a positive integer number of milliseconds"
+        ));
+    }
+    Ok(Some(Duration::from_millis(millis)))
 }
 
 fn format_exit_status(status: std::process::ExitStatus) -> String {
@@ -208,7 +231,7 @@ fn format_exit_status(status: std::process::ExitStatus) -> String {
 mod tests {
     use super::{format_exit_status, format_job_error, worker_args_for_job};
     use gsp_rs::{CompileMode, Config, RenderJob};
-    use std::ffi::OsString;
+    use std::ffi::{OsStr, OsString};
     use std::path::PathBuf;
     use std::process::Command;
     use std::time::Duration;
@@ -240,11 +263,35 @@ mod tests {
             .arg("sleep 1")
             .spawn()
             .expect("spawn sleepy child");
-        let status = super::wait_for_child_exit(&mut child, Duration::from_millis(10))
+        let status = super::wait_for_child_exit(&mut child, Some(Duration::from_millis(10)))
             .expect("wait should succeed");
         assert!(status.is_none(), "expected timeout for sleepy child");
         let _ = child.kill();
         let _ = child.wait();
+    }
+
+    #[test]
+    fn waits_without_a_deadline_when_timeout_is_disabled() {
+        let mut child = Command::new("sh")
+            .arg("-c")
+            .arg("exit 0")
+            .spawn()
+            .expect("spawn quick child");
+        let status = super::wait_for_child_exit(&mut child, None)
+            .expect("wait should succeed")
+            .expect("child should exit");
+        assert!(status.success());
+    }
+
+    #[test]
+    fn worker_timeout_is_disabled_by_default_and_configurable_in_milliseconds() {
+        assert_eq!(super::parse_worker_timeout(None).unwrap(), None);
+        assert_eq!(
+            super::parse_worker_timeout(Some(OsStr::new("2500"))).unwrap(),
+            Some(Duration::from_millis(2500))
+        );
+        assert!(super::parse_worker_timeout(Some(OsStr::new("0"))).is_err());
+        assert!(super::parse_worker_timeout(Some(OsStr::new("later"))).is_err());
     }
 
     #[test]
