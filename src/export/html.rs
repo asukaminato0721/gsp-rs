@@ -17,6 +17,7 @@ use std::path::Path;
 use ts_rs::{Config, ExportError};
 
 pub(crate) use document::{StandaloneHtmlPage, render_document_scene_json};
+pub(crate) use object_graph_scene_json::build_object_graph;
 
 pub(crate) fn write_standalone_html(output_path: &Path, html: &str) -> Result<(), String> {
     let extension = match output_path.extension() {

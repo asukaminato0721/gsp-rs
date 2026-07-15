@@ -9,8 +9,9 @@ use crate::format::GspFile;
 use crate::runtime::functions::{FunctionExpr, UnaryFunction};
 use crate::runtime::scene::{
     ArcBinding, ArcConstraint, ButtonAction, CircularConstraint, ColorBinding,
-    IterationTableValueBinding, LineBinding, LineConstraint, LineLikeKind, LineTransformBinding,
-    ScenePointBinding, ScenePointConstraint, SceneScalarBinding, ShapeBinding, TextLabelBinding,
+    GeometryTransformBinding, IterationTableValueBinding, LineBinding, LineConstraint,
+    LineLikeKind, ScenePointBinding, ScenePointConstraint, SceneScalarBinding, ShapeBinding,
+    TextLabelBinding,
 };
 
 #[test]
@@ -373,7 +374,8 @@ fn polar_offset_line_host_passes_payload_validation() {
     let scene = build_scene_checked(&file).expect("polar-offset line host builds");
     assert!(scene.lines.iter().any(|line| {
         line.debug.as_ref().is_some_and(|debug| {
-            debug.group_ordinal == 23 && debug.group_kind == "PerpendicularLine"
+            debug.group_ordinal == 23
+                && debug.group_kind == crate::format::GroupKind::PerpendicularLine
         })
     }));
 }
@@ -1130,7 +1132,7 @@ fn initially_undefined_rotated_ray_keeps_circle_intersection_chain() {
     assert!(matches!(
         &rotated_ray.binding,
         Some(LineBinding::DerivedTransform {
-            transform: LineTransformBinding::Rotate(binding),
+            transform: GeometryTransformBinding::Rotate(binding),
             ..
         }) if binding.angle_degrees == 0.0 && binding.angle_expr.is_some()
     ));
@@ -2234,7 +2236,7 @@ fn triangle_angle_sum_fixture_keeps_measured_angle_rotation_live() {
             &scene.lines[rotated_bc_line_index].binding,
             Some(LineBinding::DerivedTransform {
                 source_index,
-                transform: LineTransformBinding::Rotate(binding),
+                transform: GeometryTransformBinding::Rotate(binding),
             }) if *source_index == source_bl_line_index
                 && binding.center_index == center_point_index
                 && binding.angle_start_index == Some(point_index_for_group(16))
@@ -3214,7 +3216,7 @@ fn ellipse_polygon_rolling_keeps_marked_translation_and_intersection_chain() {
         assert!(matches!(
             line(ordinal).binding,
             Some(LineBinding::DerivedTransform {
-                transform: LineTransformBinding::Rotate(_),
+                transform: GeometryTransformBinding::Rotate(_),
                 ..
             })
         ));
@@ -3222,7 +3224,7 @@ fn ellipse_polygon_rolling_keeps_marked_translation_and_intersection_chain() {
     assert!(matches!(
         line(102).binding,
         Some(LineBinding::DerivedTransform {
-            transform: LineTransformBinding::Reflect(_),
+            transform: GeometryTransformBinding::Reflect(_),
             ..
         })
     ));

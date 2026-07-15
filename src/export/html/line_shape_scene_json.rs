@@ -341,7 +341,7 @@ impl LineBindingJson {
                 transform,
             } => Self::Derived {
                 source_index: *source_index,
-                transform: TransformJson::from_line_transform(transform),
+                transform: TransformJson::from_transform(transform),
             },
             LineBinding::CustomTransformTrace {
                 point_index,
@@ -739,7 +739,7 @@ impl ShapeBindingJson {
                 transform,
             } => Some(Self::Derived {
                 source_index: *source_index,
-                transform: TransformJson::from_shape_transform(transform),
+                transform: TransformJson::from_transform(transform),
             }),
             ShapeBinding::PointRadiusCircle { .. }
             | ShapeBinding::SegmentRadiusCircle { .. }
@@ -786,7 +786,7 @@ impl ShapeBindingJson {
                 transform,
             } => Some(Self::Derived {
                 source_index: *source_index,
-                transform: TransformJson::from_shape_transform(transform),
+                transform: TransformJson::from_transform(transform),
             }),
             ShapeBinding::PointPolygon { .. } | ShapeBinding::ArcBoundaryPolygon { .. } => None,
         }

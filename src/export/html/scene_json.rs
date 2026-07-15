@@ -177,7 +177,7 @@ impl DebugSourceJson {
     pub(super) fn from_source(source: &PayloadDebugSource) -> Self {
         Self {
             group_ordinal: source.group_ordinal,
-            group_kind: source.group_kind.clone(),
+            group_kind: format!("{:?}", source.group_kind),
             record_types: source.record_types.clone(),
             record_names: source.record_names.clone(),
         }

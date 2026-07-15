@@ -1616,7 +1616,7 @@ fn preserves_scaled_point_and_single_parameter_label_in_scale_gsp() {
     assert!(scene.circles.iter().any(|circle| matches!(
         circle.binding,
         Some(crate::runtime::scene::ShapeBinding::DerivedTransform {
-            transform: crate::runtime::scene::ShapeTransformBinding::Scale(..),
+            transform: crate::runtime::scene::GeometryTransformBinding::Scale(..),
             ..
         })
     )));
@@ -1668,7 +1668,7 @@ fn preserves_translated_circle_and_intersection_in_translation_gsp() {
     assert!(scene.circles.iter().any(|circle| matches!(
         circle.binding,
         Some(crate::runtime::scene::ShapeBinding::DerivedTransform {
-            transform: crate::runtime::scene::ShapeTransformBinding::TranslateDelta { .. },
+            transform: crate::runtime::scene::GeometryTransformBinding::TranslateDelta { .. },
             ..
         })
     )));
@@ -1714,14 +1714,14 @@ fn preserves_reflection_point_circle_and_polygon_gsp() {
     assert!(scene.circles.iter().any(|circle| matches!(
         circle.binding,
         Some(crate::runtime::scene::ShapeBinding::DerivedTransform {
-            transform: crate::runtime::scene::ShapeTransformBinding::Reflect(..),
+            transform: crate::runtime::scene::GeometryTransformBinding::Reflect(..),
             ..
         })
     )));
     assert!(scene.polygons.iter().any(|polygon| matches!(
         polygon.binding,
         Some(crate::runtime::scene::ShapeBinding::DerivedTransform {
-            transform: crate::runtime::scene::ShapeTransformBinding::Reflect(..),
+            transform: crate::runtime::scene::GeometryTransformBinding::Reflect(..),
             ..
         })
     )));
@@ -1739,7 +1739,7 @@ fn preserves_reflected_circle_across_constructed_perpendicular_line() {
     assert!(scene.circles.iter().any(|circle| matches!(
         circle.binding,
         Some(crate::runtime::scene::ShapeBinding::DerivedTransform {
-            transform: crate::runtime::scene::ShapeTransformBinding::Reflect(
+            transform: crate::runtime::scene::GeometryTransformBinding::Reflect(
                 crate::runtime::scene::AxisBinding {
                     line_index: Some(_),
                     ..
@@ -1768,7 +1768,7 @@ fn preserves_translated_triangle_segments_in_congruent_triangle_fixture() {
             .filter(|line| matches!(
                 line.binding,
                 Some(LineBinding::DerivedTransform {
-                    transform: crate::runtime::scene::LineTransformBinding::Translate { .. },
+                    transform: crate::runtime::scene::GeometryTransformBinding::TranslateVector { .. },
                     ..
                 })
             ))
@@ -1798,7 +1798,7 @@ fn preserves_translated_triangle_segments_in_congruent_triangle_fixture() {
         matches!(
             line.binding,
             Some(LineBinding::DerivedTransform {
-                transform: crate::runtime::scene::LineTransformBinding::Translate {
+                transform: crate::runtime::scene::GeometryTransformBinding::TranslateVector {
                     vector_start_index: 0,
                     vector_end_index: 3,
                 },

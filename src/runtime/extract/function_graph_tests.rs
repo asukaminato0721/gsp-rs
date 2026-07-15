@@ -8,7 +8,27 @@ use crate::runtime::scene::{
     ButtonAction, LineBinding, LineIterationFamily, ScenePointBinding, ScenePointConstraint,
     TextLabelBinding,
 };
+use gsp_runtime_core::ObjectOp;
+use gsp_runtime_core::object_graph::ObjectDefinition;
 use std::collections::BTreeSet;
+
+#[test]
+fn scene_owns_the_typed_object_graph_before_json_export() {
+    let scene = fixture_scene(include_bytes!(
+        "../../../tests/fixtures/gsp/middle_point.gsp"
+    ));
+
+    assert!(scene.object_graph.geometry_complete);
+    assert!(scene.object_graph.pending_operations.is_empty());
+    assert!(!scene.object_graph.sources.is_empty());
+    assert!(scene.object_graph.nodes.iter().any(|node| matches!(
+        &node.definition,
+        ObjectDefinition::Derived {
+            op: ObjectOp::Midpoint,
+            ..
+        }
+    )));
+}
 
 fn collect_function_parameter_names(expr: &FunctionExpr) -> BTreeSet<String> {
     fn collect_ast(ast: &FunctionAst, names: &mut BTreeSet<String>) {

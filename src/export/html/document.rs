@@ -200,6 +200,7 @@ mod tests {
 
     fn empty_scene() -> Scene {
         Scene {
+            object_graph: Default::default(),
             payload_dependencies: Default::default(),
             background_color: None,
             graph_mode: false,

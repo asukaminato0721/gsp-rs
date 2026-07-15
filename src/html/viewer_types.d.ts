@@ -19,6 +19,7 @@ type RuntimeArcGeometry = {
 };
 type BoundsJson = import("./generated/BoundsJson").BoundsJson;
 type SceneData = import("./generated/SceneData").SceneData;
+type ObjectGraphSourceJson = import("./generated/ObjectGraphSourceJson").ObjectGraphSourceJson;
 type ScenePointJson = import("./generated/ScenePointJson").ScenePointJson;
 type PointConstraintJson = import("./generated/PointConstraintJson").PointConstraintJson;
 type PointBindingJson = import("./generated/PointBindingJson").PointBindingJson;

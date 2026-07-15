@@ -7,10 +7,10 @@ use crate::runtime::{
     functions::{FunctionExpr, function_expr_label},
     scene::{
         ArcConstraint, AxisBinding, CircleIterationFamily, CircularConstraint, ColorBinding,
-        IterationPointHandle, IterationTable, LabelIterationFamily, LineBinding, LineConstraint,
-        LineIterationFamily, LineTransformBinding, PointIterationFamily, PolygonIterationFamily,
-        RichTextExpressionRef, RichTextExpressionValue, Scene, ScenePointBinding,
-        ScenePointConstraint, ShapeBinding, ShapeTransformBinding, TextLabelBinding,
+        GeometryTransformBinding, IterationPointHandle, IterationTable, LabelIterationFamily,
+        LineBinding, LineConstraint, LineIterationFamily, PointIterationFamily,
+        PolygonIterationFamily, RichTextExpressionRef, RichTextExpressionValue, Scene,
+        ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
     },
 };
 
@@ -526,13 +526,14 @@ impl Collector<'_> {
         self.line(deps, axis.line_index);
     }
 
-    fn line_transform(&self, deps: &mut Dependencies, transform: &LineTransformBinding) {
+    fn geometry_transform(&self, deps: &mut Dependencies, transform: &GeometryTransformBinding) {
         match transform {
-            LineTransformBinding::Translate {
+            GeometryTransformBinding::TranslateDelta { .. } => {}
+            GeometryTransformBinding::TranslateVector {
                 vector_start_index,
                 vector_end_index,
             } => self.points(deps, [*vector_start_index, *vector_end_index]),
-            LineTransformBinding::Rotate(rotation) => {
+            GeometryTransformBinding::Rotate(rotation) => {
                 self.point(deps, Some(rotation.center_index));
                 self.optional_points(
                     deps,
@@ -544,32 +545,8 @@ impl Collector<'_> {
                 );
                 self.parameter(deps, rotation.parameter_name.as_deref());
             }
-            LineTransformBinding::Scale(scale) => self.point(deps, Some(scale.center_index)),
-            LineTransformBinding::Reflect(axis) => self.axis(deps, axis),
-        }
-    }
-
-    fn shape_transform(&self, deps: &mut Dependencies, transform: &ShapeTransformBinding) {
-        match transform {
-            ShapeTransformBinding::TranslateDelta { .. } => {}
-            ShapeTransformBinding::TranslateVector {
-                vector_start_index,
-                vector_end_index,
-            } => self.points(deps, [*vector_start_index, *vector_end_index]),
-            ShapeTransformBinding::Rotate(rotation) => {
-                self.point(deps, Some(rotation.center_index));
-                self.optional_points(
-                    deps,
-                    [
-                        rotation.angle_start_index,
-                        rotation.angle_vertex_index,
-                        rotation.angle_end_index,
-                    ],
-                );
-                self.parameter(deps, rotation.parameter_name.as_deref());
-            }
-            ShapeTransformBinding::Scale(scale) => self.point(deps, Some(scale.center_index)),
-            ShapeTransformBinding::Reflect(axis) => self.axis(deps, axis),
+            GeometryTransformBinding::Scale(scale) => self.point(deps, Some(scale.center_index)),
+            GeometryTransformBinding::Reflect(axis) => self.axis(deps, axis),
         }
     }
 
@@ -1006,7 +983,7 @@ impl Collector<'_> {
                 transform,
             } => {
                 self.line(deps, Some(*source_index));
-                self.line_transform(deps, transform);
+                self.geometry_transform(deps, transform);
             }
             LineBinding::CustomTransformTrace {
                 point_index,
@@ -1123,7 +1100,7 @@ impl Collector<'_> {
                     ShapeSource::Circle => self.circle(deps, *source_index),
                     ShapeSource::Polygon => self.polygon(deps, *source_index),
                 }
-                self.shape_transform(deps, transform);
+                self.geometry_transform(deps, transform);
             }
         }
     }

@@ -14,7 +14,8 @@ use super::{
 };
 use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u32};
 use crate::runtime::functions::{
-    FunctionAst, FunctionExpr, evaluate_expr_with_parameters, function_parameter_group_ordinals,
+    FunctionAst, FunctionExpr, evaluate_expr_with_parameters,
+    evaluate_function_group_with_overrides, function_parameter_group_ordinals,
     try_decode_embedded_calculate_expr, try_decode_function_expr,
     try_decode_function_expr_with_inlined_refs, try_decode_function_plot_descriptor,
     try_decode_parameter_control_expr,
@@ -1443,8 +1444,10 @@ fn decode_parameter_controlled_value(
                     _ => {}
                 }
             }
-            let mut parameter_value = evaluate_expr_with_parameters(&expr, 0.0, &parameters)
-                .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
+            let mut parameter_value =
+                evaluate_function_group_with_overrides(file, groups, source_group, &parameters)
+                    .or_else(|| evaluate_expr_with_parameters(&expr, 0.0, &parameters))
+                    .ok_or(ParameterControlledPointDecodeError::InvalidSource)?;
             if !source_expr_absolute_parameter
                 && let (Some(_), Some(anchor_value)) =
                     (anchor_parameter_name.as_ref(), anchor_parameter_value)

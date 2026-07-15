@@ -15,8 +15,7 @@ use crate::runtime::extract::points::{
 use crate::runtime::functions::{FunctionExpr, function_parameter_group_ordinals};
 use crate::runtime::geometry::angle_degrees_from_points;
 use crate::runtime::scene::{
-    ArcBinding, AxisBinding, LineTransformBinding, RotationBinding, ScaleBinding,
-    ShapeTransformBinding,
+    ArcBinding, AxisBinding, GeometryTransformBinding, RotationBinding, ScaleBinding,
 };
 
 fn arc_shape_raw(
@@ -172,7 +171,7 @@ pub(crate) fn collect_reflected_arc_shapes(
                 visible: !group.header.is_hidden(),
                 binding: Some(ArcBinding::DerivedTransform {
                     source_index: source_group_index,
-                    transform: ShapeTransformBinding::Reflect(reflection_axis_binding(
+                    transform: GeometryTransformBinding::Reflect(reflection_axis_binding(
                         file,
                         line_group,
                         line_group_index,
@@ -321,7 +320,7 @@ pub(crate) fn collect_rotated_line_shapes(
                 source_group_index,
                 source_group,
                 points,
-                LineTransformBinding::Rotate(rotation_binding(
+                GeometryTransformBinding::Rotate(rotation_binding(
                     &transform,
                     binding.center_group_index,
                 )?),
@@ -360,7 +359,7 @@ pub(crate) fn collect_translated_line_shapes(
                 source_group_index,
                 source_group,
                 points,
-                LineTransformBinding::Translate {
+                GeometryTransformBinding::TranslateVector {
                     vector_start_index,
                     vector_end_index,
                 },
@@ -399,7 +398,7 @@ pub(crate) fn collect_scaled_line_shapes(
                 source_group_index,
                 source_group,
                 points,
-                LineTransformBinding::Scale(ScaleBinding {
+                GeometryTransformBinding::Scale(ScaleBinding {
                     center_index: binding.center_group_index,
                     factor,
                 }),
@@ -436,7 +435,7 @@ pub(crate) fn collect_reflected_line_shapes(
                 source_group_index,
                 source_group,
                 points,
-                LineTransformBinding::Reflect(AxisBinding {
+                GeometryTransformBinding::Reflect(AxisBinding {
                     line_start_index: None,
                     line_end_index: None,
                     line_index: Some(line_group_index),
@@ -475,7 +474,7 @@ pub(crate) fn collect_rotated_circle_shapes(
                 rotate_around(&source_center, &center, radians),
                 rotate_around(&source_radius, &center, radians),
                 source_fill,
-                ShapeTransformBinding::Rotate(rotation_binding(
+                GeometryTransformBinding::Rotate(rotation_binding(
                     &transform,
                     binding.center_group_index,
                 )?),
@@ -528,7 +527,7 @@ pub(crate) fn collect_translated_circle_shapes(
                         y: source_radius.y + dy,
                     },
                     source_fill,
-                    ShapeTransformBinding::TranslateVector {
+                    GeometryTransformBinding::TranslateVector {
                         vector_start_index,
                         vector_end_index,
                     },
@@ -554,7 +553,7 @@ pub(crate) fn collect_translated_circle_shapes(
                     y: source_radius.y + constraint.dy,
                 },
                 source_fill,
-                ShapeTransformBinding::TranslateDelta {
+                GeometryTransformBinding::TranslateDelta {
                     dx: constraint.dx,
                     dy: constraint.dy,
                 },
@@ -589,7 +588,7 @@ pub(crate) fn collect_translated_polygon_shapes(
                 group,
                 source_group_index,
                 points,
-                ShapeTransformBinding::TranslateVector {
+                GeometryTransformBinding::TranslateVector {
                     vector_start_index,
                     vector_end_index,
                 },
@@ -628,7 +627,7 @@ pub(crate) fn collect_transformed_circle_shapes(
                 scale_around(&source_center, &scale_center, factor),
                 scale_around(&source_radius, &scale_center, factor),
                 source_fill,
-                ShapeTransformBinding::Scale(ScaleBinding {
+                GeometryTransformBinding::Scale(ScaleBinding {
                     center_index: binding.center_group_index,
                     factor,
                 }),
@@ -667,7 +666,7 @@ pub(crate) fn collect_rotated_polygon_shapes(
                 group,
                 source_group_index,
                 points,
-                ShapeTransformBinding::Rotate(rotation_binding(
+                GeometryTransformBinding::Rotate(rotation_binding(
                     &transform,
                     binding.center_group_index,
                 )?),
@@ -702,7 +701,7 @@ pub(crate) fn collect_transformed_polygon_shapes(
                 group,
                 source_group_index,
                 points,
-                ShapeTransformBinding::Scale(ScaleBinding {
+                GeometryTransformBinding::Scale(ScaleBinding {
                     center_index: binding.center_group_index,
                     factor,
                 }),
@@ -742,7 +741,7 @@ pub(crate) fn collect_reflected_circle_shapes(
                 center,
                 radius_point,
                 source_fill,
-                ShapeTransformBinding::Reflect(reflection_axis_binding(
+                GeometryTransformBinding::Reflect(reflection_axis_binding(
                     file,
                     line_group,
                     line_group_index,
@@ -777,7 +776,7 @@ pub(crate) fn collect_reflected_polygon_shapes(
                 group,
                 source_group_index,
                 points,
-                ShapeTransformBinding::Reflect(reflection_axis_binding(
+                GeometryTransformBinding::Reflect(reflection_axis_binding(
                     file,
                     line_group,
                     line_group_index,
@@ -899,7 +898,7 @@ fn derived_line_shape(
     source_group_index: usize,
     source_group: &ObjectGroup,
     points: Vec<PointRecord>,
-    transform: LineTransformBinding,
+    transform: GeometryTransformBinding,
 ) -> Option<LineShape> {
     (points.len() >= 2).then_some(LineShape {
         points,
@@ -923,7 +922,7 @@ fn derived_circle_shape(
     center: PointRecord,
     radius_point: PointRecord,
     source_fill: Option<&([u8; 4], bool)>,
-    transform: ShapeTransformBinding,
+    transform: GeometryTransformBinding,
 ) -> CircleShape {
     CircleShape {
         center,
@@ -946,7 +945,7 @@ fn derived_polygon_shape(
     group: &ObjectGroup,
     source_group_index: usize,
     points: Vec<PointRecord>,
-    transform: ShapeTransformBinding,
+    transform: GeometryTransformBinding,
 ) -> Option<PolygonShape> {
     (points.len() >= 3).then_some(PolygonShape {
         points,

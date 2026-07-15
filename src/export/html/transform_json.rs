@@ -1,5 +1,5 @@
 use super::function_expr_json::FunctionExprJson;
-use crate::runtime::scene::{AxisBinding, LineTransformBinding, ShapeTransformBinding};
+use crate::runtime::scene::{AxisBinding, GeometryTransformBinding};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -50,45 +50,19 @@ pub(super) enum TransformJson {
 }
 
 impl TransformJson {
-    pub(super) fn from_line_transform(transform: &LineTransformBinding) -> Self {
+    pub(super) fn from_transform(transform: &GeometryTransformBinding) -> Self {
         match transform {
-            LineTransformBinding::Translate {
+            GeometryTransformBinding::TranslateVector {
                 vector_start_index,
                 vector_end_index,
             } => Self::Translate {
                 vector_start_index: *vector_start_index,
                 vector_end_index: *vector_end_index,
             },
-            LineTransformBinding::Rotate(binding) => Self::Rotate {
-                center_index: binding.center_index,
-                angle_degrees: binding.angle_degrees,
-                parameter_name: binding.parameter_name.clone(),
-                angle_expr: binding.angle_expr.as_ref().map(FunctionExprJson::from_expr),
-                angle_start_index: binding.angle_start_index,
-                angle_vertex_index: binding.angle_vertex_index,
-                angle_end_index: binding.angle_end_index,
-            },
-            LineTransformBinding::Scale(binding) => Self::Scale {
-                center_index: binding.center_index,
-                factor: binding.factor,
-            },
-            LineTransformBinding::Reflect(axis) => Self::from_axis(axis),
-        }
-    }
-
-    pub(super) fn from_shape_transform(transform: &ShapeTransformBinding) -> Self {
-        match transform {
-            ShapeTransformBinding::TranslateVector {
-                vector_start_index,
-                vector_end_index,
-            } => Self::Translate {
-                vector_start_index: *vector_start_index,
-                vector_end_index: *vector_end_index,
-            },
-            ShapeTransformBinding::TranslateDelta { dx, dy } => {
+            GeometryTransformBinding::TranslateDelta { dx, dy } => {
                 Self::TranslateDelta { dx: *dx, dy: *dy }
             }
-            ShapeTransformBinding::Rotate(binding) => Self::Rotate {
+            GeometryTransformBinding::Rotate(binding) => Self::Rotate {
                 center_index: binding.center_index,
                 angle_degrees: binding.angle_degrees,
                 parameter_name: binding.parameter_name.clone(),
@@ -97,11 +71,11 @@ impl TransformJson {
                 angle_vertex_index: binding.angle_vertex_index,
                 angle_end_index: binding.angle_end_index,
             },
-            ShapeTransformBinding::Scale(binding) => Self::Scale {
+            GeometryTransformBinding::Scale(binding) => Self::Scale {
                 center_index: binding.center_index,
                 factor: binding.factor,
             },
-            ShapeTransformBinding::Reflect(axis) => Self::from_axis(axis),
+            GeometryTransformBinding::Reflect(axis) => Self::from_axis(axis),
         }
     }
 

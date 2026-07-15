@@ -1,7 +1,7 @@
 use crate::runtime::extract::shapes::{ArcShape, CircleShape};
 use crate::runtime::scene::{
-    ArcBinding, AxisBinding, LineBinding, LineShape, LineTransformBinding, PolygonShape,
-    ShapeBinding, ShapeTransformBinding, TextLabel, TextLabelBinding,
+    ArcBinding, AxisBinding, GeometryTransformBinding, LineBinding, LineShape, PolygonShape,
+    ShapeBinding, TextLabel, TextLabelBinding,
 };
 
 fn mapped_index(mapping: &[Option<usize>], index: usize) -> Option<usize> {
@@ -37,13 +37,14 @@ fn remap_axis_binding(
     true
 }
 
-fn remap_line_transform(
-    transform: &mut LineTransformBinding,
+fn remap_geometry_transform(
+    transform: &mut GeometryTransformBinding,
     group_to_point_index: &[Option<usize>],
     group_to_line_index: &[Option<usize>],
 ) -> bool {
     match transform {
-        LineTransformBinding::Translate {
+        GeometryTransformBinding::TranslateDelta { .. } => true,
+        GeometryTransformBinding::TranslateVector {
             vector_start_index,
             vector_end_index,
         } => {
@@ -61,7 +62,7 @@ fn remap_line_transform(
             *vector_end_index = mapped_vector_end_index;
             true
         }
-        LineTransformBinding::Rotate(binding) => {
+        GeometryTransformBinding::Rotate(binding) => {
             let Some(mapped_center_index) =
                 mapped_index(group_to_point_index, binding.center_index)
             else {
@@ -89,7 +90,7 @@ fn remap_line_transform(
             binding.angle_end_index = mapped_angle_end_index;
             true
         }
-        LineTransformBinding::Scale(binding) => {
+        GeometryTransformBinding::Scale(binding) => {
             let Some(mapped_center_index) =
                 mapped_index(group_to_point_index, binding.center_index)
             else {
@@ -98,75 +99,7 @@ fn remap_line_transform(
             binding.center_index = mapped_center_index;
             true
         }
-        LineTransformBinding::Reflect(axis) => {
-            remap_axis_binding(axis, group_to_point_index, group_to_line_index)
-        }
-    }
-}
-
-fn remap_shape_transform(
-    transform: &mut ShapeTransformBinding,
-    group_to_point_index: &[Option<usize>],
-    group_to_line_index: &[Option<usize>],
-) -> bool {
-    match transform {
-        ShapeTransformBinding::TranslateDelta { .. } => true,
-        ShapeTransformBinding::TranslateVector {
-            vector_start_index,
-            vector_end_index,
-        } => {
-            let Some(mapped_vector_start_index) =
-                mapped_index(group_to_point_index, *vector_start_index)
-            else {
-                return false;
-            };
-            let Some(mapped_vector_end_index) =
-                mapped_index(group_to_point_index, *vector_end_index)
-            else {
-                return false;
-            };
-            *vector_start_index = mapped_vector_start_index;
-            *vector_end_index = mapped_vector_end_index;
-            true
-        }
-        ShapeTransformBinding::Rotate(binding) => {
-            let Some(mapped_center_index) =
-                mapped_index(group_to_point_index, binding.center_index)
-            else {
-                return false;
-            };
-            let mapped_angle_start_index =
-                mapped_optional_index(group_to_point_index, binding.angle_start_index)
-                    .unwrap_or(None);
-            let mapped_angle_vertex_index =
-                mapped_optional_index(group_to_point_index, binding.angle_vertex_index)
-                    .unwrap_or(None);
-            let mapped_angle_end_index =
-                mapped_optional_index(group_to_point_index, binding.angle_end_index)
-                    .unwrap_or(None);
-            if binding.angle_start_index.is_some()
-                && (mapped_angle_start_index.is_none()
-                    || mapped_angle_vertex_index.is_none()
-                    || mapped_angle_end_index.is_none())
-            {
-                return false;
-            }
-            binding.center_index = mapped_center_index;
-            binding.angle_start_index = mapped_angle_start_index;
-            binding.angle_vertex_index = mapped_angle_vertex_index;
-            binding.angle_end_index = mapped_angle_end_index;
-            true
-        }
-        ShapeTransformBinding::Scale(binding) => {
-            let Some(mapped_center_index) =
-                mapped_index(group_to_point_index, binding.center_index)
-            else {
-                return false;
-            };
-            binding.center_index = mapped_center_index;
-            true
-        }
-        ShapeTransformBinding::Reflect(axis) => {
+        GeometryTransformBinding::Reflect(axis) => {
             remap_axis_binding(axis, group_to_point_index, group_to_line_index)
         }
     }
@@ -473,7 +406,7 @@ pub(crate) fn remap_circle_bindings(
                     continue;
                 };
                 *source_index = mapped_source_index;
-                if !remap_shape_transform(transform, group_to_point_index, group_to_line_index) {
+                if !remap_geometry_transform(transform, group_to_point_index, group_to_line_index) {
                     circle.binding = None;
                 }
                 continue;
@@ -528,8 +461,11 @@ pub(crate) fn remap_arc_bindings(
             } => {
                 let source_index = mapped_index(group_to_arc_index, *source_index)?;
                 let mut transform = transform.clone();
-                if !remap_shape_transform(&mut transform, group_to_point_index, group_to_line_index)
-                {
+                if !remap_geometry_transform(
+                    &mut transform,
+                    group_to_point_index,
+                    group_to_line_index,
+                ) {
                     return None;
                 }
                 Some(ArcBinding::DerivedTransform {
@@ -612,7 +548,7 @@ pub(crate) fn remap_polygon_bindings(
                     continue;
                 };
                 *source_index = mapped_source_index;
-                if !remap_shape_transform(transform, group_to_point_index, group_to_line_index) {
+                if !remap_geometry_transform(transform, group_to_point_index, group_to_line_index) {
                     polygon.binding = None;
                 }
                 continue;
@@ -743,7 +679,7 @@ pub(crate) fn remap_line_bindings(
                     continue;
                 };
                 *source_index = mapped_source_index;
-                if !remap_line_transform(transform, group_to_point_index, group_to_line_index) {
+                if !remap_geometry_transform(transform, group_to_point_index, group_to_line_index) {
                     line.binding = None;
                 }
             }

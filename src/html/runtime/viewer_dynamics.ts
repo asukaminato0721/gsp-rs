@@ -2125,70 +2125,63 @@
     if (!graph?.geometryComplete) {
       return false;
     }
-    const sourceValue = (source) => {
-      if (source.id.startsWith("control:point:")) {
-        const match = /^control:point:(\d+):(t|unit-x|unit-y)$/.exec(source.id);
-        if (!match) return source.value;
-        const point = scene.points[Number(match[1])];
+    const sourceValue = (source: ObjectGraphSourceJson) => {
+      const binding = source.binding;
+      if (binding.kind === "point-control") {
+        const point = scene.points[binding.pointIndex];
         const constraint = point?.constraint;
         if (!constraint) return source.value;
-        if (match[2] === "t" && typeof constraint.t === "number") {
+        if (binding.control === "parameter" && typeof constraint.t === "number") {
           if (constraint.kind === "polyline") {
-            const parameter = polylineParameterFromPoint(scene, Number(match[1]));
+            const parameter = polylineParameterFromPoint(scene, binding.pointIndex);
             if (parameter !== null) return { kind: "scalar", value: parameter };
           }
           return { kind: "scalar", value: constraint.t };
         }
-        if (match[2] === "unit-x" && typeof constraint.unitX === "number") {
+        if (binding.control === "unit-x" && typeof constraint.unitX === "number") {
           return { kind: "scalar", value: constraint.unitX };
         }
-        if (match[2] === "unit-y" && typeof constraint.unitY === "number") {
+        if (binding.control === "unit-y" && typeof constraint.unitY === "number") {
           return { kind: "scalar", value: constraint.unitY };
+        }
+        if (binding.control === "boundary" && typeof constraint.parameter === "number") {
+          return { kind: "scalar", value: constraint.parameter };
         }
         return source.value;
       }
-      const [kind, rawIndex] = source.id.split(":");
-      const index = Number(rawIndex);
-      if (kind === "parameter") {
-        const parameter = env.currentDynamics().parameters.find((candidate) => candidate.name === rawIndex);
+      if (binding.kind === "parameter") {
+        const parameter = env.currentDynamics().parameters.find((candidate) => candidate.name === binding.name);
         return parameter && Number.isFinite(parameter.value)
           ? { kind: "scalar", value: parameter.value }
           : source.value;
       }
-      if (!Number.isInteger(index) || index < 0) {
-        return source.value;
-      }
-      if (kind === "point") {
-        const point = scene.points[index];
+      if (binding.kind === "point") {
+        const point = scene.points[binding.pointIndex];
         return point ? { kind: "point", x: point.x, y: point.y } : source.value;
       }
-      if (kind === "line") {
-        const line = scene.lines[index];
+      if (binding.kind === "line") {
+        const line = scene.lines[binding.lineIndex];
+        if (line && binding.lineKind && line.points.length >= 2) {
+          return {
+            kind: "line",
+            line_kind: binding.lineKind,
+            start: line.points[0],
+            end: line.points[line.points.length - 1],
+          };
+        }
         return line ? { kind: "points", points: line.points } : source.value;
       }
-      if (kind === "circle") {
-        const circle = scene.circles[index];
+      if (binding.kind === "circle") {
+        const circle = scene.circles[binding.circleIndex];
         return circle ? {
           kind: "circle",
           center: circle.center,
           radius_point: circle.radiusPoint,
         } : source.value;
       }
-      if (kind === "polygon") {
-        const polygon = scene.polygons[index];
+      if (binding.kind === "polygon") {
+        const polygon = scene.polygons[binding.polygonIndex];
         return polygon ? { kind: "points", points: polygon.points } : source.value;
-      }
-      if (kind === "arc") {
-        const arc = scene.arcs[index];
-        return arc ? {
-          kind: "arc",
-          start: arc.points[0],
-          mid: arc.points[1],
-          end: arc.points[2],
-          center: arc.center,
-          counterclockwise: arc.counterclockwise,
-          complement: false,
-        } : source.value;
       }
       return source.value;
     };

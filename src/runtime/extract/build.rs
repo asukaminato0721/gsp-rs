@@ -64,7 +64,7 @@ struct BindingStage {
 pub(in crate::runtime) fn payload_debug_source(group: &ObjectGroup) -> PayloadDebugSource {
     PayloadDebugSource {
         group_ordinal: group.ordinal,
-        group_kind: format!("{:?}", group.header.kind()),
+        group_kind: group.header.kind(),
         record_types: group
             .records
             .iter()
@@ -215,7 +215,7 @@ fn build_scene_checked_inner(file: &GspFile) -> Result<Scene> {
     };
     let function_definitions =
         collect_standalone_function_definitions(file, &groups, &label_stage.labels);
-    Ok(assemble_scene(
+    let mut scene = assemble_scene(
         analysis,
         shapes,
         label_stage.labels,
@@ -240,7 +240,9 @@ fn build_scene_checked_inner(file: &GspFile) -> Result<Scene> {
             functions,
             function_definitions,
         },
-    ))
+    );
+    scene.object_graph = crate::export::html::build_object_graph(&scene);
+    Ok(scene)
 }
 
 fn collect_scene_scalars(

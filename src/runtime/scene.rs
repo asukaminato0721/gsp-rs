@@ -1,4 +1,6 @@
-use crate::format::PointRecord;
+use crate::format::{GroupKind, PointRecord};
+use gsp_runtime_core::object_graph::ObjectNode;
+use gsp_runtime_core::{LineKind, ObjectOp, ObjectValue};
 use std::collections::BTreeMap;
 
 use super::functions::{FunctionExpr, FunctionPlotDescriptor};
@@ -7,13 +9,14 @@ use super::geometry::Bounds;
 #[derive(Debug, Clone)]
 pub(crate) struct PayloadDebugSource {
     pub(crate) group_ordinal: usize,
-    pub(crate) group_kind: String,
+    pub(crate) group_kind: GroupKind,
     pub(crate) record_types: Vec<u32>,
     pub(crate) record_names: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct Scene {
+    pub(crate) object_graph: SceneObjectGraph,
     pub(crate) payload_dependencies: BTreeMap<usize, Vec<usize>>,
     pub(crate) background_color: Option<[u8; 4]>,
     pub(crate) graph_mode: bool,
@@ -40,6 +43,54 @@ pub(crate) struct Scene {
     pub(crate) scalars: Vec<SceneScalar>,
     pub(crate) functions: Vec<SceneFunction>,
     pub(crate) function_definitions: Vec<SceneFunctionDefinition>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SceneObjectGraph {
+    pub(crate) geometry_complete: bool,
+    pub(crate) nodes: Vec<ObjectNode<ObjectOp>>,
+    pub(crate) sources: Vec<SceneObjectSource>,
+    pub(crate) pending_operations: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SceneObjectSource {
+    pub(crate) id: String,
+    pub(crate) value: ObjectValue,
+    pub(crate) binding: SceneObjectSourceBinding,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SceneObjectSourceBinding {
+    Initial,
+    Parameter {
+        name: String,
+    },
+    Point {
+        point_index: usize,
+    },
+    Line {
+        line_index: usize,
+        line_kind: Option<LineKind>,
+    },
+    Circle {
+        circle_index: usize,
+    },
+    Polygon {
+        polygon_index: usize,
+    },
+    PointControl {
+        point_index: usize,
+        control: ScenePointControl,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ScenePointControl {
+    Parameter,
+    UnitX,
+    UnitY,
+    Boundary,
 }
 
 #[derive(Debug, Clone)]
@@ -824,18 +875,7 @@ pub(crate) struct ScaleBinding {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum LineTransformBinding {
-    Translate {
-        vector_start_index: usize,
-        vector_end_index: usize,
-    },
-    Rotate(RotationBinding),
-    Scale(ScaleBinding),
-    Reflect(AxisBinding),
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum ShapeTransformBinding {
+pub(crate) enum GeometryTransformBinding {
     TranslateDelta {
         dx: f64,
         dy: f64,
@@ -898,7 +938,7 @@ pub(crate) enum LineBinding {
     },
     DerivedTransform {
         source_index: usize,
-        transform: LineTransformBinding,
+        transform: GeometryTransformBinding,
     },
     CustomTransformTrace {
         point_index: usize,
@@ -1242,7 +1282,7 @@ pub(crate) enum ArcBinding {
     },
     DerivedTransform {
         source_index: usize,
-        transform: ShapeTransformBinding,
+        transform: GeometryTransformBinding,
     },
 }
 
@@ -1304,7 +1344,7 @@ pub(crate) enum ShapeBinding {
     },
     DerivedTransform {
         source_index: usize,
-        transform: ShapeTransformBinding,
+        transform: GeometryTransformBinding,
     },
 }
 

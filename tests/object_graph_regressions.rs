@@ -3356,6 +3356,18 @@ fn normalized_polygon_path_point_keeps_boundary_intersection_chain() {
             .find(|source| source["id"] == format!("control:{id}:boundary"))
             .expect("normalized polygon parameter source");
         assert_eq!(source["value"]["value"], parameter);
+        let point_index = id
+            .strip_prefix("point:")
+            .and_then(|index| index.parse::<usize>().ok())
+            .expect("point graph id");
+        assert_eq!(
+            source["binding"],
+            serde_json::json!({
+                "kind": "point-control",
+                "pointIndex": point_index,
+                "control": "boundary",
+            })
+        );
     }
     let intersection = point(35);
     assert_eq!(
@@ -3372,4 +3384,63 @@ fn normalized_polygon_path_point_keeps_boundary_intersection_chain() {
         node(scalar)["definition"]["parents"],
         serde_json::json!([point(21), point(26), point(28), point(30), intersection])
     );
+}
+
+#[test]
+fn free_source_points_are_measured_against_the_target_parameter_domain() {
+    let document = compile_fixture("tests/Samples/个人专栏/贺基旭作品/点的值（hjx4882）.gsp");
+    let pages = document["pages"].as_array().expect("multipage fixture");
+
+    let arc_page = &pages[2]["scene"];
+    assert_eq!(arc_page["objectGraph"]["geometryComplete"], true);
+    assert_eq!(
+        operation_kind(arc_page, "scalar:point:8:derived-parameter"),
+        Some("arc-parameter-from-point")
+    );
+    assert_eq!(operation_kind(arc_page, "point:8"), Some("point-on-arc"));
+
+    let polygon_page = &pages[3]["scene"];
+    assert_eq!(polygon_page["objectGraph"]["geometryComplete"], true);
+    assert_eq!(
+        operation_kind(polygon_page, "scalar:point:12:derived-parameter"),
+        Some("polygon-boundary-parameter-from-point")
+    );
+    assert_eq!(
+        operation_kind(polygon_page, "point:12"),
+        Some("point-on-polygon-boundary")
+    );
+}
+
+#[test]
+fn payload_intersections_can_depend_on_source_line_and_circle_nodes() {
+    let scene =
+        compile_fixture("tests/Samples/个人专栏/周维波作品/2010年东营压轴题（雪山飞狐）.gsp");
+    assert_eq!(scene["objectGraph"]["geometryComplete"], true);
+
+    for ordinal in [167, 168, 187, 193, 199] {
+        let point = object_id_for_group(&scene, "points", "point", ordinal);
+        assert_eq!(
+            operation_kind(&scene, &point),
+            Some("line-circle-intersection"),
+            "payload intersection #{ordinal}"
+        );
+    }
+
+    let source_ray = scene["objectGraph"]["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|source| source["id"] == "line:45")
+        .expect("payload ray source");
+    assert_eq!(source_ray["value"]["kind"], "line");
+    assert_eq!(source_ray["value"]["line_kind"], "ray");
+    assert_eq!(source_ray["binding"]["lineKind"], "ray");
+}
+
+#[test]
+fn payload_linear_intersection_uses_typed_scene_lines() {
+    let scene = compile_fixture("tests/Samples/个人专栏/钟科作品/向水杯注水（颗粒）.gsp");
+    let point = object_id_for_group(&scene, "points", "point", 172);
+
+    assert_eq!(operation_kind(&scene, &point), Some("line-intersection"));
 }

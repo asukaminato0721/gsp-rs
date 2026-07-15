@@ -716,8 +716,8 @@ pub(super) fn compute_scene_bounds(
             !matches!(
                 circle.binding,
                 Some(ShapeBinding::DerivedTransform {
-                    transform: crate::runtime::scene::ShapeTransformBinding::TranslateDelta { .. }
-                        | crate::runtime::scene::ShapeTransformBinding::TranslateVector { .. },
+                    transform: crate::runtime::scene::GeometryTransformBinding::TranslateDelta { .. }
+                        | crate::runtime::scene::GeometryTransformBinding::TranslateVector { .. },
                     ..
                 })
             ) && circle.debug.is_some()
@@ -790,6 +790,7 @@ pub(super) fn assemble_scene(
         remap_function_line_indices(artifacts.functions, &analysis.function_plots, &raw_lines);
 
     Scene {
+        object_graph: Default::default(),
         payload_dependencies: artifacts.payload_dependencies,
         background_color: analysis.background_color,
         graph_mode: analysis.graph_mode,
