@@ -65,11 +65,6 @@ type RuntimeJsonValue =
   | RuntimeJsonPrimitive
   | RuntimeJsonValue[]
   | { [key: string]: RuntimeJsonValue };
-type HostLineBinding = {
-  lineStartIndex?: number | null;
-  lineEndIndex?: number | null;
-  lineIndex?: number | null;
-};
 type VisibilityTarget =
   { visible: boolean };
 
@@ -373,31 +368,6 @@ type ViewerEnv = {
 };
 
 type ViewerSceneModule = {
-  resolveAngleMarkerPoints: (
-    start: Point,
-    vertex: Point,
-    end: Point,
-    markerClass: number,
-  ) => Point[] | null;
-  registerPointConstraintResolver: <K extends RuntimePointConstraintJson["kind"]>(
-    kind: K,
-    resolver: (
-      env: ViewerSceneResolverEnv | null,
-      constraint: Extract<RuntimePointConstraintJson, { kind: K }>,
-      resolveFn: (index: number) => Point | null,
-      reference?: RuntimeScenePointJson | Point | null,
-    ) => Point | null,
-  ) => void;
-  registerLineBindingResolver: <K extends LineBindingJson["kind"]>(
-    kind: K,
-    resolver: (env: ViewerEnv, line: RuntimeLineJson & { binding: Extract<LineBindingJson, { kind: K }> }) => Point[] | null,
-  ) => void;
-  resolveConstrainedPoint: (
-    env: ViewerSceneResolverEnv | null,
-    constraint: RuntimePointConstraintJson | null,
-    resolveFn: (index: number) => Point | null,
-    reference?: RuntimeScenePointJson | Point | null,
-  ) => Point | null;
   resolveScenePoint: (env: ViewerEnv, index: number) => Point | null;
   resolvePoint: (env: ViewerEnv, handle: RuntimePointRef) => Point | null;
   resolveAnchorBase: (env: ViewerEnv, handle: RuntimePointRef) => Point | null;
@@ -434,50 +404,6 @@ type ViewerSceneModule = {
     mid: Point,
     end: Point,
   ) => { t: number; projected: Point; distanceSquared: number } | null;
-  sampleArcBoundaryPoints: (
-    env: ViewerEnv,
-    binding:
-      | Extract<RuntimeLineBindingJson, { kind: "arc-boundary" }>
-      | Extract<RuntimeShapeBindingJson, { kind: "arc-boundary-polygon" }>,
-  ) => Point[] | null;
-  sampleCoordinateTracePoints: (
-    env: ViewerEnv | null,
-    binding: RuntimeLineBindingJson | RuntimePointConstraintJson,
-  ) => Point[] | null;
-  lineLineIntersection: (
-    leftStart: Point,
-    leftEnd: Point,
-    leftKind: RuntimeLineKind,
-    rightStart: Point,
-    rightEnd: Point,
-    rightKind: RuntimeLineKind,
-  ) => Point | null;
-  lineCircleIntersection: (
-    lineStart: Point,
-    lineEnd: Point,
-    lineKind: RuntimeLineKind,
-    center: Point,
-    radiusPoint: Point,
-    variant: number,
-    reference?: Point | RuntimeScenePointJson | null,
-  ) => Point | null;
-  circleCircleIntersection: (
-    leftCenter: Point,
-    leftRadiusPoint: Point,
-    rightCenter: Point,
-    rightRadiusPoint: Point,
-    variant: number,
-    reference?: Point | RuntimeScenePointJson | null,
-  ) => Point | null;
-  _circleFromConstraint?: (
-    env: ViewerEnv | null,
-    constraint: CircularConstraintJson | null,
-    resolveFn: (index: number) => Point | null,
-  ) => { kind: string; center: Point; radius: number } | null;
-  _pointLiesOnCircularConstraint?: (
-    point: Point,
-    constraint: { kind: string; center?: Point; radius?: number } | null,
-  ) => boolean;
   _threePointArcGeometry?: (
     start: Point,
     mid: Point,
@@ -609,6 +535,13 @@ type ViewerDragModule = {
     pointIndex: number,
     world: Point,
   ) => void;
+  updatePointOrDerivedSourceToWorld: (
+    env: ViewerEnv,
+    draft: ViewerSceneData,
+    pointIndex: number,
+    world: Point,
+  ) => void;
+  dependencyRootsForDraggedPoint: (env: ViewerEnv, pointIndex: number) => string[];
   updateDraggedPoint: (env: ViewerEnv, world: Point) => void;
   updateDraggedLabel: (env: ViewerEnv, world: Point) => void;
   updateDraggedImage: (env: ViewerEnv, position: Point) => void;
@@ -630,11 +563,6 @@ type ViewerDynamicsModule = {
   refreshDerivedPoints: (env: ViewerEnv, scene: ViewerSceneData) => void;
   refreshIterationGeometry: (env: ViewerEnv, scene: ViewerSceneData, parameters: Map<string, number>) => void;
   refreshDynamicLabels: (env: ViewerEnv, scene: ViewerSceneData) => void;
-  resolveLineConstraintPoints: (
-    resolvePointAt: (pointIndex: number) => Point | null,
-    bounds: { minX: number; maxX: number; minY: number; maxY: number; spanX?: number; spanY?: number },
-    constraint: LineConstraintJson,
-  ) => Point[] | null;
   resolveLineConstraintParameterPoints: (
     resolvePointAt: (pointIndex: number) => Point | null,
     constraint: LineConstraintJson,
@@ -644,10 +572,6 @@ type ViewerDynamicsModule = {
   runDependencyGraph?: (env: ViewerEnv, scene: ViewerSceneData, dirtyRootIds: string[]) => unknown;
   describeDependencyGraph?: (env: ViewerEnv) => unknown[];
   syncDynamicScene: (env: ViewerEnv, dirtyParameterNames?: string[]) => void;
-};
-
-type ViewerDynamicsExpressionModule = {
-  evaluateExpr: (expr: FunctionExprJson | FunctionAstJson, x: number, parameters: Map<string, number>) => number | null;
 };
 
 type ViewerDynamicsRichTextModule = {
@@ -663,7 +587,11 @@ type ViewerDynamicsRichTextModule = {
 
 type RuntimeDynamicsParameterDependencies = {
   discreteIterationDepth: (value: number | null | undefined) => number;
-  evaluateExpr: ViewerDynamicsExpressionModule["evaluateExpr"];
+  evaluateExpr: (
+    expr: FunctionExprJson | FunctionAstJson,
+    x: number,
+    parameters: Map<string, number>,
+  ) => number | null;
   isDiscreteIterationParameterName: (
     scene: ViewerSceneData | SceneData | null | undefined,
     name: string,
@@ -768,7 +696,6 @@ type ViewerModules = {
   render: ViewerRenderModule;
   overlay: ViewerOverlayModule;
   drag: ViewerDragModule;
-  dynamicsExpression: ViewerDynamicsExpressionModule;
   dynamicsRichText: ViewerDynamicsRichTextModule;
   dynamicsParameters: ViewerDynamicsParametersModule;
   dynamicsIterations: ViewerDynamicsIterationsModule;
@@ -843,6 +770,11 @@ interface Window {
       resolvePoint: (index: number) => Point | null,
       parameters?: Map<string, number>,
     ) => RuntimeResolvedLineConstraint | null;
+    resolveCircularConstraintCenter: (
+      constraint: CircularConstraintJson,
+      scene: ViewerSceneData,
+      parameters: Map<string, number>,
+    ) => Point | null;
     sampleFunction: (
       expr: FunctionExprJson | FunctionAstJson,
       parameters: Map<string, number>,

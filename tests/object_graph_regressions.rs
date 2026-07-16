@@ -113,6 +113,27 @@ fn evaluate_scene_object_graph(scene: &Value) -> Vec<ObjectNodeValue> {
 }
 
 #[test]
+fn graph_calibration_offsets_are_dynamic_rust_graph_controls() {
+    let scene = compile_fixture("tests/Samples/简易数轴与坐标系/最简坐标系/样本1.gsp");
+    let point_id = object_id_for_group(&scene, "points", "point", 7);
+    let node = semantic_node(&scene, &point_id);
+    let matrix_id = format!("matrix:{point_id}");
+
+    assert_eq!(
+        node["definition"]["parents"],
+        serde_json::json!(["point:0", matrix_id])
+    );
+    let controls = scene["objectGraph"]["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|source| source["binding"]["control"].as_str())
+        .collect::<Vec<_>>();
+    assert!(controls.contains(&"offset-x"));
+    assert!(controls.contains(&"offset-y"));
+}
+
+#[test]
 fn dense_numeric_dag_samples_compile_to_complete_object_graphs() {
     for path in [
         "tests/Samples/个人专栏/向忠作品/立几最小值问题一例.gsp",

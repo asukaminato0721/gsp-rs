@@ -88,7 +88,7 @@ test('rolling triangle fixture keeps reference geometry coordinates without grap
         && label.binding?.kind === 'point-distance-ratio-value'),
       parameterMeasurementCount: afterScene.labels.filter((label) => label.binding?.kind === 'line-projection-parameter').length,
       hasTriangle: afterScene.polygons.some((polygon) => polygon.binding?.kind === 'point-polygon'),
-      hasTranslatedPolygonPoint: afterScene.points.some((point) => point.constraint?.kind === 'translated-polygon-boundary'),
+      hasTranslatedPolygonPoint: afterScene.points.some((point) => point.constraint?.kind === 'polygon-shape-boundary'),
       hasPointTrace: afterScene.lines.some((line) => line.binding?.kind === 'point-trace' && line.points.length > 20),
       pointTrace: (() => {
         const line = afterScene.lines.find((line) => line.binding?.kind === 'point-trace');
@@ -121,7 +121,7 @@ test('rolling triangle fixture keeps reference geometry coordinates without grap
   expect(result.hasTranslatedPolygonPoint).toBe(true);
   expect(result.hasPointTrace).toBe(true);
   expect(result.pointTrace?.pointIndex).not.toBe(result.pointTrace?.driverIndex);
-  expect(result.pointTrace?.targetConstraint).toBe('translated-polygon-boundary');
+  expect(result.pointTrace?.targetConstraint).toBe('polygon-shape-boundary');
   expect(result.pointTrace?.driverConstraint).toBe('ray');
   expect((result.pointTrace?.maxY ?? 0) - (result.pointTrace?.minY ?? 0)).toBeGreaterThan(50);
   expect(result.afterRatioText).not.toBe(result.beforeRatioText);
@@ -149,7 +149,7 @@ test('rolling triangle fixture scales marked-angle helpers and starts at the lef
       draft.points[2].y = origin.y;
     }, 'graph');
     const afterScene = window.gspDebug.runtime.scene;
-    const movingTriangle = afterScene.polygons.find((polygon) => polygon.binding?.kind === 'derived');
+    const movingTriangle = afterScene.polygons.find((polygon) => polygon.binding?.kind === 'matrix-apply');
     return {
       movingTrianglePoints: movingTriangle?.points ?? [],
     };
@@ -169,7 +169,7 @@ test('rolling triangle fixture is already synced before dragging M', async ({ pa
 
   const result = await page.evaluate(() => {
     const movingTrianglePoints = () => window.gspDebug.runtime.scene.polygons
-      .find((polygon) => polygon.binding?.kind === 'derived')
+      .find((polygon) => polygon.binding?.kind === 'matrix-apply')
       ?.points.map((point) => ({ x: point.x, y: point.y })) ?? [];
     const before = movingTrianglePoints();
     const scene = window.gspDebug.runtime.scene;

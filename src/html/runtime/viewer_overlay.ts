@@ -306,6 +306,7 @@
           callback(scene.points[index]);
         });
         (action.lineIndices || []).forEach(( index: number) => {
+          if (scene.lineIterationSourceIndices?.includes(index)) return;
           callback(scene.lines[index]);
         });
         (action.circleIndices || []).forEach(( index: number) => {
@@ -333,6 +334,28 @@
       
       function setTargetsVisibility(action: VisibilityButtonAction, visible: boolean) {
         const nextButtons = buttonsState.val.slice();
+        (action.pointIndices || []).forEach((index) => {
+          if (env.sourceScene.points[index]) env.sourceScene.points[index].visible = visible;
+        });
+        (action.lineIndices || []).forEach((index) => {
+          if (env.sourceScene.lines[index]) env.sourceScene.lines[index].visible = visible;
+        });
+        (action.circleIndices || []).forEach((index) => {
+          if (env.sourceScene.circles[index]) env.sourceScene.circles[index].visible = visible;
+        });
+        (action.polygonIndices || []).forEach((index) => {
+          if (env.sourceScene.polygons[index]) env.sourceScene.polygons[index].visible = visible;
+        });
+        (action.lineIterationIndices || []).forEach((index) => {
+          if (env.sourceScene.lineIterations[index]) {
+            env.sourceScene.lineIterations[index].visible = visible;
+          }
+        });
+        (action.polygonIterationIndices || []).forEach((index) => {
+          if (env.sourceScene.polygonIterations[index]) {
+            env.sourceScene.polygonIterations[index].visible = visible;
+          }
+        });
         env.updateScene((scene: ViewerSceneData) => {
           forEachVisibilityTarget(action, scene, nextButtons, (target) => {
             if (target) target.visible = visible;
@@ -926,7 +949,13 @@
         }
         const sourcePointRootId = modules.dynamics?.sourcePointRootId;
         const markSourcesDirty = () => {
-          if (typeof sourcePointRootId === "function") {
+          if (typeof modules.drag.dependencyRootsForDraggedPoint === "function") {
+            env.markDependencyRootsDirty?.(
+              targets.flatMap((move) =>
+                modules.drag.dependencyRootsForDraggedPoint(env, move.pointIndex)
+              ),
+            );
+          } else if (typeof sourcePointRootId === "function") {
             env.markDependencyRootsDirty?.(
               targets.map((move) => sourcePointRootId(move.pointIndex)),
             );
@@ -945,7 +974,7 @@
               ? draft.points[move.targetPointIndex]
               : null;
               if (!start || !targetPoint) return;
-            modules.drag.updatePointToWorld(
+            modules.drag.updatePointOrDerivedSourceToWorld(
               env,
               draft,
               move.pointIndex,

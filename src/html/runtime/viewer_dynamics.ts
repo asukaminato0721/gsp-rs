@@ -2,7 +2,6 @@
   const modules = (
     window.GspViewerModules || (window.GspViewerModules = {})
   ) as Partial<ViewerModules>;
-  type ViewBounds = { minX: number; maxX: number; minY: number; maxY: number; spanX?: number; spanY?: number };
 
   function isFiniteNumber(value: unknown): value is number {
     return typeof value === "number" && Number.isFinite(value);
@@ -13,7 +12,7 @@
   }
 
 
-  const { evaluateExpr } = modules.dynamicsExpression;
+  const evaluateExpr = window.GspRuntimeCore.evaluateExpr;
   const {
     deriveExpressionLabelParameters,
     deriveLabelParameters,
@@ -504,19 +503,6 @@
     replaceRichMarkupPathValues,
     replaceTemplateTextRanges,
   } = modules.dynamicsRichText;
-  function resolveLineConstraintPoints(resolvePointAt: (pointIndex: number) => Point | null, bounds: ViewBounds, constraint: LineConstraintJson) {
-    const line = window.GspRuntimeCore.resolveLineConstraint(constraint, resolvePointAt);
-    if (!line) return null;
-    if (line.kind === "line") {
-      return window.GspRuntimeCore.clipLineToBounds(line.start, line.end, bounds);
-    }
-    if (line.kind === "ray") {
-      return window.GspRuntimeCore.clipRayToBounds(line.start, line.end, bounds);
-    }
-    return [line.start, line.end];
-  }
-
-
   function resolveLineConstraintParameterPoints(resolvePointAt: (pointIndex: number) => Point | null, constraint: LineConstraintJson) {
     const line = window.GspRuntimeCore.resolveLineConstraint(constraint, resolvePointAt);
     return line ? [line.start, line.end] : null;
@@ -790,6 +776,7 @@
     if (!graph?.geometryComplete) {
       throw new Error("scene-data is missing a complete Rust object graph");
     }
+    scene.lines = structuredClone(env.sourceScene.lines);
     const sourceValue = (source: ObjectGraphSourceJson) => {
       const binding = source.binding;
       if (binding.kind === "point-control") {
@@ -811,6 +798,12 @@
         }
         if (binding.control === "boundary" && typeof constraint.parameter === "number") {
           return { kind: "scalar", value: constraint.parameter };
+        }
+        if (binding.control === "offset-x" && typeof constraint.dx === "number") {
+          return { kind: "scalar", value: constraint.dx };
+        }
+        if (binding.control === "offset-y" && typeof constraint.dy === "number") {
+          return { kind: "scalar", value: constraint.dy };
         }
         return source.value;
       }
@@ -981,31 +974,9 @@
 
     const lineIterations = env.sourceScene.lineIterations || [];
     if (lineIterations.length > 0) {
-      const exportedDepth = lineIterations.reduce((sum, family) => {
-        const depth = Math.max(0, family.depth || 0);
-        if (family.kind === "parameterized-point-trace" || family.kind === "rotate") return sum;
-        if (family.kind === "branching") {
-          const branchCount = Array.isArray(family.targetSegments) ? family.targetSegments.length : 0;
-          let total = 0;
-          let width = branchCount;
-          for (let step = 0; step < depth; step += 1) {
-            total += width;
-            width *= branchCount;
-          }
-          return sum + total;
-        }
-        if (family.kind === "affine") return sum + depth;
-        if (family.bidirectional) {
-          return sum + (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)
-            ? 2 * depth * (depth + 1)
-            : 2 * depth);
-        }
-        return sum + (Number.isFinite(family.secondaryDx) && Number.isFinite(family.secondaryDy)
-          ? ((depth + 1) * (depth + 2)) / 2 - 1
-          : depth);
-      }, 0);
-      const baseCount = Math.max(0, env.sourceScene.lines.length - exportedDepth);
-      scene.lines = scene.lines.slice(0, baseCount);
+      (env.sourceScene.lineIterationSourceIndices || []).forEach((lineIndex) => {
+        if (scene.lines[lineIndex]) scene.lines[lineIndex].visible = false;
+      });
       lineIterations.forEach((family, familyIndex) => {
         const points = lineIterationResults.get(familyIndex) || [];
         for (let index = 0; index + 1 < points.length; index += 2) {
@@ -1231,7 +1202,6 @@
     refreshDerivedPoints,
     refreshDynamicLabels,
     refreshIterationGeometry,
-    resolveLineConstraintPoints,
     resolveLineConstraintParameterPoints,
     parameterRootId,
     sourcePointRootId,

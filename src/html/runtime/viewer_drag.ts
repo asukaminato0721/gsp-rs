@@ -30,16 +30,19 @@
     }
     const roots = new Set<string>();
     const addPointRoots = (index: number) => {
-      roots.add(rootId(index));
-      const constraint = env.currentScene().points?.[index]?.constraint;
+      const id = rootId(index);
+      if (roots.has(id)) return;
+      roots.add(id);
+      const currentPoint = env.currentScene().points?.[index];
+      const constraint = currentPoint?.constraint;
       if (isOffsetConstraint(constraint)) {
-        roots.add(rootId(constraint.originIndex));
+        addPointRoots(constraint.originIndex);
+      }
+      if (currentPoint?.binding?.kind === "derived") {
+        addPointRoots(currentPoint.binding.sourceIndex);
       }
     };
     addPointRoots(pointIndex);
-    if (point.binding?.kind === "derived" && typeof point.binding.sourceIndex === "number") {
-      addPointRoots(point.binding.sourceIndex);
-    }
     return Array.from(roots);
   }
 
@@ -365,11 +368,11 @@
       if (!isCircleConstraint(constraint)) return;
       const center = constraint.kind === "circle"
         ? env.resolveScenePoint(constraint.centerIndex)
-        : modules.scene._circleFromConstraint?.(
-            env,
+        : window.GspRuntimeCore.resolveCircularConstraintCenter(
             constraint.circle,
-            (index: number) => env.resolveScenePoint(index),
-          )?.center;
+            env.currentScene(),
+            new Map(env.currentDynamics().parameters.map((parameter) => [parameter.name, parameter.value])),
+          );
       if (!center) return;
       const dx = world.x - center.x;
       const dy = world.y - center.y;
@@ -436,8 +439,20 @@
   }
 
   
-  function updateDerivedPointSourceToWorld(env: ViewerEnv, draft: ViewerSceneData, point: RuntimeScenePointJson, world: Point) {
-    if (point.binding?.kind !== "derived") return false;
+  function updatePointOrDerivedSourceToWorld(
+    env: ViewerEnv,
+    draft: ViewerSceneData,
+    pointIndex: number,
+    world: Point,
+    visited = new Set<number>(),
+  ) {
+    if (visited.has(pointIndex)) return;
+    visited.add(pointIndex);
+    const point = draft.points[pointIndex];
+    if (point?.binding?.kind !== "derived") {
+      updatePointToWorld(env, draft, pointIndex, world);
+      return;
+    }
     const parameters = modules.dynamics.parameterMapForScene?.(env, draft) ?? new Map<string, number>();
     const sourceWorld = window.GspRuntimeCore.inversePointTransform(
       world,
@@ -445,9 +460,14 @@
       draft.points,
       parameters,
     );
-    if (!sourceWorld) return false;
-    updatePointToWorld(env, draft, point.binding.sourceIndex, sourceWorld);
-    return true;
+    if (!sourceWorld) return;
+    updatePointOrDerivedSourceToWorld(
+      env,
+      draft,
+      point.binding.sourceIndex,
+      sourceWorld,
+      visited,
+    );
   }
 
   
@@ -499,11 +519,7 @@
     const pointIndex = drag.pointIndex;
     env.markDependencyRootsDirty?.(dependencyRootsForDraggedPoint(env, pointIndex));
     env.updateScene((draft: ViewerSceneData) => {
-      const point = draft.points[pointIndex];
-      if (!point) return;
-      if (!updateDerivedPointSourceToWorld(env, draft, point, world)) {
-        updatePointToWorld(env, draft, pointIndex, world);
-      }
+      updatePointOrDerivedSourceToWorld(env, draft, pointIndex, world);
     }, "graph");
     env.hoverPointIndex.val = pointIndex;
   }
@@ -615,7 +631,9 @@
   modules.drag = {
     dragModeFor,
     beginDrag,
+    dependencyRootsForDraggedPoint,
     updatePointToWorld,
+    updatePointOrDerivedSourceToWorld,
     updateDraggedPoint,
     updateDraggedLabel,
     updateDraggedImage,

@@ -10,7 +10,8 @@ test('circle formation fixture keeps rebuilt polygon edges and non-draggable ite
   expect(runtime.scene.lines.map((line: any) => line.debug?.groupOrdinal).filter(Boolean)).not.toContain(26);
 
   const renderedBlueSegments = page.locator('#scene-layer path[stroke=\"rgba(0, 0, 128, 1.000)\"]');
-  await expect(renderedBlueSegments).toHaveCount(5);
+  await expect(renderedBlueSegments).toHaveCount(4);
+  expect(runtime.scene.lines.filter((line: any) => line.visible === false)).toHaveLength(1);
 
   const generatedPoints = runtime.scene.points.filter((point: { debug?: unknown }) => point.debug == null);
   expect(generatedPoints.length).toBeGreaterThan(0);

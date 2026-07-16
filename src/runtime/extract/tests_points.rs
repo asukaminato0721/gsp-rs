@@ -1882,6 +1882,41 @@ fn refraction_sample_uses_raw_translation_offsets_and_live_iteration_depth() {
         Some(IterationTableValueBinding::AngleMarker { .. })
     ));
     assert!(value_table.columns[2].value_binding.is_none());
+    assert!(gsp_runtime_core::expression_contains_pi_angle(
+        &value_table.columns[2].expr
+    ));
+
+    let medium_line = scene
+        .lines
+        .iter()
+        .find(|line| {
+            line.debug
+                .as_ref()
+                .is_some_and(|debug| debug.group_ordinal == 119)
+        })
+        .expect("expected visible payload medium line #119");
+    assert_eq!(medium_line.stroke_width, Some(2.0));
+    let line_index = |ordinal| {
+        scene
+            .lines
+            .iter()
+            .position(|line| {
+                line.debug
+                    .as_ref()
+                    .is_some_and(|debug| debug.group_ordinal == ordinal)
+            })
+            .unwrap_or_else(|| panic!("expected payload line #{ordinal}"))
+    };
+    assert!(
+        scene
+            .line_iteration_source_indices
+            .contains(&line_index(75))
+    );
+    assert!(
+        !scene
+            .line_iteration_source_indices
+            .contains(&line_index(119))
+    );
 
     let offset = |ordinal| {
         let point = scene

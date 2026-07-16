@@ -114,7 +114,7 @@ test('standalone file HTML evaluates expressions in the embedded Rust runtime co
   await page.goto(`file://${compilePointFixture()}`);
 
   const values = await page.evaluate(() => {
-    const evaluate = window.GspViewerModules.dynamicsExpression!.evaluateExpr;
+    const evaluate = window.GspRuntimeCore.evaluateExpr;
     const empty = new Map<string, number>();
     const parameter = (name: string, value: number) => ({ kind: 'parameter', name, value });
     const constant = (value: number) => ({ kind: 'constant', value });

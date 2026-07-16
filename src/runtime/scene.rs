@@ -36,6 +36,7 @@ pub(crate) struct Scene {
     pub(crate) point_iterations: Vec<PointIterationFamily>,
     pub(crate) circle_iterations: Vec<CircleIterationFamily>,
     pub(crate) line_iterations: Vec<LineIterationFamily>,
+    pub(crate) line_iteration_source_indices: Vec<usize>,
     pub(crate) polygon_iterations: Vec<PolygonIterationFamily>,
     pub(crate) label_iterations: Vec<LabelIterationFamily>,
     pub(crate) iteration_tables: Vec<IterationTable>,
@@ -92,6 +93,8 @@ pub(crate) enum ScenePointControl {
     UnitX,
     UnitY,
     Boundary,
+    OffsetX,
+    OffsetY,
 }
 
 #[derive(Debug, Clone)]

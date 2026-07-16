@@ -45,6 +45,7 @@ struct SceneJson {
     point_iterations: Vec<PointIterationJson>,
     circle_iterations: Vec<CircleIterationJson>,
     line_iterations: Vec<LineIterationJson>,
+    line_iteration_source_indices: Vec<usize>,
     polygon_iterations: Vec<PolygonIterationJson>,
     label_iterations: Vec<LabelIterationJson>,
     iteration_tables: Vec<IterationTableJson>,
@@ -98,6 +99,7 @@ impl SceneJson {
                 .iter()
                 .map(LineIterationJson::from_family)
                 .collect(),
+            line_iteration_source_indices: scene.line_iteration_source_indices.clone(),
             polygon_iterations: scene
                 .polygon_iterations
                 .iter()

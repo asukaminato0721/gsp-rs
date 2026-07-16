@@ -245,8 +245,41 @@ fn build_scene_checked_inner(file: &GspFile) -> Result<Scene> {
             function_definitions,
         },
     );
+    scene.line_iteration_source_indices = line_iteration_source_indices(&scene);
     scene.object_graph = super::object_graph::build_object_graph(&scene);
     Ok(scene)
+}
+
+fn line_iteration_source_indices(scene: &Scene) -> Vec<usize> {
+    let iteration_ordinals = scene
+        .line_iterations
+        .iter()
+        .filter_map(|family| {
+            scene
+                .payload_dependencies
+                .get(&family.binding_group_ordinal())?
+                .get(1)
+                .copied()
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    scene
+        .lines
+        .iter()
+        .enumerate()
+        .filter_map(|(line_index, line)| {
+            let ordinal = line.debug.as_ref()?.group_ordinal;
+            scene
+                .payload_dependencies
+                .iter()
+                .any(|(_, refs)| {
+                    refs.first() == Some(&ordinal)
+                        && refs
+                            .get(1)
+                            .is_some_and(|iteration| iteration_ordinals.contains(iteration))
+                })
+                .then_some(line_index)
+        })
+        .collect()
 }
 
 fn collect_scene_scalars(

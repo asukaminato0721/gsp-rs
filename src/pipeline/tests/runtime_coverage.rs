@@ -31,24 +31,46 @@ fn js_runtime_covers_exported_payload_kinds() {
         .collect::<BTreeSet<_>>();
 
     let rust_object_graph_kinds = BTreeSet::from([
+        "affine".to_string(),
         "arc-boundary-polygon".to_string(),
+        "arc-constraint".to_string(),
         "boundary-length-offset".to_string(),
+        "branching".to_string(),
         "circumcenter".to_string(),
+        "circle-circle-intersection".to_string(),
+        "circular-intersection".to_string(),
+        "circular-trace-intersection".to_string(),
         "constraint-parameter-expr".to_string(),
         "constraint-parameter-from-point-expr".to_string(),
         "constraint-parameter-point-distance-ratio".to_string(),
         "custom-transform".to_string(),
         "derived-parameter".to_string(),
         "directed-angle-anchor".to_string(),
+        "expression-radius-circle".to_string(),
         "interpreted".to_string(),
+        "line-circle-intersection".to_string(),
+        "line-circular-intersection".to_string(),
+        "line-function-intersection".to_string(),
+        "line-intersection".to_string(),
+        "line-polygon-intersection".to_string(),
+        "line-trace-intersection".to_string(),
         "marked-angle-translation".to_string(),
+        "matrix-apply".to_string(),
+        "parallel-to".to_string(),
+        "parameter-radius-circle".to_string(),
+        "parameterized-point-trace".to_string(),
         "parametric-curve".to_string(),
         "payload-alias".to_string(),
+        "perpendicular-to".to_string(),
+        "point-circular-tangent".to_string(),
         "point-polygon".to_string(),
         "point-radius-circle".to_string(),
         "polar-offset".to_string(),
         "polar-transform".to_string(),
+        "rotate".to_string(),
         "scale-by-ratio".to_string(),
+        "segment-radius-circle".to_string(),
+        "three-point-arc".to_string(),
         "translate".to_string(),
     ]);
     assert_eq!(
@@ -61,20 +83,19 @@ fn js_runtime_covers_exported_payload_kinds() {
 }
 
 #[test]
-fn circle_constraint_runtime_has_single_resolver_implementation() {
+fn circle_constraint_runtime_is_delegated_to_rust() {
     let runtime_sources = include_str!(concat!(env!("OUT_DIR"), "/viewer-runtime.js"));
     let resolver_definitions = runtime_sources
         .matches("function circleFromConstraint(")
         .count();
 
     assert_eq!(
-        resolver_definitions, 1,
-        "circle constraints should be resolved by one shared scene implementation",
+        resolver_definitions, 0,
+        "circle constraints must not regain a TypeScript resolver",
     );
-    let scene_circular = include_str!("../../html/runtime/viewer_scene_circular.ts");
     assert!(
-        !scene_circular.contains("_circleFromConstraint:"),
-        "circular scene addon should not replace the shared circle constraint resolver",
+        runtime_sources.contains("resolveCircularConstraintCenter"),
+        "drag interaction should call the Rust circular constraint resolver",
     );
 }
 
@@ -109,7 +130,11 @@ fn runtime_has_no_synthetic_animation_or_empty_module_fallbacks() {
             + dynamics
                 .matches("function resolveAngleMarkerPoints(")
                 .count(),
-        1,
+        0,
+    );
+    assert!(
+        include_str!("../../../crates/runtime-core/src/scene_math.rs")
+            .contains("pub fn angle_marker_points(")
     );
 }
 

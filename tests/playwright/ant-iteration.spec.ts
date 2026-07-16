@@ -10,9 +10,12 @@ test('ant fixture rebuilds iterated lines without duplicating exported payload l
     return {
       sourceLines: window.gspDebug.viewerEnv.sourceScene.lines.length,
       currentLines: runtime.scene.lines.length,
+      visibleLines: runtime.scene.lines.filter((line: any) => line.visible !== false).length,
     };
   });
-  expect(countsAtLoad.currentLines).toBe(countsAtLoad.sourceLines);
+  expect(countsAtLoad.sourceLines).toBe(4);
+  expect(countsAtLoad.currentLines).toBe(100);
+  expect(countsAtLoad.visibleLines).toBe(96);
 
   await page.locator('#parameter-controls input').evaluate((element) => {
     const input = element as HTMLInputElement;
@@ -24,11 +27,11 @@ test('ant fixture rebuilds iterated lines without duplicating exported payload l
     const runtime = JSON.parse(window.gspDebug.json());
     return {
       currentLines: runtime.scene.lines.length,
+      visibleLines: runtime.scene.lines.filter((line: any) => line.visible !== false).length,
       n: runtime.dynamics.parameters[0]?.value,
     };
   });
   expect(countsAtFour.n).toBe(4);
-  // The HTM contains four seed segments. At depth four each of the four
-  // bidirectional two-vector families contributes 40 iterated segments.
   expect(countsAtFour.currentLines).toBe(164);
+  expect(countsAtFour.visibleLines).toBe(160);
 });

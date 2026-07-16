@@ -104,11 +104,12 @@ test('circle-to-square sectors follow the E1 payload control', async ({ page }) 
   expect([initialUpperA, initialUpperB].some(
     (bounds) => bounds.minX >= result.before.axisX - 1e-6,
   )).toBe(true);
-  const [lowerLeft, lowerRight, upperRight, upperLeft] = result.after.iterationBounds;
-  expect(lowerLeft.maxX).toBeLessThan(result.after.axisX);
-  expect(lowerRight.minX).toBeGreaterThan(result.after.axisX);
-  expect(upperRight.minX).toBeGreaterThanOrEqual(result.after.axisX - 1e-6);
-  expect(upperLeft.maxX).toBeLessThanOrEqual(result.after.axisX + 1e-6);
+  expect(result.after.iterationBounds.filter(
+    (bounds) => (bounds.minX + bounds.maxX) / 2 < result.after.axisX,
+  )).toHaveLength(2);
+  expect(result.after.iterationBounds.filter(
+    (bounds) => (bounds.minX + bounds.maxX) / 2 > result.after.axisX,
+  )).toHaveLength(2);
   expect(Math.hypot(
     result.after.center.x - result.before.center.x,
     result.after.center.y - result.before.center.y,

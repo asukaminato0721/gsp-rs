@@ -2,10 +2,8 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::{
-    AffineMatrix, LineKind, Point, angle_bisector_direction, measured_rotation_radians,
-    project_to_line_like,
-};
+use crate::line_constraint::{LineConstraint, LineConstraintResolver};
+use crate::{AffineMatrix, LineKind, Point, measured_rotation_radians, project_to_line_like};
 
 #[derive(Clone, Copy, Deserialize)]
 struct ScenePoint {
@@ -97,100 +95,6 @@ enum PointTransform {
     Unsupported,
 }
 
-#[derive(Clone, Deserialize)]
-#[serde(tag = "kind")]
-enum LineConstraint {
-    #[serde(rename = "segment")]
-    Segment {
-        #[serde(rename = "startIndex")]
-        start_index: usize,
-        #[serde(rename = "endIndex")]
-        end_index: usize,
-    },
-    #[serde(rename = "line")]
-    Line {
-        #[serde(rename = "startIndex")]
-        start_index: usize,
-        #[serde(rename = "endIndex")]
-        end_index: usize,
-    },
-    #[serde(rename = "ray")]
-    Ray {
-        #[serde(rename = "startIndex")]
-        start_index: usize,
-        #[serde(rename = "endIndex")]
-        end_index: usize,
-    },
-    #[serde(rename = "perpendicular-line")]
-    Perpendicular {
-        #[serde(rename = "throughIndex")]
-        through_index: usize,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
-    },
-    #[serde(rename = "parallel-line")]
-    Parallel {
-        #[serde(rename = "throughIndex")]
-        through_index: usize,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
-    },
-    #[serde(rename = "perpendicular-to")]
-    PerpendicularTo {
-        #[serde(rename = "throughIndex")]
-        through_index: usize,
-        line: Box<LineConstraint>,
-    },
-    #[serde(rename = "parallel-to")]
-    ParallelTo {
-        #[serde(rename = "throughIndex")]
-        through_index: usize,
-        line: Box<LineConstraint>,
-    },
-    #[serde(rename = "angle-bisector-ray")]
-    AngleBisector {
-        #[serde(rename = "startIndex")]
-        start_index: usize,
-        #[serde(rename = "vertexIndex")]
-        vertex_index: usize,
-        #[serde(rename = "endIndex")]
-        end_index: usize,
-    },
-    #[serde(rename = "matrix-apply")]
-    MatrixApply {
-        source: Box<LineConstraint>,
-        #[serde(rename = "matrixApply")]
-        matrix_apply: Vec<LineConstraintMatrix>,
-    },
-}
-
-#[derive(Clone, Deserialize)]
-#[serde(tag = "kind")]
-enum LineConstraintMatrix {
-    #[serde(rename = "translate-vector")]
-    TranslateVector {
-        #[serde(rename = "vectorStartIndex")]
-        vector_start_index: usize,
-        #[serde(rename = "vectorEndIndex")]
-        vector_end_index: usize,
-    },
-    #[serde(rename = "translate-delta")]
-    TranslateDelta { dx: f64, dy: f64 },
-    #[serde(rename = "reflect")]
-    Reflect { axis: Box<LineConstraint> },
-    #[serde(rename = "rotate")]
-    Rotate {
-        #[serde(rename = "centerIndex")]
-        center_index: usize,
-        #[serde(rename = "angleDegrees")]
-        angle_degrees: f64,
-    },
-}
-
 pub fn inverse_point_transform_json(bytes: &[u8]) -> Result<Option<Point>, serde_json::Error> {
     let input = serde_json::from_slice::<InverseTransformInput>(bytes)?;
     Ok(InverseResolver {
@@ -238,8 +142,12 @@ impl InverseResolver<'_> {
                 self.point(*line_end_index)?,
             )?,
             PointTransform::ReflectConstraint { line } => {
-                let (start, end, _) = self.line_geometry(line)?;
-                AffineMatrix::reflection(start, end)?
+                let resolved = LineConstraintResolver {
+                    point: &|index| self.point(index),
+                    parameters: self.parameters,
+                }
+                .resolve(line)?;
+                AffineMatrix::reflection(resolved.start, resolved.end)?
             }
             PointTransform::Rotate { center_index, .. } => AffineMatrix::rotation(
                 self.point(*center_index)?,
@@ -343,159 +251,6 @@ impl InverseResolver<'_> {
         let encoded = serde_json::to_vec(encoded_expr).ok()?;
         let expr = crate::parse_expression_json(&encoded).ok()?;
         crate::evaluate_expr(&expr, 0.0, self.parameters).filter(|value| value.is_finite())
-    }
-
-    fn line_geometry(&self, line: &LineConstraint) -> Option<(Point, Point, LineKind)> {
-        match line {
-            LineConstraint::Segment {
-                start_index,
-                end_index,
-            } => Some((
-                self.point(*start_index)?,
-                self.point(*end_index)?,
-                LineKind::Segment,
-            )),
-            LineConstraint::Line {
-                start_index,
-                end_index,
-            } => Some((
-                self.point(*start_index)?,
-                self.point(*end_index)?,
-                LineKind::Line,
-            )),
-            LineConstraint::Ray {
-                start_index,
-                end_index,
-            } => Some((
-                self.point(*start_index)?,
-                self.point(*end_index)?,
-                LineKind::Ray,
-            )),
-            LineConstraint::Perpendicular {
-                through_index,
-                line_start_index,
-                line_end_index,
-            } => self.perpendicular_line(
-                self.point(*through_index)?,
-                self.point(*line_start_index)?,
-                self.point(*line_end_index)?,
-            ),
-            LineConstraint::Parallel {
-                through_index,
-                line_start_index,
-                line_end_index,
-            } => self.parallel_line(
-                self.point(*through_index)?,
-                self.point(*line_start_index)?,
-                self.point(*line_end_index)?,
-            ),
-            LineConstraint::PerpendicularTo {
-                through_index,
-                line,
-            } => {
-                let (start, end, _) = self.line_geometry(line)?;
-                self.perpendicular_line(self.point(*through_index)?, start, end)
-            }
-            LineConstraint::ParallelTo {
-                through_index,
-                line,
-            } => {
-                let (start, end, _) = self.line_geometry(line)?;
-                self.parallel_line(self.point(*through_index)?, start, end)
-            }
-            LineConstraint::AngleBisector {
-                start_index,
-                vertex_index,
-                end_index,
-            } => {
-                let start = self.point(*start_index)?;
-                let vertex = self.point(*vertex_index)?;
-                let end = self.point(*end_index)?;
-                let direction = angle_bisector_direction(start, vertex, end)?;
-                Some((
-                    vertex,
-                    Point {
-                        x: vertex.x + direction.x,
-                        y: vertex.y + direction.y,
-                    },
-                    LineKind::Ray,
-                ))
-            }
-            LineConstraint::MatrixApply {
-                source,
-                matrix_apply,
-            } => {
-                let (mut start, mut end, kind) = self.line_geometry(source)?;
-                for matrix in matrix_apply {
-                    let matrix = match matrix {
-                        LineConstraintMatrix::TranslateVector {
-                            vector_start_index,
-                            vector_end_index,
-                        } => {
-                            let vector_start = self.point(*vector_start_index)?;
-                            let vector_end = self.point(*vector_end_index)?;
-                            AffineMatrix::translation(
-                                vector_end.x - vector_start.x,
-                                vector_end.y - vector_start.y,
-                            )
-                        }
-                        LineConstraintMatrix::TranslateDelta { dx, dy } => {
-                            AffineMatrix::translation(*dx, *dy)
-                        }
-                        LineConstraintMatrix::Reflect { axis } => {
-                            let (axis_start, axis_end, _) = self.line_geometry(axis)?;
-                            AffineMatrix::reflection(axis_start, axis_end)?
-                        }
-                        LineConstraintMatrix::Rotate {
-                            center_index,
-                            angle_degrees,
-                        } => AffineMatrix::rotation(
-                            self.point(*center_index)?,
-                            angle_degrees.to_radians(),
-                        ),
-                    };
-                    start = matrix.apply(start);
-                    end = matrix.apply(end);
-                }
-                Some((start, end, kind))
-            }
-        }
-    }
-
-    fn perpendicular_line(
-        &self,
-        through: Point,
-        start: Point,
-        end: Point,
-    ) -> Option<(Point, Point, LineKind)> {
-        let dx = end.x - start.x;
-        let dy = end.y - start.y;
-        (dx.hypot(dy) > 1e-9).then_some((
-            through,
-            Point {
-                x: through.x - dy,
-                y: through.y + dx,
-            },
-            LineKind::Line,
-        ))
-    }
-
-    fn parallel_line(
-        &self,
-        through: Point,
-        start: Point,
-        end: Point,
-    ) -> Option<(Point, Point, LineKind)> {
-        let dx = end.x - start.x;
-        let dy = end.y - start.y;
-        (dx.hypot(dy) > 1e-9).then_some((
-            through,
-            Point {
-                x: through.x + dx,
-                y: through.y + dy,
-            },
-            LineKind::Line,
-        ))
     }
 }
 

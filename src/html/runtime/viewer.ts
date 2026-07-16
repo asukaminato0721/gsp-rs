@@ -14,8 +14,6 @@
   }
   requireModuleFunctions("scene", [
     "resolveScenePoint", "resolvePoint", "resolveLinePoints", "drawGrid",
-    "sampleArcBoundaryPoints", "sampleCoordinateTracePoints",
-    "lineLineIntersection", "lineCircleIntersection", "circleCircleIntersection",
   ]);
   requireModuleFunctions("render", [
     "draw", "drawImages", "drawPolygons", "drawCircles", "drawArcs", "drawLabels",

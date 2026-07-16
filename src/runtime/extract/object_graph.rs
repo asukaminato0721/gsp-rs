@@ -1456,11 +1456,39 @@ impl Builder {
         if let Some(binding) = &point.binding {
             match binding {
                 ScenePointBinding::GraphCalibration => {
-                    self.bound_source(
-                        id,
-                        source_value,
-                        SceneObjectSourceBinding::Point { point_index: index },
-                    );
+                    if let ScenePointConstraint::Offset {
+                        origin_index,
+                        dx,
+                        dy,
+                    } = &point.constraint
+                    {
+                        let dx_id = format!("control:{id}:offset-x");
+                        let dy_id = format!("control:{id}:offset-y");
+                        self.point_control_source(
+                            dx_id.clone(),
+                            *dx,
+                            index,
+                            ScenePointControl::OffsetX,
+                        );
+                        self.point_control_source(
+                            dy_id.clone(),
+                            *dy,
+                            index,
+                            ScenePointControl::OffsetY,
+                        );
+                        self.apply_matrix(
+                            id,
+                            point_id(*origin_index),
+                            MatrixOp::TranslateByScalars,
+                            [dx_id, dy_id],
+                        );
+                    } else {
+                        self.bound_source(
+                            id,
+                            source_value,
+                            SceneObjectSourceBinding::Point { point_index: index },
+                        );
+                    }
                 }
                 ScenePointBinding::Parameter { name } => {
                     if matches!(point.constraint, ScenePointConstraint::Free) {

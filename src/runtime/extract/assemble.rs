@@ -813,6 +813,7 @@ pub(super) fn assemble_scene(
             .into_iter()
             .map(|family| world_line_iteration_family(family, &analysis.graph_ref))
             .collect(),
+        line_iteration_source_indices: Vec::new(),
         polygon_iterations: artifacts
             .polygon_iterations
             .into_iter()

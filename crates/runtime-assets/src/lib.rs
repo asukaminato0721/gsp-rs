@@ -18,9 +18,6 @@ pub const RUNTIME_CORE_WASM_BASE64_FILE: &str = "runtime-core.wasm.b64";
 const RUNTIME_SOURCES: &[&str] = &[
     "viewer_runtime_core",
     "viewer_scene_basic",
-    "viewer_scene_circular",
-    "viewer_scene_trace",
-    "viewer_scene_intersections",
     "viewer_render_basic",
     "viewer_render_images",
     "viewer_render_polygons",
@@ -30,7 +27,6 @@ const RUNTIME_SOURCES: &[&str] = &[
     "viewer_render_hotspots",
     "viewer_overlay",
     "viewer_drag",
-    "viewer_dynamics_expression",
     "viewer_dynamics_rich_text",
     "viewer_dynamics_parameters",
     "viewer_dynamics_iterations",

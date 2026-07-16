@@ -50,8 +50,9 @@ fn exports_scaled_circle_intersections_fixture_with_live_constraints() {
     }));
 
     assert!(
-        output.html.contains("function circleCircleIntersection("),
-        "expected live circular intersections to pull in the intersections runtime"
+        output.html.contains("function evaluateObjectGraph(")
+            && !output.html.contains("function circleCircleIntersection("),
+        "expected live circular intersections to use the Rust object graph without a TS scene interpreter"
     );
     assert!(output.payload_log.contains("问题数量: 0"));
     assert!(output.payload_log.contains("伸缩"));
@@ -246,11 +247,12 @@ fn exports_translation_fixture_with_live_circle_and_intersection() {
         "expected the translated circle binding to be embedded in the html scene payload"
     );
     assert!(
-        html.contains("constraint.kind === \"derived\""),
-        "expected the static circular constraint runtime to resolve translated circles"
+        html.contains("resolveCircularConstraintCenter"),
+        "expected translated-circle drag inversion to use the Rust circular constraint resolver"
     );
     assert!(
-        html.contains("function circleCircleIntersection("),
-        "expected the intersection runtime to stay available for the translated circles"
+        html.contains("function evaluateObjectGraph(")
+            && !html.contains("function circleCircleIntersection("),
+        "expected translated-circle intersections to use the Rust object graph without a TS scene interpreter"
     );
 }

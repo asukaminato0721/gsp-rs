@@ -30,6 +30,7 @@
     gsp_inverse_point_transform: (pointer: number, length: number) => number;
     gsp_line_constraint_point_indices: (pointer: number, length: number) => number;
     gsp_resolve_line_constraint: (pointer: number, length: number) => number;
+    gsp_resolve_circular_constraint_center: (pointer: number, length: number) => number;
     gsp_dependency_topo_order: (handle: number) => number;
     gsp_dependency_affected: (handle: number, rootsPointer: number, rootsLength: number) => number;
     gsp_last_error_ptr: () => number;
@@ -101,7 +102,7 @@
   const module = new WebAssembly.Module(bytes);
   const instance = new WebAssembly.Instance(module, {});
   const wasm = instance.exports as unknown as RuntimeCoreWasmExports;
-  if (wasm.gsp_runtime_abi_version() !== 8) {
+  if (wasm.gsp_runtime_abi_version() !== 9) {
     throw new Error("Unsupported gsp-rs runtime core ABI");
   }
 
@@ -450,6 +451,30 @@
       const kind = kindCode === 0 ? "segment" : kindCode === 1 ? "line" : kindCode === 2 ? "ray" : null;
       return kind ? { start: resolved[0], end: resolved[1], kind } : null;
     });
+  }
+
+  function resolveCircularConstraintCenter(
+    constraint: CircularConstraintJson,
+    scene: ViewerSceneData,
+    parameters: Map<string, number>,
+  ): Point | null {
+    const lines = scene.lines.map((line) => {
+      const start = line.points[0];
+      const end = line.points[line.points.length - 1];
+      return start && end
+        && "x" in start && "y" in start
+        && "x" in end && "y" in end
+        ? [start, end]
+        : null;
+    });
+    const input = encoder.encode(JSON.stringify({
+      constraint,
+      points: scene.points,
+      lines,
+      parameters: Object.fromEntries(parameters),
+    }));
+    return withInputBytes(input, (pointer) =>
+      geometryResult(wasm.gsp_resolve_circular_constraint_center(pointer, input.length)));
   }
 
   function setExpressionParameters(compiled: CompiledExpression, parameters: Map<string, number>) {
@@ -913,6 +938,7 @@
     evaluateObjectGraph,
     inversePointTransform,
     resolveLineConstraint,
+    resolveCircularConstraintCenter,
     sampleFunction,
     sampleParametricCurve,
     sampleCoordinateTrace,

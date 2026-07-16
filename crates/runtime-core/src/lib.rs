@@ -1,6 +1,7 @@
 //! Canonical mathematical semantics shared by the native parser and browser runtime.
 
 mod affine;
+mod circular_constraint;
 mod dependency;
 mod geometry;
 mod line_constraint;
@@ -10,6 +11,7 @@ mod point_transform;
 mod scene_math;
 
 pub use affine::AffineMatrix;
+pub use circular_constraint::resolve_circular_constraint_center_json;
 pub use dependency::{DependencyNodeInput, DependencyPlan, DependencyPlanError};
 
 pub use geometry::{
@@ -338,10 +340,11 @@ mod wasm_abi {
         point_distance_ratio, point_on_circle_arc, point_on_three_point_arc,
         point_on_three_point_arc_complement, polygon_area, project_to_circle_arc,
         project_to_line_like, project_to_three_point_arc, reflect_across_line,
-        resolve_line_constraint_json, rotate_around, rotate_iteration_points, sample_circle_arc,
-        sample_coordinate_trace, sample_custom_transform_trace, sample_expression,
-        sample_parametric_curve, sample_three_point_arc, scale_around, scale_by_three_point_ratio,
-        three_point_arc_geometry, translation_iteration_deltas,
+        resolve_circular_constraint_center_json, resolve_line_constraint_json, rotate_around,
+        rotate_iteration_points, sample_circle_arc, sample_coordinate_trace,
+        sample_custom_transform_trace, sample_expression, sample_parametric_curve,
+        sample_three_point_arc, scale_around, scale_by_three_point_ratio, three_point_arc_geometry,
+        translation_iteration_deltas,
     };
 
     struct CompiledExpression {
@@ -363,7 +366,7 @@ mod wasm_abi {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn gsp_runtime_abi_version() -> u32 {
-        8
+        9
     }
 
     #[unsafe(no_mangle)]
@@ -1034,6 +1037,26 @@ mod wasm_abi {
                 set_last_error(&format!(
                     "invalid line constraint resolution input: {error}"
                 ));
+                write_geometry_results(std::iter::empty())
+            }
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_resolve_circular_constraint_center(ptr: u32, len: u32) -> u32 {
+        if ptr == 0 || len == 0 {
+            set_last_error("circular constraint input is empty");
+            return write_geometry_results(std::iter::empty());
+        }
+        // SAFETY: the caller owns an allocation of at least `len` bytes in this module's memory.
+        let bytes = unsafe { std::slice::from_raw_parts(ptr as usize as *const u8, len as usize) };
+        match resolve_circular_constraint_center_json(bytes) {
+            Ok(center) => {
+                clear_last_error();
+                write_geometry_results(center)
+            }
+            Err(error) => {
+                set_last_error(&format!("invalid circular constraint input: {error}"));
                 write_geometry_results(std::iter::empty())
             }
         }

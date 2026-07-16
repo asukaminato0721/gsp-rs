@@ -146,7 +146,7 @@ fn circle_arc_fixture_uses_circular_scene_runtime() {
 }
 
 #[test]
-fn coordinate_trace_intersection_fixture_uses_trace_and_intersection_scene_runtime() {
+fn coordinate_trace_intersection_fixture_uses_rust_object_graph_runtime() {
     let html = fixture_html(
         include_bytes!("../../../tests/fixtures/gsp/insection/cood_intersection.gsp"),
         "coordinate trace intersection fixture should compile to html",
@@ -154,12 +154,12 @@ fn coordinate_trace_intersection_fixture_uses_trace_and_intersection_scene_runti
 
     assert!(html.contains("viewer-runtime: full"));
     assert!(
-        html.contains("function sampleCoordinateTracePoints("),
-        "coordinate trace intersection fixture should include the trace scene addon"
+        html.contains("function evaluateObjectGraph("),
+        "coordinate trace intersection fixture should include the Rust object-graph runtime"
     );
     assert!(
-        html.contains("function lineCircleIntersection("),
-        "coordinate trace intersection fixture should include the intersections scene addon"
+        !html.contains("function sampleCoordinateTracePoints("),
+        "coordinate trace sampling should not retain a TS scene interpreter"
     );
 }
 
@@ -199,12 +199,12 @@ fn coordinate_trace_intersection_fixture_has_three_level_artifacts() {
     );
 
     assert!(output.html.contains("viewer-runtime: full"));
+    assert!(output.html.contains("function evaluateObjectGraph("));
     assert!(
-        output
+        !output
             .html
             .contains("function sampleCoordinateTracePoints(")
     );
-    assert!(output.html.contains("function lineCircleIntersection("));
 }
 
 #[test]

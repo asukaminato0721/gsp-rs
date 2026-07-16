@@ -72,6 +72,8 @@ enum PointControlJson {
     UnitX,
     UnitY,
     Boundary,
+    OffsetX,
+    OffsetY,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, TS)]
@@ -117,6 +119,8 @@ impl ObjectGraphSourceBindingJson {
                     ScenePointControl::UnitX => PointControlJson::UnitX,
                     ScenePointControl::UnitY => PointControlJson::UnitY,
                     ScenePointControl::Boundary => PointControlJson::Boundary,
+                    ScenePointControl::OffsetX => PointControlJson::OffsetX,
+                    ScenePointControl::OffsetY => PointControlJson::OffsetY,
                 },
             },
         }

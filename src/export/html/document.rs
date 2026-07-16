@@ -225,6 +225,7 @@ mod tests {
             point_iterations: Vec::new(),
             circle_iterations: Vec::new(),
             line_iterations: Vec::new(),
+            line_iteration_source_indices: Vec::new(),
             polygon_iterations: Vec::new(),
             label_iterations: Vec::new(),
             iteration_tables: Vec::new(),
@@ -252,7 +253,8 @@ mod tests {
         assert!(html.contains("gsp_runtime_abi_version"));
         assert!(html.contains("new WebAssembly.Module"));
         assert!(!html.contains("instantiateStreaming"));
-        assert!(html.contains("window.GspRuntimeCore.lineLineIntersection"));
+        assert!(html.contains("function lineLineIntersection("));
+        assert!(html.contains("wasm.gsp_line_line_intersection("));
         assert!(html.contains("function dependencyRootsForDraggedPoint"));
         assert!(html.contains("function isVisibilityButtonAction"));
         assert!(!html.contains("viewer-runtime: scene="));

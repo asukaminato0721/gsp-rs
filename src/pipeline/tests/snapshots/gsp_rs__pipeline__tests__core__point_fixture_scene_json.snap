@@ -60,6 +60,7 @@ expression: scene_json
   "pointIterations": [],
   "circleIterations": [],
   "lineIterations": [],
+  "lineIterationSourceIndices": [],
   "polygonIterations": [],
   "labelIterations": [],
   "iterationTables": [],

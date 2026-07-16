@@ -53,7 +53,7 @@ test('intersection branch selection follows the reference and rejects invalid va
   await page.goto(`file://${file}`);
 
   const selected = await page.evaluate(() => {
-    const scene = window.GspViewerModules.scene!;
+    const runtime = window.GspRuntimeCore;
     const circleArgs = [
       { x: 0, y: 0 },
       { x: 2, y: 0 },
@@ -68,18 +68,27 @@ test('intersection branch selection follows the reference and rejects invalid va
       { x: 2, y: 0 },
     ] as const;
     return {
-      circleByReference: scene.circleCircleIntersection(
-        ...circleArgs,
-        0,
+      circleByReference: runtime.choosePointCandidate(
+        runtime.circleCircleIntersections(
+          circleArgs[0],
+          2,
+          circleArgs[2],
+          2,
+        ),
         { x: 1, y: 2 },
+        0,
       ),
-      circleInvalidVariant: scene.circleCircleIntersection(...circleArgs, 99, null),
-      lineByReference: scene.lineCircleIntersection(
-        ...lineArgs,
-        1,
-        { x: 2.1, y: 0 },
+      circleInvalidVariant: runtime.choosePointCandidate(
+        runtime.circleCircleIntersections(circleArgs[0], 2, circleArgs[2], 2),
+        null,
+        99,
       ),
-      lineInvalidVariant: scene.lineCircleIntersection(...lineArgs, 99, null),
+      lineByReference: runtime.lineCircleIntersectionCandidate(
+        lineArgs[0], lineArgs[1], lineArgs[2], lineArgs[3], 2, 1,
+      ),
+      lineInvalidVariant: runtime.lineCircleIntersectionCandidate(
+        lineArgs[0], lineArgs[1], lineArgs[2], lineArgs[3], 2, 99,
+      ),
     };
   });
 

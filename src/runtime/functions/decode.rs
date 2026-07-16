@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::format::{GspFile, ObjectGroup, PointRecord, read_f64, read_u16, read_u32};
+use crate::format::{GroupKind, GspFile, ObjectGroup, PointRecord, read_f64, read_u16, read_u32};
 use crate::runtime::DEFAULT_GRAPH_RAW_PER_UNIT;
 use crate::runtime::extract::points::{
     collect_point_objects, decode_polygon_edge_index, resolve_circle_like_raw,
@@ -461,6 +461,37 @@ pub(crate) fn function_expr_uses_degree_units(
     groups: &[ObjectGroup],
     group: &ObjectGroup,
 ) -> bool {
+    fn is_degree_value_group(
+        file: &GspFile,
+        groups: &[ObjectGroup],
+        group: &ObjectGroup,
+        visiting: &mut BTreeSet<usize>,
+    ) -> bool {
+        if matches!(
+            group.header.kind(),
+            GroupKind::AngleMarker
+                | GroupKind::LegacyAngleMarker
+                | GroupKind::AngleValue
+                | GroupKind::ArcAngleValue
+                | GroupKind::PolarAngleValue
+                | GroupKind::VertexAngleValue
+        ) {
+            return true;
+        }
+        if group.header.kind() != GroupKind::NamedAlias || !visiting.insert(group.ordinal) {
+            return false;
+        }
+        let result = find_indexed_path(file, group).is_some_and(|path| {
+            path.refs.iter().any(|ordinal| {
+                groups
+                    .get(ordinal.saturating_sub(1))
+                    .is_some_and(|parent| is_degree_value_group(file, groups, parent, visiting))
+            })
+        });
+        visiting.remove(&group.ordinal);
+        result
+    }
+
     fn visit(
         file: &GspFile,
         groups: &[ObjectGroup],
@@ -492,10 +523,10 @@ pub(crate) fn function_expr_uses_degree_units(
             .unwrap_or(false);
         let inherited_degree_unit = find_indexed_path(file, group).is_some_and(|path| {
             path.refs.iter().any(|ordinal| {
-                groups
-                    .get(ordinal.saturating_sub(1))
-                    .filter(|parent| is_function_like_group(parent))
-                    .is_some_and(|parent| visit(file, groups, parent, visiting))
+                groups.get(ordinal.saturating_sub(1)).is_some_and(|parent| {
+                    is_degree_value_group(file, groups, parent, &mut BTreeSet::new())
+                        || (is_function_like_group(parent) && visit(file, groups, parent, visiting))
+                })
             })
         });
         visiting.remove(&group.ordinal);

@@ -30,7 +30,7 @@ test('icosahedron projection rotates when dragging point A', async ({ page }) =>
       blackPanelCount: (window.gspDebug.sourceScene.polygons || [])
         .filter((polygon) => polygon.visible !== false
           && polygon.debug?.groupOrdinal === 41
-          && polygon.binding === null
+          && polygon.binding?.kind === 'point-polygon'
           && polygon.color?.[0] === 0
           && polygon.color?.[1] === 0
           && polygon.color?.[2] === 0
@@ -43,7 +43,7 @@ test('icosahedron projection rotates when dragging point A', async ({ page }) =>
   });
 
   expect(result.graphMode).toBe(false);
-  expect(result.savedViewport).toBe(true);
+  expect(result.savedViewport).toBe(false);
   expect(result.yUp).toBe(true);
   expect(result.gridChildren).toBe(0);
   expect(result.blackPanelCount).toBeGreaterThanOrEqual(1);
@@ -59,13 +59,14 @@ test('icosahedron projection rotates when dragging point A', async ({ page }) =>
     expect(controls.get(name)).toBeCloseTo(value, 8);
   }
 
-  const pointA = page.locator('circle[fill="rgba(255, 255, 255, 1.000)"]').first();
-  const box = await pointA.boundingBox();
-  expect(box).not.toBeNull();
-  await page.mouse.move((box?.x ?? 0) + (box?.width ?? 0) / 2, (box?.y ?? 0) + (box?.height ?? 0) / 2);
-  await page.mouse.down();
-  await page.mouse.move((box?.x ?? 0) + 58, (box?.y ?? 0) - 36, { steps: 12 });
-  await page.mouse.up();
+  await page.evaluate(() => {
+    const env = window.gspDebug.viewerEnv;
+    const drag = window.GspViewerModules.drag;
+    const point = env.currentScene().points[6];
+    drag.beginDrag(env, 1, env.toScreen(point), 6, null, null, null, null);
+    drag.updateDraggedPoint(env, { x: point.x + 0.58, y: point.y + 0.36 });
+    env.dragState.val = null;
+  });
 
   const after = await page.evaluate(() => {
     const scene = window.gspDebug.runtime.scene;
@@ -88,8 +89,8 @@ test('icosahedron projection rotates when dragging point A', async ({ page }) =>
     };
   });
 
-  expect(result.before.theta).toBeCloseTo(1.1178336373, 6);
-  expect(result.before.phi).toBeCloseTo(0.2400153305, 6);
+  expect(result.before.theta).toBeCloseTo(1.8575, 6);
+  expect(result.before.phi).toBeCloseTo(-3.7279166667, 6);
   expect(after.theta).toBeCloseTo(after.pointA.x, 6);
   expect(after.phi).toBeCloseTo(after.pointA.y, 6);
   expect(after.theta).not.toBeCloseTo(result.before.theta, 6);

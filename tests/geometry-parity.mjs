@@ -103,7 +103,6 @@ function loadViewerModules(rootDir) {
   const modules = [
     "viewer_runtime_core",
     "viewer_scene_basic",
-    "viewer_scene_circular",
   ];
   for (const moduleName of modules) {
     const marker = `// ---- ${moduleName}.ts ----`;
