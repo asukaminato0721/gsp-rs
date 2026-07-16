@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::{
-    LineKind, Point, angle_bisector_direction, measured_rotation_radians, project_to_line_like,
-    reflect_across_line, rotate_around, scale_around,
+    AffineMatrix, LineKind, Point, angle_bisector_direction, measured_rotation_radians,
+    project_to_line_like,
 };
 
 #[derive(Clone, Copy, Deserialize)]
@@ -29,7 +29,8 @@ struct InverseTransformInput {
     points: Vec<ScenePoint>,
     #[serde(default)]
     parameters: BTreeMap<String, f64>,
-    transform: PointTransform,
+    #[serde(rename = "matrixApply")]
+    matrix_apply: Vec<PointTransform>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -194,7 +195,7 @@ pub fn inverse_point_transform_json(bytes: &[u8]) -> Result<Option<Point>, serde
         points: &input.points,
         parameters: &input.parameters,
     }
-    .inverse_transform(&input.transform, input.world))
+    .inverse_matrix_apply(&input.matrix_apply, input.world))
 }
 
 struct InverseResolver<'a> {
@@ -207,43 +208,46 @@ impl InverseResolver<'_> {
         self.points.get(index).copied().map(Point::from)
     }
 
-    fn inverse_transform(&self, transform: &PointTransform, world: Point) -> Option<Point> {
-        match transform {
+    fn inverse_matrix_apply(&self, transforms: &[PointTransform], world: Point) -> Option<Point> {
+        transforms
+            .iter()
+            .try_fold(AffineMatrix::IDENTITY, |combined, transform| {
+                Some(combined.then(self.transform_matrix(transform)?))
+            })?
+            .inverse()
+            .map(|matrix| matrix.apply(world))
+    }
+
+    fn transform_matrix(&self, transform: &PointTransform) -> Option<AffineMatrix> {
+        Some(match transform {
             PointTransform::Translate {
                 vector_start_index,
                 vector_end_index,
             } => {
                 let start = self.point(*vector_start_index)?;
                 let end = self.point(*vector_end_index)?;
-                Some(Point {
-                    x: world.x - (end.x - start.x),
-                    y: world.y - (end.y - start.y),
-                })
+                AffineMatrix::translation(end.x - start.x, end.y - start.y)
             }
             PointTransform::Reflect {
                 line_start_index,
                 line_end_index,
-            } => reflect_across_line(
-                world,
+            } => AffineMatrix::reflection(
                 self.point(*line_start_index)?,
                 self.point(*line_end_index)?,
-            ),
+            )?,
             PointTransform::ReflectConstraint { line } => {
                 let (start, end, _) = self.line_geometry(line)?;
-                reflect_across_line(world, start, end)
+                AffineMatrix::reflection(start, end)?
             }
-            PointTransform::Rotate { center_index, .. } => {
-                let center = self.point(*center_index)?;
-                let degrees = self.rotation_degrees(transform)?;
-                Some(rotate_around(world, center, -degrees.to_radians()))
-            }
+            PointTransform::Rotate { center_index, .. } => AffineMatrix::rotation(
+                self.point(*center_index)?,
+                self.rotation_degrees(transform)?.to_radians(),
+            ),
             PointTransform::Scale { center_index, .. } => {
-                let center = self.point(*center_index)?;
-                let factor = self.scale_factor(transform)?;
-                (factor.abs() > 1e-12).then(|| scale_around(world, center, factor.recip()))
+                AffineMatrix::scale(self.point(*center_index)?, self.scale_factor(transform)?)
             }
-            PointTransform::Unsupported => None,
-        }
+            PointTransform::Unsupported => return None,
+        })
     }
 
     fn rotation_degrees(&self, transform: &PointTransform) -> Option<f64> {
@@ -423,42 +427,22 @@ impl InverseResolver<'_> {
                 let (start, end, kind) = self.line_geometry(line)?;
                 let vector_start = self.point(*vector_start_index)?;
                 let vector_end = self.point(*vector_end_index)?;
-                let dx = vector_end.x - vector_start.x;
-                let dy = vector_end.y - vector_start.y;
-                Some((
-                    Point {
-                        x: start.x + dx,
-                        y: start.y + dy,
-                    },
-                    Point {
-                        x: end.x + dx,
-                        y: end.y + dy,
-                    },
-                    kind,
-                ))
+                let matrix = AffineMatrix::translation(
+                    vector_end.x - vector_start.x,
+                    vector_end.y - vector_start.y,
+                );
+                Some((matrix.apply(start), matrix.apply(end), kind))
             }
             LineConstraint::TranslatedDelta { line, dx, dy } => {
                 let (start, end, kind) = self.line_geometry(line)?;
-                Some((
-                    Point {
-                        x: start.x + dx,
-                        y: start.y + dy,
-                    },
-                    Point {
-                        x: end.x + dx,
-                        y: end.y + dy,
-                    },
-                    kind,
-                ))
+                let matrix = AffineMatrix::translation(*dx, *dy);
+                Some((matrix.apply(start), matrix.apply(end), kind))
             }
             LineConstraint::Reflected { line, axis } => {
                 let (start, end, kind) = self.line_geometry(line)?;
                 let (axis_start, axis_end, _) = self.line_geometry(axis)?;
-                Some((
-                    reflect_across_line(start, axis_start, axis_end)?,
-                    reflect_across_line(end, axis_start, axis_end)?,
-                    kind,
-                ))
+                let matrix = AffineMatrix::reflection(axis_start, axis_end)?;
+                Some((matrix.apply(start), matrix.apply(end), kind))
             }
             LineConstraint::Rotated {
                 line,
@@ -467,12 +451,8 @@ impl InverseResolver<'_> {
             } => {
                 let (start, end, kind) = self.line_geometry(line)?;
                 let center = self.point(*center_index)?;
-                let radians = angle_degrees.to_radians();
-                Some((
-                    rotate_around(start, center, radians),
-                    rotate_around(end, center, radians),
-                    kind,
-                ))
+                let matrix = AffineMatrix::rotation(center, angle_degrees.to_radians());
+                Some((matrix.apply(start), matrix.apply(end), kind))
             }
         }
     }
@@ -523,7 +503,7 @@ mod tests {
         let translated = br#"{
           "world":{"x":5,"y":7},
           "points":[{"x":1,"y":2},{"x":4,"y":6}],
-          "transform":{"kind":"translate","vectorStartIndex":0,"vectorEndIndex":1}
+          "matrixApply":[{"kind":"translate","vectorStartIndex":0,"vectorEndIndex":1}]
         }"#;
         assert_eq!(
             inverse_point_transform_json(translated).unwrap(),
@@ -533,7 +513,7 @@ mod tests {
         let rotated = br#"{
           "world":{"x":0,"y":-2},
           "points":[{"x":0,"y":0}],
-          "transform":{"kind":"rotate","centerIndex":0,"angleDegrees":90,"parameterName":null}
+          "matrixApply":[{"kind":"rotate","centerIndex":0,"angleDegrees":90,"parameterName":null}]
         }"#;
         let source = inverse_point_transform_json(rotated).unwrap().unwrap();
         assert!((source.x - 2.0).abs() < 1e-9);
@@ -542,11 +522,23 @@ mod tests {
         let scaled = br#"{
           "world":{"x":4,"y":2},
           "points":[{"x":0,"y":0}],
-          "transform":{"kind":"scale","centerIndex":0,"factor":2,"parameterName":null}
+          "matrixApply":[{"kind":"scale","centerIndex":0,"factor":2,"parameterName":null}]
         }"#;
         assert_eq!(
             inverse_point_transform_json(scaled).unwrap(),
             Some(Point { x: 2.0, y: 1.0 })
         );
+
+        let composed = br#"{
+          "world":{"x":0,"y":-3},
+          "points":[{"x":0,"y":0},{"x":1,"y":0}],
+          "matrixApply":[
+            {"kind":"translate","vectorStartIndex":0,"vectorEndIndex":1},
+            {"kind":"rotate","centerIndex":0,"angleDegrees":90,"parameterName":null}
+          ]
+        }"#;
+        let source = inverse_point_transform_json(composed).unwrap().unwrap();
+        assert!((source.x - 2.0).abs() < 1e-9);
+        assert!(source.y.abs() < 1e-9);
     }
 }

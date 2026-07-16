@@ -42,7 +42,7 @@ test('a payload angle anchor and reflected arc load as a complete object graph',
   expect(result.reflectedArcIndex).toBeGreaterThanOrEqual(0);
   expect(result.resultArcIndex).toBeGreaterThanOrEqual(0);
   expect(result.controlledOp).toBe('point-on-arc');
-  expect(result.reflectedArcOp).toBe('transform-object');
+  expect(result.reflectedArcOp).toBe('apply-matrices');
   expect(result.controlled.x).toBeCloseTo(result.reflectedStart.x, 6);
   expect(result.controlled.y).toBeCloseTo(result.reflectedStart.y, 6);
   expect(result.resultEnd.x).toBeCloseTo(result.controlled.x, 6);
@@ -127,7 +127,7 @@ test('a point on a rotated ray keeps its center arc live', async ({ page }) => {
   expect(result.pointIndex).toBeGreaterThanOrEqual(0);
   expect(result.arcIndex).toBeGreaterThanOrEqual(0);
   expect(result.pointOp).toBe('point-on-line');
-  expect(result.domainOp).toBe('transform-object');
+  expect(result.domainOp).toBe('apply-matrices');
   expect(Math.hypot(
     result.after[0].x - result.before[0].x,
     result.after[0].y - result.before[0].y,

@@ -1,7 +1,8 @@
+use crate::geometry::three_point_scale_factor;
 use crate::object_graph::{ObjectGraph, ObjectNode, ObjectValues};
 use crate::{
-    BinaryOp, CoordinateTraceMode, FunctionAst, FunctionExpr, LineKind, PlotMode, Point,
-    UnaryFunction, affine_iteration_segment, angle_bisector_direction, angle_marker_points,
+    AffineMatrix, BinaryOp, CoordinateTraceMode, FunctionAst, FunctionExpr, LineKind, PlotMode,
+    Point, UnaryFunction, affine_iteration_segment, angle_bisector_direction, angle_marker_points,
     choose_point_candidate, circle_arc_control_points, circle_circle_intersections,
     directed_angle_anchor, evaluate_expr, lerp_point, line_circle_intersection_candidate,
     line_circle_intersections, line_line_intersection, line_polyline_intersection,
@@ -9,8 +10,8 @@ use crate::{
     point_circle_tangents, point_distance, point_distance_ratio, point_on_three_point_arc,
     point_on_three_point_arc_complement, polygon_area, project_to_line_like, reflect_across_line,
     rotate_around, sample_circle_arc, sample_coordinate_trace, sample_custom_transform_trace,
-    sample_parametric_curve, sample_three_point_arc, scale_around, scale_by_three_point_ratio,
-    segment_marker_points, three_point_arc_geometry, translation_iteration_deltas,
+    sample_parametric_curve, sample_three_point_arc, segment_marker_points,
+    three_point_arc_geometry, translation_iteration_deltas,
 };
 use std::collections::BTreeMap;
 
@@ -73,7 +74,7 @@ pub enum TraceDriver {
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
-pub enum ObjectTransform {
+pub enum MatrixOp {
     TranslateDelta {
         dx: f64,
         dy: f64,
@@ -193,6 +194,9 @@ pub enum ObjectValue {
     Text {
         value: String,
     },
+    Matrix {
+        matrix: AffineMatrix,
+    },
 }
 
 impl ObjectValue {
@@ -236,7 +240,8 @@ impl ObjectValue {
             | Self::Polygons { .. }
             | Self::Circles { .. }
             | Self::Color { .. }
-            | Self::Text { .. } => None,
+            | Self::Text { .. }
+            | Self::Matrix { .. } => None,
         }
     }
 }
@@ -488,9 +493,10 @@ pub enum ObjectOp {
     HsbColor {
         alpha: u8,
     },
-    TransformObject {
-        transform: ObjectTransform,
+    Matrix {
+        matrix: MatrixOp,
     },
+    ApplyMatrices,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -622,6 +628,10 @@ pub enum ObjectOpError {
         op: &'static str,
         parent: usize,
     },
+    ExpectedMatrix {
+        op: &'static str,
+        parent: usize,
+    },
     Degenerate {
         op: &'static str,
     },
@@ -674,6 +684,10 @@ impl std::fmt::Display for ObjectOpError {
                     "operation {op} expected parent {parent} to be an arc"
                 )
             }
+            Self::ExpectedMatrix { op, parent } => write!(
+                formatter,
+                "operation {op} expected parent {parent} to be a matrix"
+            ),
             Self::Degenerate { op } => write!(formatter, "operation {op} is degenerate"),
             Self::InvalidProgram { op, message } => {
                 write!(
@@ -1456,8 +1470,10 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                         vec![start]
                     };
                     points.extend_from_slice(&sampled[1..]);
-                    if !*reversed && center.is_some() && *sector {
-                        points.push(center.expect("center boundary has a center"));
+                    if !*reversed && *sector {
+                        if let Some(center) = center {
+                            points.push(center);
+                        }
                     } else if !*reversed && !*sector {
                         points.push(start);
                     }
@@ -2250,9 +2266,8 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                         ),
                     })
                 }
-                ObjectOp::TransformObject { transform } => {
-                    transform_object("transform-object", *transform, parents)
-                }
+                ObjectOp::Matrix { matrix } => matrix_value(*matrix, parents),
+                ObjectOp::ApplyMatrices => apply_matrices(parents),
             }
         };
         match evaluate_defined() {
@@ -2896,11 +2911,13 @@ fn point_on_parent_shape(
     ))
 }
 
+type ArcValueParts = (Point, Point, Point, Option<Point>, bool, bool);
+
 fn expect_arc(
     op: &'static str,
     parents: &[&ObjectValue],
     index: usize,
-) -> Result<(Point, Point, Point, Option<Point>, bool, bool), ObjectOpError> {
+) -> Result<ArcValueParts, ObjectOpError> {
     match parents.get(index).copied() {
         Some(ObjectValue::Arc {
             start,
@@ -2914,141 +2931,126 @@ fn expect_arc(
     }
 }
 
-fn translate(point: Point, vector_start: Point, vector_end: Point) -> Point {
-    Point {
-        x: point.x + vector_end.x - vector_start.x,
-        y: point.y + vector_end.y - vector_start.y,
-    }
-}
-
-fn transform_object(
-    op: &'static str,
-    transform: ObjectTransform,
-    parents: &[&ObjectValue],
-) -> Result<ObjectValue, ObjectOpError> {
-    match transform {
-        ObjectTransform::TranslateDelta { dx, dy } => {
-            expect_arity(op, parents, 1)?;
-            transform_shape(op, parents[0], |point| {
-                Some(Point {
-                    x: point.x + dx,
-                    y: point.y + dy,
-                })
-            })
+fn matrix_value(matrix: MatrixOp, parents: &[&ObjectValue]) -> Result<ObjectValue, ObjectOpError> {
+    let op = "matrix";
+    let matrix = match matrix {
+        MatrixOp::TranslateDelta { dx, dy } => {
+            expect_arity(op, parents, 0)?;
+            AffineMatrix::translation(dx, dy)
         }
-        ObjectTransform::TranslateByVector => {
-            expect_arity(op, parents, 3)?;
-            let vector_start = expect_point(op, parents, 1)?;
-            let vector_end = expect_point(op, parents, 2)?;
-            transform_shape(op, parents[0], |point| {
-                Some(translate(point, vector_start, vector_end))
-            })
-        }
-        ObjectTransform::TranslateByScalars => {
-            expect_arity(op, parents, 3)?;
-            let dx = expect_scalar(op, parents, 1)?;
-            let dy = expect_scalar(op, parents, 2)?;
-            transform_shape(op, parents[0], |point| {
-                Some(Point {
-                    x: point.x + dx,
-                    y: point.y + dy,
-                })
-            })
-        }
-        ObjectTransform::TranslateScaledScalar { x_scale, y_scale } => {
+        MatrixOp::TranslateByVector => {
             expect_arity(op, parents, 2)?;
-            let distance = expect_scalar(op, parents, 1)?;
-            transform_shape(op, parents[0], |point| {
-                Some(Point {
-                    x: point.x + distance * x_scale,
-                    y: point.y + distance * y_scale,
-                })
-            })
+            let start = expect_point(op, parents, 0)?;
+            let end = expect_point(op, parents, 1)?;
+            AffineMatrix::translation(end.x - start.x, end.y - start.y)
         }
-        ObjectTransform::TranslatePolar {
+        MatrixOp::TranslateByScalars => {
+            expect_arity(op, parents, 2)?;
+            AffineMatrix::translation(
+                expect_scalar(op, parents, 0)?,
+                expect_scalar(op, parents, 1)?,
+            )
+        }
+        MatrixOp::TranslateScaledScalar { x_scale, y_scale } => {
+            expect_arity(op, parents, 1)?;
+            let distance = expect_scalar(op, parents, 0)?;
+            AffineMatrix::translation(distance * x_scale, distance * y_scale)
+        }
+        MatrixOp::TranslatePolar {
             invert_y,
             distance_scale,
             angle_degrees_scale,
         } => {
-            expect_arity(op, parents, 3)?;
-            let distance = expect_scalar(op, parents, 1)? * distance_scale;
-            let angle = (expect_scalar(op, parents, 2)? * angle_degrees_scale).to_radians();
-            let dy = distance * angle.sin() * if invert_y { -1.0 } else { 1.0 };
-            let dx = distance * angle.cos();
-            transform_shape(op, parents[0], |point| {
-                Some(Point {
-                    x: point.x + dx,
-                    y: point.y + dy,
-                })
-            })
-        }
-        ObjectTransform::ReflectByLine => {
             expect_arity(op, parents, 2)?;
-            let (_, line_start, line_end) = expect_line(op, parents, 1)?;
-            transform_shape(op, parents[0], |point| {
-                reflect_across_line(point, line_start, line_end)
-            })
+            let distance = expect_scalar(op, parents, 0)? * distance_scale;
+            let angle = (expect_scalar(op, parents, 1)? * angle_degrees_scale).to_radians();
+            AffineMatrix::translation(
+                distance * angle.cos(),
+                distance * angle.sin() * if invert_y { -1.0 } else { 1.0 },
+            )
         }
-        ObjectTransform::RotateRadians { radians } => {
+        MatrixOp::ReflectByLine => {
+            expect_arity(op, parents, 1)?;
+            let (_, start, end) = expect_line(op, parents, 0)?;
+            AffineMatrix::reflection(start, end).ok_or(ObjectOpError::Degenerate { op })?
+        }
+        MatrixOp::RotateRadians { radians } => {
+            expect_arity(op, parents, 1)?;
+            AffineMatrix::rotation(expect_point(op, parents, 0)?, radians)
+        }
+        MatrixOp::RotateDegrees => {
             expect_arity(op, parents, 2)?;
-            let center = expect_point(op, parents, 1)?;
-            transform_shape(op, parents[0], |point| {
-                Some(rotate_around(point, center, radians))
-            })
+            AffineMatrix::rotation(
+                expect_point(op, parents, 0)?,
+                expect_scalar(op, parents, 1)?.to_radians(),
+            )
         }
-        ObjectTransform::RotateDegrees => {
-            expect_arity(op, parents, 3)?;
-            let center = expect_point(op, parents, 1)?;
-            let radians = expect_scalar(op, parents, 2)?.to_radians();
-            transform_shape(op, parents[0], |point| {
-                Some(rotate_around(point, center, radians))
-            })
+        MatrixOp::Scale { factor } => {
+            expect_arity(op, parents, 1)?;
+            AffineMatrix::scale(expect_point(op, parents, 0)?, factor)
         }
-        ObjectTransform::Scale { factor } => {
+        MatrixOp::ScaleByScalar => {
             expect_arity(op, parents, 2)?;
-            let center = expect_point(op, parents, 1)?;
-            transform_shape(op, parents[0], |point| {
-                Some(scale_around(point, center, factor))
-            })
+            AffineMatrix::scale(
+                expect_point(op, parents, 0)?,
+                expect_scalar(op, parents, 1)?,
+            )
         }
-        ObjectTransform::ScaleByScalar => {
-            expect_arity(op, parents, 3)?;
-            let center = expect_point(op, parents, 1)?;
-            let factor = expect_scalar(op, parents, 2)?;
-            transform_shape(op, parents[0], |point| {
-                Some(scale_around(point, center, factor))
-            })
-        }
-        ObjectTransform::ScaleByRatio {
+        MatrixOp::ScaleByRatio {
             signed,
             clamp_to_unit,
         } => {
-            expect_arity(op, parents, 5)?;
-            let center = expect_point(op, parents, 1)?;
-            let ratio_origin = expect_point(op, parents, 2)?;
-            let ratio_denominator = expect_point(op, parents, 3)?;
-            let ratio_numerator = expect_point(op, parents, 4)?;
-            transform_shape(op, parents[0], |point| {
-                scale_by_three_point_ratio(
-                    point,
-                    center,
-                    ratio_origin,
-                    ratio_denominator,
-                    ratio_numerator,
-                    signed,
-                    clamp_to_unit,
-                )
-            })
+            expect_arity(op, parents, 4)?;
+            let center = expect_point(op, parents, 0)?;
+            let factor = three_point_scale_factor(
+                expect_point(op, parents, 1)?,
+                expect_point(op, parents, 2)?,
+                expect_point(op, parents, 3)?,
+                signed,
+                clamp_to_unit,
+            )
+            .ok_or(ObjectOpError::Degenerate { op })?;
+            AffineMatrix::scale(center, factor)
         }
+    };
+    Ok(ObjectValue::Matrix { matrix })
+}
+
+fn apply_matrices(parents: &[&ObjectValue]) -> Result<ObjectValue, ObjectOpError> {
+    let op = "apply-matrices";
+    if parents.len() < 2 {
+        return Err(ObjectOpError::WrongArity {
+            op,
+            expected: 2,
+            actual: parents.len(),
+        });
+    }
+    let matrix = parents[1..]
+        .iter()
+        .enumerate()
+        .try_fold(AffineMatrix::IDENTITY, |combined, (index, value)| {
+            Ok(combined.then(expect_matrix(op, value, index + 1)?))
+        })?;
+    transform_shape(op, parents[0], matrix)
+}
+
+fn expect_matrix(
+    op: &'static str,
+    value: &ObjectValue,
+    parent: usize,
+) -> Result<AffineMatrix, ObjectOpError> {
+    match value {
+        ObjectValue::Matrix { matrix } => Ok(*matrix),
+        _ => Err(ObjectOpError::ExpectedMatrix { op, parent }),
     }
 }
 
 fn transform_shape(
     op: &'static str,
     value: &ObjectValue,
-    transform: impl Fn(Point) -> Option<Point>,
+    matrix: AffineMatrix,
 ) -> Result<ObjectValue, ObjectOpError> {
-    let map_point = |point| transform(point).ok_or(ObjectOpError::Degenerate { op });
+    let map_point = |point| Ok(matrix.apply(point));
     match value {
         ObjectValue::Undefined => Ok(ObjectValue::Undefined),
         ObjectValue::Point { .. } => Ok(ObjectValue::point(map_point(
@@ -3084,7 +3086,7 @@ fn transform_shape(
             mid: map_point(*mid)?,
             end: map_point(*end)?,
             center: center.map(map_point).transpose()?,
-            counterclockwise: *counterclockwise,
+            counterclockwise: *counterclockwise ^ (matrix.determinant() < 0.0),
             complement: *complement,
         }),
         ObjectValue::Points { points } => Ok(ObjectValue::Points {
@@ -3135,15 +3137,29 @@ fn transform_shape(
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         }),
-        ObjectValue::Scalar { .. } | ObjectValue::Color { .. } | ObjectValue::Text { .. } => {
-            Err(ObjectOpError::ExpectedShape { op, parent: 0 })
-        }
+        ObjectValue::Scalar { .. }
+        | ObjectValue::Color { .. }
+        | ObjectValue::Text { .. }
+        | ObjectValue::Matrix { .. } => Err(ObjectOpError::ExpectedShape { op, parent: 0 }),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn transformed(
+        source: &ObjectValue,
+        matrix: MatrixOp,
+        matrix_parents: &[&ObjectValue],
+    ) -> ObjectValue {
+        let matrix = BuiltinOperationTable
+            .evaluate("matrix", &ObjectOp::Matrix { matrix }, matrix_parents)
+            .unwrap();
+        BuiltinOperationTable
+            .evaluate("apply", &ObjectOp::ApplyMatrices, &[source, &matrix])
+            .unwrap()
+    }
 
     #[test]
     fn directed_angle_anchor_is_derived_from_all_four_point_parents() {
@@ -3252,11 +3268,16 @@ mod tests {
                 ["axis-start", "axis-end"],
             ),
             ObjectNode::derived(
-                "reflected",
-                ObjectOp::TransformObject {
-                    transform: ObjectTransform::ReflectByLine,
+                "reflection-matrix",
+                ObjectOp::Matrix {
+                    matrix: MatrixOp::ReflectByLine,
                 },
-                ["midpoint", "axis"],
+                ["axis"],
+            ),
+            ObjectNode::derived(
+                "reflected",
+                ObjectOp::ApplyMatrices,
+                ["midpoint", "reflection-matrix"],
             ),
             ObjectNode::derived(
                 "segment",
@@ -3312,42 +3333,14 @@ mod tests {
         };
 
         let transformed_lines = [
-            BuiltinOperationTable
-                .evaluate(
-                    "translate",
-                    &ObjectOp::TransformObject {
-                        transform: ObjectTransform::TranslateByVector,
-                    },
-                    &[&segment, &origin, &vector_end],
-                )
-                .unwrap(),
-            BuiltinOperationTable
-                .evaluate(
-                    "rotate",
-                    &ObjectOp::TransformObject {
-                        transform: ObjectTransform::RotateDegrees,
-                    },
-                    &[&segment, &origin, &degrees],
-                )
-                .unwrap(),
-            BuiltinOperationTable
-                .evaluate(
-                    "reflect",
-                    &ObjectOp::TransformObject {
-                        transform: ObjectTransform::ReflectByLine,
-                    },
-                    &[&segment, &axis],
-                )
-                .unwrap(),
-            BuiltinOperationTable
-                .evaluate(
-                    "scale",
-                    &ObjectOp::TransformObject {
-                        transform: ObjectTransform::Scale { factor: 2.0 },
-                    },
-                    &[&segment, &origin],
-                )
-                .unwrap(),
+            transformed(
+                &segment,
+                MatrixOp::TranslateByVector,
+                &[&origin, &vector_end],
+            ),
+            transformed(&segment, MatrixOp::RotateDegrees, &[&origin, &degrees]),
+            transformed(&segment, MatrixOp::ReflectByLine, &[&axis]),
+            transformed(&segment, MatrixOp::Scale { factor: 2.0 }, &[&origin]),
         ];
 
         for line in transformed_lines {
@@ -3373,15 +3366,8 @@ mod tests {
                 start: Point { x: 0.0, y: 0.0 },
                 end: Point { x: 1.0, y: 0.0 },
             };
-            let transformed = BuiltinOperationTable
-                .evaluate(
-                    "translate-line-like",
-                    &ObjectOp::TransformObject {
-                        transform: ObjectTransform::TranslateDelta { dx: 1.0, dy: 2.0 },
-                    },
-                    &[&line],
-                )
-                .unwrap();
+            let transformed =
+                transformed(&line, MatrixOp::TranslateDelta { dx: 1.0, dy: 2.0 }, &[]);
             assert!(matches!(
                 transformed,
                 ObjectValue::Line {
@@ -3395,15 +3381,7 @@ mod tests {
             center: Point { x: 0.0, y: 0.0 },
             radius_point: Point { x: 2.0, y: 0.0 },
         };
-        let scaled_circle = BuiltinOperationTable
-            .evaluate(
-                "scale-circle",
-                &ObjectOp::TransformObject {
-                    transform: ObjectTransform::Scale { factor: 2.0 },
-                },
-                &[&circle, &origin],
-            )
-            .unwrap();
+        let scaled_circle = transformed(&circle, MatrixOp::Scale { factor: 2.0 }, &[&origin]);
         assert!(matches!(scaled_circle, ObjectValue::Circle { .. }));
         assert_eq!(
             BuiltinOperationTable
@@ -3420,15 +3398,7 @@ mod tests {
             counterclockwise: true,
             complement: false,
         };
-        let translated_arc = BuiltinOperationTable
-            .evaluate(
-                "translate-arc",
-                &ObjectOp::TransformObject {
-                    transform: ObjectTransform::TranslateDelta { dx: 2.0, dy: 3.0 },
-                },
-                &[&arc],
-            )
-            .unwrap();
+        let translated_arc = transformed(&arc, MatrixOp::TranslateDelta { dx: 2.0, dy: 3.0 }, &[]);
         assert!(matches!(translated_arc, ObjectValue::Arc { .. }));
         let ObjectValue::Scalar { value: arc_length } = BuiltinOperationTable
             .evaluate("arc-length", &ObjectOp::ArcLength, &[&translated_arc])
@@ -3442,17 +3412,67 @@ mod tests {
             polygons: vec![vec![Point { x: 0.0, y: 0.0 }, Point { x: 1.0, y: 0.0 }]],
         };
         assert!(matches!(
-            BuiltinOperationTable
-                .evaluate(
-                    "translate-polygons",
-                    &ObjectOp::TransformObject {
-                        transform: ObjectTransform::TranslateDelta { dx: 1.0, dy: 2.0 },
-                    },
-                    &[&polygons],
-                )
-                .unwrap(),
+            transformed(
+                &polygons,
+                MatrixOp::TranslateDelta { dx: 1.0, dy: 2.0 },
+                &[],
+            ),
             ObjectValue::Polygons { .. }
         ));
+    }
+
+    #[test]
+    fn matrix_apply_list_composes_in_payload_order_and_tracks_arc_orientation() {
+        let translate = BuiltinOperationTable
+            .evaluate(
+                "translate-matrix",
+                &ObjectOp::Matrix {
+                    matrix: MatrixOp::TranslateDelta { dx: 2.0, dy: 0.0 },
+                },
+                &[],
+            )
+            .unwrap();
+        let axis = ObjectValue::Line {
+            line_kind: LineKind::Line,
+            start: Point { x: 0.0, y: -1.0 },
+            end: Point { x: 0.0, y: 1.0 },
+        };
+        let reflect = BuiltinOperationTable
+            .evaluate(
+                "reflection-matrix",
+                &ObjectOp::Matrix {
+                    matrix: MatrixOp::ReflectByLine,
+                },
+                &[&axis],
+            )
+            .unwrap();
+        let arc = ObjectValue::Arc {
+            start: Point { x: 1.0, y: 0.0 },
+            mid: Point { x: 0.0, y: 1.0 },
+            end: Point { x: -1.0, y: 0.0 },
+            center: Some(Point { x: 0.0, y: 0.0 }),
+            counterclockwise: true,
+            complement: false,
+        };
+
+        let transformed = BuiltinOperationTable
+            .evaluate(
+                "apply-list",
+                &ObjectOp::ApplyMatrices,
+                &[&arc, &translate, &reflect],
+            )
+            .unwrap();
+        assert_eq!(
+            transformed,
+            ObjectValue::Arc {
+                start: Point { x: -3.0, y: 0.0 },
+                mid: Point { x: -2.0, y: 1.0 },
+                end: Point { x: -1.0, y: 0.0 },
+                center: Some(Point { x: -2.0, y: 0.0 }),
+                counterclockwise: false,
+                complement: false,
+            }
+        );
     }
 
     #[test]
@@ -3600,19 +3620,15 @@ mod tests {
         let source = ObjectValue::point(Point { x: 2.0, y: 3.0 });
         let distance = ObjectValue::Scalar { value: 4.0 };
         let angle = ObjectValue::Scalar { value: 45.0 };
-        let point = BuiltinOperationTable
-            .evaluate(
-                "polar-offset",
-                &ObjectOp::TransformObject {
-                    transform: ObjectTransform::TranslatePolar {
-                        invert_y: false,
-                        distance_scale: 0.5,
-                        angle_degrees_scale: 2.0,
-                    },
-                },
-                &[&source, &distance, &angle],
-            )
-            .unwrap();
+        let point = transformed(
+            &source,
+            MatrixOp::TranslatePolar {
+                invert_y: false,
+                distance_scale: 0.5,
+                angle_degrees_scale: 2.0,
+            },
+            &[&distance, &angle],
+        );
         let ObjectValue::Point { x, y } = point else {
             panic!("polar offset must return a point");
         };

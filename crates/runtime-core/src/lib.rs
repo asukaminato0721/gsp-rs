@@ -1,5 +1,6 @@
 //! Canonical mathematical semantics shared by the native parser and browser runtime.
 
+mod affine;
 mod dependency;
 mod geometry;
 pub mod object_graph;
@@ -7,6 +8,7 @@ mod object_ops;
 mod point_transform;
 mod scene_math;
 
+pub use affine::AffineMatrix;
 pub use dependency::{DependencyNodeInput, DependencyPlan, DependencyPlanError};
 
 pub use geometry::{
@@ -20,9 +22,9 @@ pub use geometry::{
     scale_by_three_point_ratio, three_point_arc_geometry,
 };
 pub use object_ops::{
-    AffineTargetHandle, BuiltinOperationTable, CurveOp, CustomTransformProgram, ObjectCircle,
-    ObjectExpression, ObjectGraphEvaluationInput, ObjectIterationProgram, ObjectNodeValue,
-    ObjectOp, ObjectOpError, ObjectProgram, ObjectSourceValue, ObjectTransform, ObjectValue,
+    AffineTargetHandle, BuiltinOperationTable, CurveOp, CustomTransformProgram, MatrixOp,
+    ObjectCircle, ObjectExpression, ObjectGraphEvaluationInput, ObjectIterationProgram,
+    ObjectNodeValue, ObjectOp, ObjectOpError, ObjectProgram, ObjectSourceValue, ObjectValue,
     TraceDriver, evaluate_object_graph_json,
 };
 pub use point_transform::inverse_point_transform_json;

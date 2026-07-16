@@ -67,15 +67,15 @@ test('payload-defined rotate expressions stay live in the browser runtime', asyn
     const scene = window.gspDebug.runtime.scene;
     const pointIndex = scene.points.findIndex((point: any) =>
       point.binding?.kind === 'derived'
-      && point.binding?.transform?.kind === 'rotate'
-      && point.binding.transform.angleExpr?.kind === 'parsed',
+      && point.binding?.matrixApply?.[0]?.kind === 'rotate'
+      && point.binding.matrixApply[0].angleExpr?.kind === 'parsed',
     );
     if (pointIndex < 0) {
       return null;
     }
     const point = scene.points[pointIndex] as any;
     return {
-      hasExpression: point.binding.transform.angleExpr?.kind === 'parsed',
+      hasExpression: point.binding.matrixApply[0].angleExpr?.kind === 'parsed',
       draggable: point.draggable,
     };
   });
@@ -221,20 +221,20 @@ test('triangle angle sum measured-angle rotation updates dependent geometry', as
     return {
       hasMeasuredAngleRotate:
         before.rotatedBinding?.kind === 'derived'
-        && before.rotatedBinding?.transform?.kind === 'rotate'
-        && typeof before.rotatedBinding.transform.angleStartIndex === 'number'
-        && typeof before.rotatedBinding.transform.angleVertexIndex === 'number'
-        && typeof before.rotatedBinding.transform.angleEndIndex === 'number',
+        && before.rotatedBinding?.matrixApply?.[0]?.kind === 'rotate'
+        && typeof before.rotatedBinding.matrixApply[0].angleStartIndex === 'number'
+        && typeof before.rotatedBinding.matrixApply[0].angleVertexIndex === 'number'
+        && typeof before.rotatedBinding.matrixApply[0].angleEndIndex === 'number',
       hasMeasuredRadiusIntersection:
         before.intersectionConstraint?.kind === 'line-circular-intersection'
         && before.intersectionConstraint?.circle?.kind === 'segment-radius-circle',
       hasMeasuredAngleRotatedBc:
         before.rotatedBcVisible === true
         && before.rotatedBcBinding?.kind === 'derived'
-        && before.rotatedBcBinding?.transform?.kind === 'rotate'
-        && typeof before.rotatedBcBinding.transform.angleStartIndex === 'number'
-        && typeof before.rotatedBcBinding.transform.angleVertexIndex === 'number'
-        && typeof before.rotatedBcBinding.transform.angleEndIndex === 'number',
+        && before.rotatedBcBinding?.matrixApply?.[0]?.kind === 'rotate'
+        && typeof before.rotatedBcBinding.matrixApply[0].angleStartIndex === 'number'
+        && typeof before.rotatedBcBinding.matrixApply[0].angleVertexIndex === 'number'
+        && typeof before.rotatedBcBinding.matrixApply[0].angleEndIndex === 'number',
       rotatedDelta: moved(before.rotated, after.rotated),
       intersectionDelta: moved(before.intersection, after.intersection),
       markerDelta: Math.max(
@@ -561,8 +561,8 @@ test('angle-marker class payload renders bug fixture without path explosion', as
             {
               x: point.x,
               y: point.y,
-              bindingKind: point.binding?.transform?.kind ?? null,
-              factor: point.binding?.transform?.factor ?? null,
+              bindingKind: point.binding?.matrixApply?.[0]?.kind ?? null,
+              factor: point.binding?.matrixApply?.[0]?.factor ?? null,
             },
           ]),
       ),
@@ -665,8 +665,8 @@ test('three-moving-point fixture keeps measured rotation and move buttons live',
   expect(before.arcOperation).toBe('center-arc');
   expect(before.parameter?.value).toBeCloseTo(60, 6);
   expect(before.parameter?.unit).toBe('degree');
-  expect(before.cPoint?.binding?.transform?.kind).toBe('rotate');
-  expect(before.cPoint?.binding?.transform?.parameterName).toBe('t₁');
+  expect(before.cPoint?.binding?.matrixApply?.[0]?.kind).toBe('rotate');
+  expect(before.cPoint?.binding?.matrixApply?.[0]?.parameterName).toBe('t₁');
   expect(before.cPoint?.x).toBeCloseTo(673.4418668596801, 6);
   expect(before.cPoint?.y).toBeCloseTo(608.7880361833353, 6);
   expect(before.moveButtonOrdinals).toEqual([39, 42, 43]);

@@ -442,7 +442,7 @@
     const parameters = modules.dynamics.parameterMapForScene?.(env, draft) ?? new Map<string, number>();
     const sourceWorld = window.GspRuntimeCore.inversePointTransform(
       world,
-      point.binding.transform,
+      point.binding.matrixApply,
       draft.points,
       parameters,
     );

@@ -51,8 +51,32 @@ fn transform_kind<'a>(scene: &'a Value, id: &str) -> Option<&'a str> {
     scene["objectGraph"]["nodes"]
         .as_array()?
         .iter()
-        .find(|node| node["id"] == id)?["definition"]["op"]["transform"]["kind"]
+        .find(|node| node["id"] == format!("matrix:{id}"))?["definition"]["op"]["matrix"]["kind"]
         .as_str()
+}
+
+fn assert_matrix_apply_parents(
+    scene: &Value,
+    id: &str,
+    source_id: &str,
+    matrix_parents: impl IntoIterator<Item = String>,
+) {
+    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
+    let node = |node_id: &str| {
+        nodes
+            .iter()
+            .find(|node| node["id"] == node_id)
+            .unwrap_or_else(|| panic!("missing object graph node {node_id}"))
+    };
+    let matrix_id = format!("matrix:{id}");
+    assert_eq!(
+        node(id)["definition"]["parents"],
+        serde_json::json!([source_id, matrix_id])
+    );
+    assert_eq!(
+        node(&matrix_id)["definition"]["parents"],
+        serde_json::json!(matrix_parents.into_iter().collect::<Vec<_>>())
+    );
 }
 
 fn evaluate_scene_object_graph(scene: &Value) -> Vec<ObjectNodeValue> {
@@ -168,7 +192,7 @@ fn quadrilateral_rolling_uses_rotation_scalars_and_translation_parents() {
         let point = object_id_for_group(&scene, "points", "point", ordinal);
         assert_eq!(
             operation_kind(&scene, &point),
-            Some("transform-object"),
+            Some("apply-matrices"),
             "rotation point #{ordinal}"
         );
     }
@@ -176,7 +200,7 @@ fn quadrilateral_rolling_uses_rotation_scalars_and_translation_parents() {
         let point = object_id_for_group(&scene, "points", "point", ordinal);
         assert_eq!(
             operation_kind(&scene, &point),
-            Some("transform-object"),
+            Some("apply-matrices"),
             "translation point #{ordinal}"
         );
     }
@@ -274,10 +298,7 @@ fn walking_person_coordinate_expression_keeps_all_payload_scalar_parents() {
     let coordinate = point(24);
     let intersection = point(29);
     let final_intersection = point(98);
-    assert_eq!(
-        operation_kind(&scene, &coordinate),
-        Some("transform-object")
-    );
+    assert_eq!(operation_kind(&scene, &coordinate), Some("apply-matrices"));
     assert_eq!(
         operation_kind(&scene, &intersection),
         Some("line-intersection")
@@ -326,7 +347,7 @@ fn parameter_coordinate_feeds_isochronous_circle_intersections() {
         serde_json::json!([])
     );
     let point = |ordinal| object_id_for_group(&scene, "points", "point", ordinal);
-    assert_eq!(operation_kind(&scene, &point(4)), Some("transform-object"));
+    assert_eq!(operation_kind(&scene, &point(4)), Some("apply-matrices"));
     assert_eq!(
         operation_kind(&scene, &point(10)),
         Some("line-circle-intersection")
@@ -358,7 +379,7 @@ fn fixed_translated_line_keeps_running_person_table_driven() {
     let point = |ordinal| object_id_for_group(&scene, "points", "point", ordinal);
     assert_eq!(operation_kind(&scene, &point(42)), Some("point-on-line"));
     assert_eq!(operation_kind(&scene, &point(49)), Some("point-on-line"));
-    assert_eq!(operation_kind(&scene, &point(45)), Some("transform-object"));
+    assert_eq!(operation_kind(&scene, &point(45)), Some("apply-matrices"));
     assert_eq!(
         operation_kind(&scene, &point(124)),
         Some("circle-circle-intersection")
@@ -495,13 +516,12 @@ fn projected_coordinate_points_keep_mixed_payload_parents_and_feed_translations(
         (83, 60),
     ] {
         let translated = point(translated_ordinal);
-        assert_eq!(
-            operation_kind(&scene, &translated),
-            Some("transform-object")
-        );
-        assert_eq!(
-            node(&translated)["definition"]["parents"],
-            serde_json::json!([point(source_ordinal), point(54), point(52)])
+        assert_eq!(operation_kind(&scene, &translated), Some("apply-matrices"));
+        assert_matrix_apply_parents(
+            &scene,
+            &translated,
+            &point(source_ordinal),
+            [point(54), point(52)],
         );
     }
 }
@@ -576,7 +596,7 @@ fn fraction_arc_keeps_its_symbolic_rotation_parent_chain() {
 
     for ordinal in [92, 94] {
         let rotated = point(ordinal);
-        assert_eq!(operation_kind(&scene, &rotated), Some("transform-object"));
+        assert_eq!(operation_kind(&scene, &rotated), Some("apply-matrices"));
         let angle = format!("scalar:{rotated}:rotation-degrees");
         assert_eq!(operation_kind(&scene, &angle), Some("evaluate-expression"));
         assert_eq!(
@@ -613,7 +633,7 @@ fn arbitrary_sector_arc_uses_the_arc_measurement_scalar_program() {
     let angle = format!("scalar:{measured_rotation}:rotation-degrees");
     assert_eq!(
         operation_kind(&scene, &measured_rotation),
-        Some("transform-object")
+        Some("apply-matrices")
     );
     assert_eq!(operation_kind(&scene, &angle), Some("evaluate-expression"));
     assert_eq!(
@@ -650,7 +670,7 @@ fn sliding_polygon_circular_trace_chain_is_table_driven() {
         intersection_node["definition"]["parents"],
         serde_json::json!([format!("domain:{intersection}:circle"), trace])
     );
-    assert_eq!(operation_kind(scene, &translated), Some("transform-object"));
+    assert_eq!(operation_kind(scene, &translated), Some("apply-matrices"));
     assert_eq!(operation_kind(scene, &traced), Some("point-trace"));
     assert_eq!(scene["objectGraph"]["geometryComplete"], true);
     assert_eq!(
@@ -698,7 +718,7 @@ fn ellipse_trace_intersection_chain_is_table_driven() {
     let first_intersection = object_id_for_group(&scene, "points", "point", 119);
     let arc_intersection = object_id_for_group(&scene, "points", "point", 138);
     let undefined_initial_scale = object_id_for_group(&scene, "points", "point", 162);
-    assert_eq!(operation_kind(&scene, &rotation), Some("transform-object"));
+    assert_eq!(operation_kind(&scene, &rotation), Some("apply-matrices"));
     assert_eq!(
         operation_kind(&scene, &first_intersection),
         Some("line-polyline-intersection")
@@ -709,7 +729,7 @@ fn ellipse_trace_intersection_chain_is_table_driven() {
     );
     assert_eq!(
         operation_kind(&scene, &undefined_initial_scale),
-        Some("transform-object")
+        Some("apply-matrices")
     );
 
     let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
@@ -861,11 +881,8 @@ fn parameter_angle_expression_keeps_the_refraction_intersection_live() {
     let refractive_index = object_id_for_group(&scene, "labels", "scalar:label", 18);
     let angle = format!("scalar:{rotated}:rotation-degrees");
 
-    assert_eq!(operation_kind(&scene, &rotated), Some("transform-object"));
-    assert_eq!(
-        operation_kind(&scene, &translated),
-        Some("transform-object")
-    );
+    assert_eq!(operation_kind(&scene, &rotated), Some("apply-matrices"));
+    assert_eq!(operation_kind(&scene, &translated), Some("apply-matrices"));
     assert_eq!(
         operation_kind(&scene, &intersection),
         Some("line-circle-intersection")
@@ -876,16 +893,8 @@ fn parameter_angle_expression_keeps_the_refraction_intersection_live() {
         angle_node["definition"]["parents"],
         serde_json::json!([refractive_index])
     );
-    let rotated_node = nodes.iter().find(|node| node["id"] == rotated).unwrap();
-    assert_eq!(
-        rotated_node["definition"]["parents"],
-        serde_json::json!([source, center, angle])
-    );
-    let translated_node = nodes.iter().find(|node| node["id"] == translated).unwrap();
-    assert_eq!(
-        translated_node["definition"]["parents"],
-        serde_json::json!([translated_source, rotated, center])
-    );
+    assert_matrix_apply_parents(&scene, &rotated, &source, [center.clone(), angle.clone()]);
+    assert_matrix_apply_parents(&scene, &translated, &translated_source, [rotated, center]);
 }
 
 #[test]
@@ -904,7 +913,7 @@ fn nested_measurements_drive_rotation_trace_and_controlled_point() {
     let controlled_trace_point = object_id_for_group(scene, "points", "point", 85);
     assert_eq!(
         operation_kind(scene, &parameter_rotation),
-        Some("transform-object")
+        Some("apply-matrices")
     );
     assert_eq!(
         operation_kind(scene, &linear_intersection),
@@ -912,11 +921,11 @@ fn nested_measurements_drive_rotation_trace_and_controlled_point() {
     );
     assert_eq!(
         operation_kind(scene, &first_expression_rotation),
-        Some("transform-object")
+        Some("apply-matrices")
     );
     assert_eq!(
         operation_kind(scene, &second_expression_rotation),
-        Some("transform-object")
+        Some("apply-matrices")
     );
     assert_eq!(
         operation_kind(scene, &controlled_trace_point),
@@ -954,7 +963,7 @@ fn angle_rotated_segment_intersects_legacy_radius_circle() {
 
     let line_id = format!("domain:{intersection}:line");
     let circle_id = format!("domain:{intersection}:circle");
-    assert_eq!(operation_kind(scene, &line_id), Some("transform-object"));
+    assert_eq!(operation_kind(scene, &line_id), Some("apply-matrices"));
     assert_eq!(transform_kind(scene, &line_id), Some("rotate-degrees"));
     assert_eq!(
         operation_kind(scene, &circle_id),
@@ -991,7 +1000,7 @@ fn legacy_coordinate_helpers_keep_piecewise_star_intersections_live() {
 
     let helper = object_id_for_group(&scene, "points", "point", 245);
     let intersection = object_id_for_group(&scene, "points", "point", 248);
-    assert_eq!(operation_kind(&scene, &helper), Some("transform-object"));
+    assert_eq!(operation_kind(&scene, &helper), Some("apply-matrices"));
     assert_eq!(
         operation_kind(&scene, &intersection),
         Some("line-circle-intersection")
@@ -1145,16 +1154,8 @@ fn coordinate_value_parent_drives_the_payload_vector_translation() {
     let translated = object_id_for_group(scene, "points", "point", 252);
     let source = object_id_for_group(scene, "points", "point", 251);
     let vector_start = object_id_for_group(scene, "points", "point", 1);
-    assert_eq!(operation_kind(scene, &translated), Some("transform-object"));
-    let node = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == translated)
-        .unwrap();
-    assert_eq!(node["definition"]["parents"][0], source);
-    assert_eq!(node["definition"]["parents"][1], vector_start);
-    assert_eq!(node["definition"]["parents"][2], source);
+    assert_eq!(operation_kind(scene, &translated), Some("apply-matrices"));
+    assert_matrix_apply_parents(scene, &translated, &source, [vector_start, source.clone()]);
 }
 
 #[test]
@@ -1167,10 +1168,10 @@ fn coordinate_expression_parameter_drives_the_full_hebei_construction() {
     );
 
     for (ordinal, kind) in [
-        (4, "transform-object"),
+        (4, "apply-matrices"),
         (20, "point-on-line"),
         (23, "point-on-polygon-boundary"),
-        (24, "transform-object"),
+        (24, "apply-matrices"),
         (33, "line-intersection"),
         (34, "line-intersection"),
     ] {
@@ -1214,7 +1215,7 @@ fn directed_angle_anchor_and_reflected_arc_are_fully_table_driven() {
     let reflected_arc_id = object_id_for_group(&scene, "arcs", "arc", 61);
     assert_eq!(
         operation_kind(&scene, &reflected_arc_id),
-        Some("transform-object")
+        Some("apply-matrices")
     );
     assert_eq!(
         transform_kind(&scene, &reflected_arc_id),
@@ -1228,7 +1229,7 @@ fn directed_angle_anchor_and_reflected_arc_are_fully_table_driven() {
     );
     assert_eq!(
         operation_kind(&scene, &format!("domain:{controlled_point_id}")),
-        Some("transform-object")
+        Some("apply-matrices")
     );
 
     let result_arc_id = object_id_for_group(&scene, "arcs", "arc", 72);
@@ -1269,7 +1270,7 @@ fn directed_angle_anchor_and_reflected_arc_are_fully_table_driven() {
     let expression_rotation_id = object_id_for_group(&scene, "points", "point", 68);
     assert_eq!(
         operation_kind(&scene, &expression_rotation_id),
-        Some("transform-object")
+        Some("apply-matrices")
     );
     let parameter_anchor_scalar_id = object_id_for_group(&scene, "labels", "scalar:label", 65);
     let rotation_scalar_id = format!("scalar:{expression_rotation_id}:rotation-degrees");
@@ -1307,7 +1308,7 @@ fn point_on_rotated_circle_drives_the_complete_gear_chain() {
     );
     assert_eq!(
         operation_kind(&scene, &format!("domain:{constrained_point_id}")),
-        Some("transform-object")
+        Some("apply-matrices")
     );
 
     let measured_radius_circle_id = object_id_for_group(&scene, "circles", "circle", 50);
@@ -1355,7 +1356,7 @@ fn polygon_boundary_intersection_drives_the_sphere_construction() {
 fn coordinate_trace_intersection_is_a_complete_typed_graph() {
     let scene = compile_fixture("tests/fixtures/gsp/insection/cood_intersection.gsp");
     assert_eq!(scene["objectGraph"]["geometryComplete"], true);
-    assert_eq!(operation_kind(&scene, "point:4"), Some("transform-object"));
+    assert_eq!(operation_kind(&scene, "point:4"), Some("apply-matrices"));
     assert_eq!(operation_kind(&scene, "line:2"), Some("coordinate-trace"));
     assert_eq!(
         operation_kind(&scene, "point:5"),
@@ -1577,7 +1578,7 @@ fn coordinate_point_uses_its_payload_scalar_objects_as_graph_parents() {
         coordinate_y_node["definition"]["parents"][0],
         format!("scalar:label:{polygon_area_label_index}")
     );
-    assert_eq!(point_node["definition"]["op"]["kind"], "transform-object");
+    assert_eq!(point_node["definition"]["op"]["kind"], "apply-matrices");
     let trace_id = object_id_for_group(&scene, "lines", "line", 464);
     assert_eq!(operation_kind(&scene, &trace_id), Some("point-trace"));
 }
@@ -1658,10 +1659,7 @@ fn boundary_length_endpoint_is_derived_from_its_live_arc() {
         serde_json::json!([])
     );
     let endpoint_id = object_id_for_group(&scene, "points", "point", 10);
-    assert_eq!(
-        operation_kind(&scene, &endpoint_id),
-        Some("transform-object")
-    );
+    assert_eq!(operation_kind(&scene, &endpoint_id), Some("apply-matrices"));
     assert_eq!(
         operation_kind(&scene, &format!("domain:{endpoint_id}:boundary-length")),
         Some("center-arc")
@@ -1833,12 +1831,12 @@ fn fixed_coordinate_root_keeps_heart_curve_transform_chain_table_driven() {
     let arc = object_id_for_group(&scene, "arcs", "arc", 22);
 
     for (id, op) in [
-        (&center, "transform-object"),
+        (&center, "apply-matrices"),
         (&circle_point, "point-on-circle"),
-        (&first_translation, "transform-object"),
-        (&second_translation, "transform-object"),
-        (&parameter_rotation, "transform-object"),
-        (&fixed_rotation, "transform-object"),
+        (&first_translation, "apply-matrices"),
+        (&second_translation, "apply-matrices"),
+        (&parameter_rotation, "apply-matrices"),
+        (&fixed_rotation, "apply-matrices"),
         (&arc_point, "point-on-arc"),
         (&arc, "center-arc"),
     ] {
@@ -1853,29 +1851,35 @@ fn fixed_coordinate_root_keeps_heart_curve_transform_chain_table_driven() {
             .find(|node| node["id"] == id)
             .unwrap_or_else(|| panic!("object graph node {id}"))
     };
-    assert_eq!(
-        node(&first_translation)["definition"]["parents"],
-        serde_json::json!([circle_point, center, circle_point])
+    assert_matrix_apply_parents(
+        &scene,
+        &first_translation,
+        &circle_point,
+        [center.clone(), circle_point.clone()],
     );
-    assert_eq!(
-        node(&second_translation)["definition"]["parents"],
-        serde_json::json!([origin, center, first_translation])
+    assert_matrix_apply_parents(
+        &scene,
+        &second_translation,
+        &origin,
+        [center.clone(), first_translation.clone()],
     );
-    assert_eq!(
-        node(&parameter_rotation)["definition"]["parents"],
-        serde_json::json!([
-            circle_point,
-            first_translation,
-            format!("scalar:{parameter_rotation}:rotation-degrees")
-        ])
+    assert_matrix_apply_parents(
+        &scene,
+        &parameter_rotation,
+        &circle_point,
+        [
+            first_translation.clone(),
+            format!("scalar:{parameter_rotation}:rotation-degrees"),
+        ],
     );
-    assert_eq!(
-        node(&fixed_rotation)["definition"]["parents"],
-        serde_json::json!([
-            parameter_rotation,
-            first_translation,
-            format!("scalar:{fixed_rotation}:rotation-degrees")
-        ])
+    assert_matrix_apply_parents(
+        &scene,
+        &fixed_rotation,
+        &parameter_rotation,
+        [
+            first_translation.clone(),
+            format!("scalar:{fixed_rotation}:rotation-degrees"),
+        ],
     );
     assert_eq!(
         node(&arc)["definition"]["parents"],
@@ -1901,24 +1905,10 @@ fn polygon_rolling_translation_and_trace_use_the_complete_parent_program() {
     let vector_end = object_id_for_group(&scene, "points", "point", 68);
     let translated = object_id_for_group(&scene, "points", "point", 74);
     let trace = object_id_for_group(&scene, "lines", "line", 75);
-    assert_eq!(
-        operation_kind(&scene, &translated),
-        Some("transform-object")
-    );
+    assert_eq!(operation_kind(&scene, &translated), Some("apply-matrices"));
     assert_eq!(operation_kind(&scene, &trace), Some("point-trace"));
 
-    let node = |id: &str| {
-        scene["objectGraph"]["nodes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("object graph node {id}"))
-    };
-    assert_eq!(
-        node(&translated)["definition"]["parents"],
-        serde_json::json!([source, vector_start, vector_end])
-    );
+    assert_matrix_apply_parents(&scene, &translated, &source, [vector_start, vector_end]);
     assert_eq!(
         operation(&scene, &trace).unwrap()["program"]["targetId"],
         translated
@@ -1970,12 +1960,12 @@ fn function_rotation_chain_keeps_its_center_arc_live() {
     assert_eq!(scene["objectGraph"]["geometryComplete"], true);
 
     let expected_point_ops = [
-        (18, "transform-object"),
-        (19, "transform-object"),
-        (20, "transform-object"),
-        (21, "transform-object"),
-        (40, "transform-object"),
-        (41, "transform-object"),
+        (18, "apply-matrices"),
+        (19, "apply-matrices"),
+        (20, "apply-matrices"),
+        (21, "apply-matrices"),
+        (40, "apply-matrices"),
+        (41, "apply-matrices"),
     ];
     for (ordinal, expected_op) in expected_point_ops {
         let id = object_id_for_group(&scene, "points", "point", ordinal);
@@ -2014,11 +2004,10 @@ fn circle_measurement_function_rotations_keep_center_arcs_table_driven() {
             .find(|node| node["id"] == id)
             .unwrap_or_else(|| panic!("missing object graph node {id}"))
     };
-
     for ordinal in [13, 15, 30] {
         assert_eq!(
             operation_kind(scene, &point(ordinal)),
-            Some("transform-object")
+            Some("apply-matrices")
         );
     }
     assert_eq!(operation_kind(scene, &point(17)), Some("point-on-arc"));
@@ -2090,7 +2079,6 @@ fn circle_measurement_function_rotations_keep_center_arcs_table_driven() {
             .find(|node| node["id"] == id)
             .unwrap_or_else(|| panic!("missing object graph node {id}"))
     };
-
     let circumference = "scalar:group:44";
     let radius = "scalar:group:44:radius";
     assert_eq!(operation_kind(scene, circumference), Some("scale-scalar"));
@@ -2101,12 +2089,12 @@ fn circle_measurement_function_rotations_keep_center_arcs_table_driven() {
     );
 
     for (ordinal, kind) in [
-        (46, "transform-object"),
+        (46, "apply-matrices"),
         (49, "point-on-arc"),
-        (55, "transform-object"),
-        (104, "transform-object"),
+        (55, "apply-matrices"),
+        (104, "apply-matrices"),
         (106, "point-on-arc"),
-        (111, "transform-object"),
+        (111, "apply-matrices"),
     ] {
         assert_eq!(operation_kind(scene, &point(ordinal)), Some(kind));
     }
@@ -2298,7 +2286,7 @@ fn points_on_reflected_and_rotated_rays_keep_arc_dependencies_live() {
     let rotated_point_id = object_id_for_group(&scene, "points", "point", 340);
     assert_eq!(
         operation_kind(&scene, &format!("domain:{rotated_point_id}")),
-        Some("transform-object")
+        Some("apply-matrices")
     );
     for ordinal in [84, 86, 347] {
         let arc_id = object_id_for_group(&scene, "arcs", "arc", ordinal);
@@ -2411,10 +2399,7 @@ fn repeated_line_collection_keeps_the_first_payload_object_index() {
     let scene = compile_fixture("tests/Samples/个人专栏/孙禄京作品/数轴上的π值演示.gsp");
     let source_id = object_id_for_group(&scene, "lines", "line", 98);
     let rotated_id = object_id_for_group(&scene, "lines", "line", 99);
-    assert_eq!(
-        operation_kind(&scene, &rotated_id),
-        Some("transform-object")
-    );
+    assert_eq!(operation_kind(&scene, &rotated_id), Some("apply-matrices"));
     let rotated = scene["objectGraph"]["nodes"]
         .as_array()
         .unwrap()
@@ -2443,10 +2428,7 @@ fn marked_distance_endpoint_depends_on_the_live_distance_measurement() {
     );
     let endpoint_id = object_id_for_group(&scene, "points", "point", 5);
     let distance_label_id = object_id_for_group(&scene, "labels", "scalar:label", 4);
-    assert_eq!(
-        operation_kind(&scene, &endpoint_id),
-        Some("transform-object")
-    );
+    assert_eq!(operation_kind(&scene, &endpoint_id), Some("apply-matrices"));
     let distance_id = format!("scalar:{endpoint_id}:distance");
     assert_eq!(
         operation_kind(&scene, &distance_id),
@@ -2592,7 +2574,7 @@ fn rolling_circle_all_pages_have_typed_arcs() {
     let rotated_endpoint = object_id_for_group(eighth, "points", "point", 156);
     assert_eq!(
         operation_kind(eighth, &rotated_endpoint),
-        Some("transform-object")
+        Some("apply-matrices")
     );
 }
 
@@ -2645,15 +2627,12 @@ fn hidden_offset_anchor_keeps_parameter_rotated_arc_live() {
     let constrained_id = object_id_for_group(&scene, "points", "point", 50);
     let rotated_id = object_id_for_group(&scene, "points", "point", 55);
     let arc_id = object_id_for_group(&scene, "arcs", "arc", 56);
-    assert_eq!(operation_kind(&scene, &anchor_id), Some("transform-object"));
+    assert_eq!(operation_kind(&scene, &anchor_id), Some("apply-matrices"));
     assert_eq!(
         operation_kind(&scene, &constrained_id),
         Some("point-on-line")
     );
-    assert_eq!(
-        operation_kind(&scene, &rotated_id),
-        Some("transform-object")
-    );
+    assert_eq!(operation_kind(&scene, &rotated_id), Some("apply-matrices"));
     assert_eq!(operation_kind(&scene, &arc_id), Some("center-arc"));
 }
 
@@ -2673,13 +2652,10 @@ fn trace_intersections_depend_on_the_payload_trace_object() {
 
     let rotation_id = object_id_for_group(scene, "points", "point", 22);
     let translation_id = object_id_for_group(scene, "points", "point", 23);
-    assert_eq!(
-        operation_kind(scene, &rotation_id),
-        Some("transform-object")
-    );
+    assert_eq!(operation_kind(scene, &rotation_id), Some("apply-matrices"));
     assert_eq!(
         operation_kind(scene, &translation_id),
-        Some("transform-object")
+        Some("apply-matrices")
     );
     let parameter_id = "scalar:group:19";
     assert_eq!(
@@ -2765,7 +2741,7 @@ fn rotor_expressions_with_the_same_display_name_use_exact_payload_parents() {
     let ray_parameter = object_id_for_group(&scene, "labels", "scalar:label", 10);
     assert_eq!(
         operation_kind(&scene, &scaled_point),
-        Some("transform-object")
+        Some("apply-matrices")
     );
     assert_eq!(
         node(&scale_scalar)["definition"]["parents"][0],
@@ -2794,21 +2770,13 @@ fn direct_polar_transform_drives_the_circle_arc_construction() {
     let arc = object_id_for_group(&scene, "arcs", "arc", 49);
     let distance = format!("scalar:{transformed}:distance");
     let angle = format!("scalar:{transformed}:angle");
-    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
-    let node = |id: &str| {
-        nodes
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("missing object graph node {id}"))
-    };
 
-    assert_eq!(
-        operation_kind(&scene, &transformed),
-        Some("transform-object")
-    );
-    assert_eq!(
-        node(&transformed)["definition"]["parents"],
-        serde_json::json!([source, distance, angle])
+    assert_eq!(operation_kind(&scene, &transformed), Some("apply-matrices"));
+    assert_matrix_apply_parents(
+        &scene,
+        &transformed,
+        &source,
+        [distance.clone(), angle.clone()],
     );
     assert_eq!(
         operation_kind(&scene, &distance),
@@ -2893,7 +2861,7 @@ fn clock_time_scalars_use_their_exact_arc_angle_parents() {
     let reflected_arc = object_id_for_group(&scene, "arcs", "arc", 355);
     assert_eq!(
         operation_kind(&scene, &reflected_arc),
-        Some("transform-object")
+        Some("apply-matrices")
     );
 
     let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
@@ -3035,18 +3003,9 @@ fn translated_point_uses_its_exact_payload_parent_chain() {
     let source = object_id_for_group(scene, "points", "point", 11);
     let vector_start = object_id_for_group(scene, "points", "point", 1);
     let vector_end = object_id_for_group(scene, "points", "point", 13);
-    assert_eq!(operation_kind(scene, &rotated), Some("transform-object"));
-    assert_eq!(operation_kind(scene, &translated), Some("transform-object"));
-    let translated_node = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == translated)
-        .expect("translated point graph node");
-    assert_eq!(
-        translated_node["definition"]["parents"],
-        serde_json::json!([rotated, vector_start, vector_end])
-    );
+    assert_eq!(operation_kind(scene, &rotated), Some("apply-matrices"));
+    assert_eq!(operation_kind(scene, &translated), Some("apply-matrices"));
+    assert_matrix_apply_parents(scene, &translated, &rotated, [vector_start, vector_end]);
     let rotated_node = scene["objectGraph"]["nodes"]
         .as_array()
         .unwrap()
@@ -3081,10 +3040,12 @@ fn half_sector_pages_keep_scale_translation_intersection_and_arc_programs() {
         };
 
         let scaled = point(6);
-        assert_eq!(operation_kind(scene, &scaled), Some("transform-object"));
-        assert_eq!(
-            node(&scaled)["definition"]["parents"],
-            serde_json::json!([point(4), point(1), format!("scalar:{scaled}:scale-factor")])
+        assert_eq!(operation_kind(scene, &scaled), Some("apply-matrices"));
+        assert_matrix_apply_parents(
+            scene,
+            &scaled,
+            &point(4),
+            [point(1), format!("scalar:{scaled}:scale-factor")],
         );
         let factor = format!("scalar:{scaled}:scale-factor");
         assert_eq!(operation_kind(scene, &factor), Some("evaluate-expression"));
@@ -3101,10 +3062,12 @@ fn half_sector_pages_keep_scale_translation_intersection_and_arc_programs() {
             [(7, 6, 4, 1), (16, 15, 1, 4), (17, 15, 4, 1)]
         {
             let translated = point(ordinal);
-            assert_eq!(operation_kind(scene, &translated), Some("transform-object"));
-            assert_eq!(
-                node(&translated)["definition"]["parents"],
-                serde_json::json!([point(source), point(vector_start), point(vector_end)])
+            assert_eq!(operation_kind(scene, &translated), Some("apply-matrices"));
+            assert_matrix_apply_parents(
+                scene,
+                &translated,
+                &point(source),
+                [point(vector_start), point(vector_end)],
             );
         }
 
@@ -3153,17 +3116,13 @@ fn vector_translated_circle_keeps_both_vector_points_as_graph_parents() {
         operation_kind(&scene, &constrained_point),
         Some("point-on-circle")
     );
-    assert_eq!(operation_kind(&scene, &domain), Some("transform-object"));
+    assert_eq!(operation_kind(&scene, &domain), Some("apply-matrices"));
     assert_eq!(transform_kind(&scene, &domain), Some("translate-by-vector"));
-    let domain_node = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == domain)
-        .expect("translated circle domain node");
-    assert_eq!(
-        domain_node["definition"]["parents"],
-        serde_json::json!([format!("{domain}:source"), vector_start, vector_end,])
+    assert_matrix_apply_parents(
+        &scene,
+        &domain,
+        &format!("{domain}:source"),
+        [vector_start, vector_end],
     );
 }
 
@@ -3201,11 +3160,11 @@ fn ellipse_polygon_rolling_is_an_exact_table_driven_program() {
     );
 
     for (ordinal, op) in [
-        (85, "transform-object"),
+        (85, "apply-matrices"),
         (87, "perpendicular-line"),
-        (101, "transform-object"),
-        (102, "transform-object"),
-        (110, "transform-object"),
+        (101, "apply-matrices"),
+        (102, "apply-matrices"),
+        (110, "apply-matrices"),
         (118, "perpendicular-line"),
     ] {
         assert_eq!(operation_kind(&scene, &line(ordinal)), Some(op));
@@ -3220,10 +3179,7 @@ fn ellipse_polygon_rolling_is_an_exact_table_driven_program() {
         operation_kind(&scene, &point(119)),
         Some("line-intersection")
     );
-    assert_eq!(
-        node(&line(102))["definition"]["parents"],
-        serde_json::json!([line(101), line(87)])
-    );
+    assert_matrix_apply_parents(&scene, &line(102), &line(101), [line(87)]);
 }
 
 #[test]
@@ -3236,17 +3192,8 @@ fn measurement_line_parameter_point_translation_is_table_driven() {
     );
     let point = |ordinal| object_id_for_group(&scene, "points", "point", ordinal);
     assert_eq!(operation_kind(&scene, &point(18)), Some("point-on-line"));
-    assert_eq!(operation_kind(&scene, &point(24)), Some("transform-object"));
-    let translated = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == point(24))
-        .expect("translated point node");
-    assert_eq!(
-        translated["definition"]["parents"],
-        serde_json::json!([point(19), point(21), point(18)])
-    );
+    assert_eq!(operation_kind(&scene, &point(24)), Some("apply-matrices"));
+    assert_matrix_apply_parents(&scene, &point(24), &point(19), [point(21), point(18)]);
 }
 
 #[test]
@@ -3260,20 +3207,10 @@ fn initially_undefined_polar_center_keeps_scale_translation_program() {
         scene["objectGraph"]["pendingOperations"]
     );
     let point = |ordinal| object_id_for_group(&scene, "points", "point", ordinal);
-    assert_eq!(operation_kind(&scene, &point(65)), Some("transform-object"));
-    assert_eq!(operation_kind(&scene, &point(66)), Some("transform-object"));
-    assert_eq!(operation_kind(&scene, &point(69)), Some("transform-object"));
-    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
-    let node = |id: &str| {
-        nodes
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("missing graph node {id}"))
-    };
-    assert_eq!(
-        node(&point(69))["definition"]["parents"],
-        serde_json::json!([point(66), point(62), point(2)])
-    );
+    assert_eq!(operation_kind(&scene, &point(65)), Some("apply-matrices"));
+    assert_eq!(operation_kind(&scene, &point(66)), Some("apply-matrices"));
+    assert_eq!(operation_kind(&scene, &point(69)), Some("apply-matrices"));
+    assert_matrix_apply_parents(&scene, &point(69), &point(66), [point(62), point(2)]);
     let distance = format!("scalar:{}:distance", point(65));
     assert_eq!(
         operation_kind(&scene, &distance),
@@ -3291,7 +3228,7 @@ fn initially_undefined_rotated_ray_intersection_is_table_driven() {
     );
     let line = object_id_for_group(&scene, "lines", "line", 14);
     let intersection = object_id_for_group(&scene, "points", "point", 15);
-    assert_eq!(operation_kind(&scene, &line), Some("transform-object"));
+    assert_eq!(operation_kind(&scene, &line), Some("apply-matrices"));
     assert_eq!(
         operation_kind(&scene, &intersection),
         Some("line-circle-intersection")

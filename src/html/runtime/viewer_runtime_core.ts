@@ -407,13 +407,13 @@
 
   function inversePointTransform(
     world: Point,
-    transform: PointTransformJson,
+    matrixApply: PointTransformJson[],
     points: RuntimeScenePointJson[],
     parameters: Map<string, number>,
   ): Point | null {
     const input = encoder.encode(JSON.stringify({
       world,
-      transform,
+      matrixApply,
       points,
       parameters: Object.fromEntries(parameters),
     }));

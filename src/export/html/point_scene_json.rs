@@ -98,7 +98,8 @@ enum PointBindingJson {
     Derived {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
-        transform: PointTransformJson,
+        #[serde(rename = "matrixApply")]
+        matrix_apply: Vec<PointTransformJson>,
     },
     #[serde(rename = "directed-angle-anchor")]
     DirectedAngleAnchor {
@@ -396,10 +397,10 @@ impl PointBindingJson {
                 vector_end_index,
             } => Self::Derived {
                 source_index: *source_index,
-                transform: PointTransformJson::Translate {
+                matrix_apply: vec![PointTransformJson::Translate {
                     vector_start_index: *vector_start_index,
                     vector_end_index: *vector_end_index,
-                },
+                }],
             },
             ScenePointBinding::DirectedAngleAnchor {
                 first_start_index,
@@ -422,16 +423,16 @@ impl PointBindingJson {
                 line_end_index,
             } => Self::Derived {
                 source_index: *source_index,
-                transform: PointTransformJson::Reflect {
+                matrix_apply: vec![PointTransformJson::Reflect {
                     line_start_index: *line_start_index,
                     line_end_index: *line_end_index,
-                },
+                }],
             },
             ScenePointBinding::ReflectLineConstraint { source_index, line } => Self::Derived {
                 source_index: *source_index,
-                transform: PointTransformJson::ReflectLineConstraint {
+                matrix_apply: vec![PointTransformJson::ReflectLineConstraint {
                     line: LineConstraintJson::from_constraint(line),
-                },
+                }],
             },
             ScenePointBinding::Rotate {
                 source_index,
@@ -449,7 +450,7 @@ impl PointBindingJson {
                 ..
             } => Self::Derived {
                 source_index: *source_index,
-                transform: PointTransformJson::Rotate {
+                matrix_apply: vec![PointTransformJson::Rotate {
                     center_index: *center_index,
                     angle_degrees: *angle_degrees,
                     parameter_name: parameter_name.clone(),
@@ -461,7 +462,7 @@ impl PointBindingJson {
                     angle_parameter_start_index: *angle_parameter_start_index,
                     angle_parameter_end_index: *angle_parameter_end_index,
                     angle_parameter_scale: *angle_parameter_scale,
-                },
+                }],
             },
             ScenePointBinding::ScaleByRatio {
                 source_index,
@@ -492,7 +493,7 @@ impl PointBindingJson {
                 ..
             } => Self::Derived {
                 source_index: *source_index,
-                transform: PointTransformJson::Scale {
+                matrix_apply: vec![PointTransformJson::Scale {
                     center_index: *center_index,
                     factor: *factor,
                     parameter_name: parameter_name.clone(),
@@ -500,7 +501,7 @@ impl PointBindingJson {
                     factor_parameter_point_index: *factor_parameter_point_index,
                     factor_parameter_start_index: *factor_parameter_start_index,
                     factor_parameter_end_index: *factor_parameter_end_index,
-                },
+                }],
             },
             ScenePointBinding::MarkedAngleTranslation {
                 target_index,

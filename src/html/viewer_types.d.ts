@@ -869,7 +869,7 @@ interface Window {
     pointCircleTangents: (point: Point, center: Point, radius: number) => Point[];
     inversePointTransform: (
       world: Point,
-      transform: PointTransformJson,
+      matrixApply: PointTransformJson[],
       points: RuntimeScenePointJson[],
       parameters: Map<string, number>,
     ) => Point | null;

@@ -117,12 +117,12 @@ fn exports_regular_polygon_fixture_with_interactive_seed_segment() {
         points.get(end_index).is_some_and(|point| {
             point["binding"]["kind"].as_str() == Some("derived")
                 && point["binding"]["sourceIndex"].as_u64() == Some(start_index as u64)
-                && point["binding"]["transform"]["kind"].as_str() == Some("rotate")
-                && point["binding"]["transform"]["parameterName"].as_str() == Some("n")
-                && point["binding"]["transform"]["angleDegrees"]
+                && point["binding"]["matrixApply"][0]["kind"].as_str() == Some("rotate")
+                && point["binding"]["matrixApply"][0]["parameterName"].as_str() == Some("n")
+                && point["binding"]["matrixApply"][0]["angleDegrees"]
                     .as_f64()
                     .is_some_and(|value| (value - 72.0).abs() < 0.01)
-                && point["binding"]["transform"]["angleExpr"].is_object()
+                && point["binding"]["matrixApply"][0]["angleExpr"].is_object()
         }),
         "expected the payload rotated endpoint to remain a live rotate-bound point"
     );
@@ -182,7 +182,7 @@ fn exports_circle_formation_fixture_with_non_draggable_rotate_points() {
         .iter()
         .filter(|point| {
             point["binding"]["kind"].as_str() == Some("derived")
-                && point["binding"]["transform"]["kind"].as_str() == Some("rotate")
+                && point["binding"]["matrixApply"][0]["kind"].as_str() == Some("rotate")
         })
         .collect::<Vec<_>>();
 

@@ -1,8 +1,8 @@
 use gsp_runtime_core::object_graph::{ObjectDefinition, ObjectGraph, ObjectNode};
 use gsp_runtime_core::{
     AffineTargetHandle, CoordinateTraceMode, CurveOp, CustomTransformProgram, FunctionAst,
-    FunctionExpr, LineKind, ObjectExpression, ObjectIterationProgram, ObjectOp, ObjectProgram,
-    ObjectTransform, ObjectValue, PlotMode, Point, TraceDriver, expression_parameter_names,
+    FunctionExpr, LineKind, MatrixOp, ObjectExpression, ObjectIterationProgram, ObjectOp,
+    ObjectProgram, ObjectValue, PlotMode, Point, TraceDriver, expression_parameter_names,
 };
 use std::collections::BTreeMap;
 
@@ -754,6 +754,22 @@ impl Builder {
 
     fn derived(&mut self, id: String, op: ObjectOp, parents: impl IntoIterator<Item = String>) {
         self.nodes.push(ObjectNode::derived(id, op, parents));
+    }
+
+    fn apply_matrix(
+        &mut self,
+        id: String,
+        source_id: String,
+        matrix: MatrixOp,
+        matrix_parents: impl IntoIterator<Item = String>,
+    ) {
+        let matrix_id = format!("matrix:{id}");
+        self.derived(
+            matrix_id.clone(),
+            ObjectOp::Matrix { matrix },
+            matrix_parents,
+        );
+        self.derived(id, ObjectOp::ApplyMatrices, [source_id, matrix_id]);
     }
 
     fn point_line_parameter(
@@ -1589,16 +1605,11 @@ impl Builder {
                     source_index,
                     vector_start_index,
                     vector_end_index,
-                } => self.derived(
+                } => self.apply_matrix(
                     id,
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::TranslateByVector,
-                    },
-                    [
-                        point_id(*source_index),
-                        point_id(*vector_start_index),
-                        point_id(*vector_end_index),
-                    ],
+                    point_id(*source_index),
+                    MatrixOp::TranslateByVector,
+                    [point_id(*vector_start_index), point_id(*vector_end_index)],
                 ),
                 ScenePointBinding::DirectedAngleAnchor {
                     first_start_index,
@@ -1633,23 +1644,21 @@ impl Builder {
                         },
                         [point_id(*line_start_index), point_id(*line_end_index)],
                     );
-                    self.derived(
+                    self.apply_matrix(
                         id,
-                        ObjectOp::TransformObject {
-                            transform: ObjectTransform::ReflectByLine,
-                        },
-                        [point_id(*source_index), line_id],
+                        point_id(*source_index),
+                        MatrixOp::ReflectByLine,
+                        [line_id],
                     );
                 }
                 ScenePointBinding::ReflectLineConstraint { source_index, line } => {
                     let line_id = format!("domain:{id}:reflection-axis");
                     if self.line_constraint(line_id.clone(), line) {
-                        self.derived(
+                        self.apply_matrix(
                             id,
-                            ObjectOp::TransformObject {
-                                transform: ObjectTransform::ReflectByLine,
-                            },
-                            [point_id(*source_index), line_id],
+                            point_id(*source_index),
+                            MatrixOp::ReflectByLine,
+                            [line_id],
                         );
                     } else {
                         self.pending_source(id, "point-binding", source_value);
@@ -1682,12 +1691,11 @@ impl Builder {
                     ..
                 } => {
                     if let Some(angle_id) = self.rotation_scalar(index, binding) {
-                        self.derived(
+                        self.apply_matrix(
                             id,
-                            ObjectOp::TransformObject {
-                                transform: ObjectTransform::RotateDegrees,
-                            },
-                            [point_id(*source_index), point_id(*center_index), angle_id],
+                            point_id(*source_index),
+                            MatrixOp::RotateDegrees,
+                            [point_id(*center_index), angle_id],
                         );
                     } else {
                         self.pending_source(id, "point-binding", source_value);
@@ -1699,12 +1707,11 @@ impl Builder {
                     ..
                 } => {
                     if let Some(factor_id) = self.scale_scalar(index, binding) {
-                        self.derived(
+                        self.apply_matrix(
                             id,
-                            ObjectOp::TransformObject {
-                                transform: ObjectTransform::ScaleByScalar,
-                            },
-                            [point_id(*source_index), point_id(*center_index), factor_id],
+                            point_id(*source_index),
+                            MatrixOp::ScaleByScalar,
+                            [point_id(*center_index), factor_id],
                         );
                     } else {
                         self.pending_source(id, "point-binding", source_value);
@@ -1746,16 +1753,14 @@ impl Builder {
                     ratio_numerator_index,
                     signed,
                     clamp_to_unit,
-                } => self.derived(
+                } => self.apply_matrix(
                     id,
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::ScaleByRatio {
-                            signed: *signed,
-                            clamp_to_unit: *clamp_to_unit,
-                        },
+                    point_id(*source_index),
+                    MatrixOp::ScaleByRatio {
+                        signed: *signed,
+                        clamp_to_unit: *clamp_to_unit,
                     },
                     [
-                        point_id(*source_index),
                         point_id(*center_index),
                         point_id(*ratio_origin_index),
                         point_id(*ratio_denominator_index),
@@ -1775,15 +1780,14 @@ impl Builder {
                         distance_expr,
                         distance_parameter_group_ordinals,
                     );
-                    self.derived(
+                    self.apply_matrix(
                         id,
-                        ObjectOp::TransformObject {
-                            transform: ObjectTransform::TranslateScaledScalar {
-                                x_scale: *x_scale,
-                                y_scale: *y_scale,
-                            },
+                        point_id(*source_index),
+                        MatrixOp::TranslateScaledScalar {
+                            x_scale: *x_scale,
+                            y_scale: *y_scale,
                         },
-                        [point_id(*source_index), distance_id],
+                        [distance_id],
                     );
                 }
                 ScenePointBinding::PolarTransform {
@@ -1807,16 +1811,15 @@ impl Builder {
                         angle_expr,
                         angle_parameter_group_ordinals,
                     );
-                    self.derived(
+                    self.apply_matrix(
                         id,
-                        ObjectOp::TransformObject {
-                            transform: ObjectTransform::TranslatePolar {
-                                invert_y: !self.y_up,
-                                distance_scale: *distance_scale,
-                                angle_degrees_scale: *angle_degrees_scale,
-                            },
+                        point_id(*source_index),
+                        MatrixOp::TranslatePolar {
+                            invert_y: !self.y_up,
+                            distance_scale: *distance_scale,
+                            angle_degrees_scale: *angle_degrees_scale,
                         },
-                        [point_id(*source_index), distance_id, angle_id],
+                        [distance_id, angle_id],
                     );
                 }
                 ScenePointBinding::RadiusOffset {
@@ -1833,15 +1836,14 @@ impl Builder {
                     }
                     let radius_id = format!("scalar:{id}:radius");
                     self.derived(radius_id.clone(), ObjectOp::CircularRadius, [circle_id]);
-                    self.derived(
+                    self.apply_matrix(
                         id,
-                        ObjectOp::TransformObject {
-                            transform: ObjectTransform::TranslateScaledScalar {
-                                x_scale: *x_scale,
-                                y_scale: *y_scale,
-                            },
+                        point_id(*source_index),
+                        MatrixOp::TranslateScaledScalar {
+                            x_scale: *x_scale,
+                            y_scale: *y_scale,
                         },
-                        [point_id(*source_index), radius_id],
+                        [radius_id],
                     );
                 }
                 ScenePointBinding::BoundaryLengthOffset {
@@ -1854,15 +1856,14 @@ impl Builder {
                     let distance_id = format!("scalar:{id}:boundary-length");
                     if self.circular_constraint(boundary_id.clone(), boundary) {
                         self.derived(distance_id.clone(), ObjectOp::ArcLength, [boundary_id]);
-                        self.derived(
+                        self.apply_matrix(
                             id,
-                            ObjectOp::TransformObject {
-                                transform: ObjectTransform::TranslateScaledScalar {
-                                    x_scale: *x_scale,
-                                    y_scale: *y_scale,
-                                },
+                            point_id(*source_index),
+                            MatrixOp::TranslateScaledScalar {
+                                x_scale: *x_scale,
+                                y_scale: *y_scale,
                             },
-                            [point_id(*source_index), distance_id],
+                            [distance_id],
                         );
                     } else {
                         self.pending_source(id, "point-binding", source_value);
@@ -1920,12 +1921,11 @@ impl Builder {
                         CoordinateAxis::Horizontal => (1.0, 0.0),
                         CoordinateAxis::Vertical => (0.0, 1.0),
                     };
-                    self.derived(
+                    self.apply_matrix(
                         id,
-                        ObjectOp::TransformObject {
-                            transform: ObjectTransform::TranslateScaledScalar { x_scale, y_scale },
-                        },
-                        [point_id(*source_index), offset_id],
+                        point_id(*source_index),
+                        MatrixOp::TranslateScaledScalar { x_scale, y_scale },
+                        [offset_id],
                     );
                 }
                 ScenePointBinding::Coordinate { name, expr } => {
@@ -1963,12 +1963,11 @@ impl Builder {
                     } else {
                         self.expression(y_id.clone(), y_expr);
                     }
-                    self.derived(
+                    self.apply_matrix(
                         id,
-                        ObjectOp::TransformObject {
-                            transform: ObjectTransform::TranslateByScalars,
-                        },
-                        [point_id(*source_index), x_id, y_id],
+                        point_id(*source_index),
+                        MatrixOp::TranslateByScalars,
+                        [x_id, y_id],
                     );
                 }
             }
@@ -2013,12 +2012,11 @@ impl Builder {
                 origin_index,
                 dx,
                 dy,
-            } => self.derived(
+            } => self.apply_matrix(
                 id,
-                ObjectOp::TransformObject {
-                    transform: ObjectTransform::TranslateDelta { dx: *dx, dy: *dy },
-                },
-                [point_id(*origin_index)],
+                point_id(*origin_index),
+                MatrixOp::TranslateDelta { dx: *dx, dy: *dy },
+                [],
             ),
             ScenePointConstraint::OnSegment {
                 start_index,
@@ -3658,16 +3656,11 @@ impl Builder {
                 if !self.line_constraint(base_id.clone(), line) {
                     return false;
                 }
-                self.derived(
+                self.apply_matrix(
                     id,
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::TranslateByVector,
-                    },
-                    [
-                        base_id,
-                        point_id(*vector_start_index),
-                        point_id(*vector_end_index),
-                    ],
+                    base_id,
+                    MatrixOp::TranslateByVector,
+                    [point_id(*vector_start_index), point_id(*vector_end_index)],
                 );
             }
             LineConstraint::TranslatedDelta { line, dx, dy } => {
@@ -3675,12 +3668,11 @@ impl Builder {
                 if !self.line_constraint(base_id.clone(), line) {
                     return false;
                 }
-                self.derived(
+                self.apply_matrix(
                     id,
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::TranslateDelta { dx: *dx, dy: *dy },
-                    },
-                    [base_id],
+                    base_id,
+                    MatrixOp::TranslateDelta { dx: *dx, dy: *dy },
+                    [],
                 );
             }
             LineConstraint::Reflected { line, axis } => {
@@ -3691,13 +3683,7 @@ impl Builder {
                 {
                     return false;
                 }
-                self.derived(
-                    id,
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::ReflectByLine,
-                    },
-                    [base_id, axis_id],
-                );
+                self.apply_matrix(id, base_id, MatrixOp::ReflectByLine, [axis_id]);
             }
             LineConstraint::Rotated { line, rotation } => {
                 let base_id = format!("{id}:base");
@@ -3707,12 +3693,11 @@ impl Builder {
                 let Some(angle_id) = self.shape_rotation_scalar(&id, rotation) else {
                     return false;
                 };
-                self.derived(
+                self.apply_matrix(
                     id,
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::RotateDegrees,
-                    },
-                    [base_id, point_id(rotation.center_index), angle_id],
+                    base_id,
+                    MatrixOp::RotateDegrees,
+                    [point_id(rotation.center_index), angle_id],
                 );
             }
         }
@@ -3763,12 +3748,11 @@ impl Builder {
                 if !self.circular_constraint(source_id.clone(), source) {
                     return false;
                 }
-                self.derived(
+                self.apply_matrix(
                     id,
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::TranslateDelta { dx: *dx, dy: *dy },
-                    },
-                    [source_id],
+                    source_id,
+                    MatrixOp::TranslateDelta { dx: *dx, dy: *dy },
+                    [],
                 );
             }
             CircularConstraint::VectorTranslateCircle {
@@ -3780,16 +3764,11 @@ impl Builder {
                 if !self.circular_constraint(source_id.clone(), source) {
                     return false;
                 }
-                self.derived(
+                self.apply_matrix(
                     id,
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::TranslateByVector,
-                    },
-                    [
-                        source_id,
-                        point_id(*vector_start_index),
-                        point_id(*vector_end_index),
-                    ],
+                    source_id,
+                    MatrixOp::TranslateByVector,
+                    [point_id(*vector_start_index), point_id(*vector_end_index)],
                 );
             }
             CircularConstraint::ReflectCircle {
@@ -3808,13 +3787,7 @@ impl Builder {
                 else {
                     return false;
                 };
-                self.derived(
-                    id,
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::ReflectByLine,
-                    },
-                    [source_id, axis_id],
-                );
+                self.apply_matrix(id, source_id, MatrixOp::ReflectByLine, [axis_id]);
             }
             CircularConstraint::ScaleCircle {
                 source,
@@ -3825,12 +3798,11 @@ impl Builder {
                 if !self.circular_constraint(source_id.clone(), source) {
                     return false;
                 }
-                self.derived(
+                self.apply_matrix(
                     id,
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::Scale { factor: *factor },
-                    },
-                    [source_id, point_id(*center_index)],
+                    source_id,
+                    MatrixOp::Scale { factor: *factor },
+                    [point_id(*center_index)],
                 );
             }
             CircularConstraint::RotateCircle {
@@ -3849,12 +3821,11 @@ impl Builder {
                         value: *angle_degrees,
                     },
                 );
-                self.derived(
+                self.apply_matrix(
                     id,
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::RotateDegrees,
-                    },
-                    [source_id, point_id(*center_index), angle_id],
+                    source_id,
+                    MatrixOp::RotateDegrees,
+                    [point_id(*center_index), angle_id],
                 );
             }
             CircularConstraint::CircleArc {
@@ -4878,58 +4849,48 @@ impl Builder {
         transform: &GeometryTransformBinding,
     ) -> bool {
         match transform {
-            GeometryTransformBinding::TranslateDelta { dx, dy } => self.derived(
+            GeometryTransformBinding::TranslateDelta { dx, dy } => self.apply_matrix(
                 id,
-                ObjectOp::TransformObject {
-                    transform: ObjectTransform::TranslateDelta { dx: *dx, dy: *dy },
-                },
-                [source_id],
+                source_id,
+                MatrixOp::TranslateDelta { dx: *dx, dy: *dy },
+                [],
             ),
             GeometryTransformBinding::TranslateVector {
                 vector_start_index,
                 vector_end_index,
-            } => self.derived(
+            } => self.apply_matrix(
                 id,
-                ObjectOp::TransformObject {
-                    transform: ObjectTransform::TranslateByVector,
-                },
-                [
-                    source_id,
-                    point_id(*vector_start_index),
-                    point_id(*vector_end_index),
-                ],
+                source_id,
+                MatrixOp::TranslateByVector,
+                [point_id(*vector_start_index), point_id(*vector_end_index)],
             ),
             GeometryTransformBinding::Rotate(rotation) => {
                 let Some(angle_id) = self.shape_rotation_scalar(&id, rotation) else {
                     return false;
                 };
-                self.derived(
+                self.apply_matrix(
                     id,
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::RotateDegrees,
-                    },
-                    [source_id, point_id(rotation.center_index), angle_id],
+                    source_id,
+                    MatrixOp::RotateDegrees,
+                    [point_id(rotation.center_index), angle_id],
                 );
             }
-            GeometryTransformBinding::Scale(scale) => self.derived(
+            GeometryTransformBinding::Scale(scale) => self.apply_matrix(
                 id,
-                ObjectOp::TransformObject {
-                    transform: ObjectTransform::Scale {
-                        factor: scale.factor,
-                    },
+                source_id,
+                MatrixOp::Scale {
+                    factor: scale.factor,
                 },
-                [source_id, point_id(scale.center_index)],
+                [point_id(scale.center_index)],
             ),
-            GeometryTransformBinding::ScaleByRatio(scale) => self.derived(
+            GeometryTransformBinding::ScaleByRatio(scale) => self.apply_matrix(
                 id,
-                ObjectOp::TransformObject {
-                    transform: ObjectTransform::ScaleByRatio {
-                        signed: scale.signed,
-                        clamp_to_unit: scale.clamp_to_unit,
-                    },
+                source_id,
+                MatrixOp::ScaleByRatio {
+                    signed: scale.signed,
+                    clamp_to_unit: scale.clamp_to_unit,
                 },
                 [
-                    source_id,
                     point_id(scale.center_index),
                     point_id(scale.ratio_origin_index),
                     point_id(scale.ratio_denominator_index),
@@ -4945,13 +4906,7 @@ impl Builder {
                 ) else {
                     return false;
                 };
-                self.derived(
-                    id,
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::ReflectByLine,
-                    },
-                    [source_id, axis_id],
-                );
+                self.apply_matrix(id, source_id, MatrixOp::ReflectByLine, [axis_id]);
             }
         }
         true
@@ -5008,13 +4963,7 @@ impl Builder {
                 {
                     return false;
                 }
-                self.derived(
-                    id,
-                    ObjectOp::TransformObject {
-                        transform: ObjectTransform::ReflectByLine,
-                    },
-                    [source_id, axis_id],
-                );
+                self.apply_matrix(id, source_id, MatrixOp::ReflectByLine, [axis_id]);
             }
         }
         true

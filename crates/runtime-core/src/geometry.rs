@@ -180,6 +180,23 @@ pub fn scale_by_three_point_ratio(
     signed: bool,
     clamp_to_unit: bool,
 ) -> Option<Point> {
+    let factor = three_point_scale_factor(
+        ratio_origin,
+        ratio_denominator,
+        ratio_numerator,
+        signed,
+        clamp_to_unit,
+    )?;
+    Some(scale_around(source, center, factor))
+}
+
+pub(crate) fn three_point_scale_factor(
+    ratio_origin: Point,
+    ratio_denominator: Point,
+    ratio_numerator: Point,
+    signed: bool,
+    clamp_to_unit: bool,
+) -> Option<f64> {
     let denominator_dx = ratio_denominator.x - ratio_origin.x;
     let denominator_dy = ratio_denominator.y - ratio_origin.y;
     let numerator_dx = ratio_numerator.x - ratio_origin.x;
@@ -200,11 +217,7 @@ pub fn scale_by_three_point_ratio(
     } else {
         1.0
     };
-    Some(scale_around(
-        source,
-        center,
-        direction * numerator / denominator,
-    ))
+    Some(direction * numerator / denominator)
 }
 
 pub fn clip_line_to_bounds(start: Point, end: Point, bounds: Bounds) -> Option<[Point; 2]> {
