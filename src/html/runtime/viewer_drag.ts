@@ -4,7 +4,6 @@
   ) as Partial<ViewerModules> & {
     scene: ViewerSceneModule;
     dynamics: ViewerDynamicsModule;
-    geometry: ViewerGeometryModule;
   };
   
   const PAN_ONLY_POINT_BINDINGS = new Set<string>([

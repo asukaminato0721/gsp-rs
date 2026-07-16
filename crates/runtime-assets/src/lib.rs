@@ -17,7 +17,6 @@ pub const RUNTIME_CORE_WASM_BASE64_FILE: &str = "runtime-core.wasm.b64";
 
 const RUNTIME_SOURCES: &[&str] = &[
     "viewer_runtime_core",
-    "viewer_geometry",
     "viewer_scene_basic",
     "viewer_scene_circular",
     "viewer_scene_trace",

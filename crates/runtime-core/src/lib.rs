@@ -3,6 +3,7 @@
 mod affine;
 mod dependency;
 mod geometry;
+mod line_constraint;
 pub mod object_graph;
 mod object_ops;
 mod point_transform;
@@ -20,6 +21,9 @@ pub use geometry::{
     point_on_three_point_arc_complement, project_to_circle_arc, project_to_line_like,
     project_to_three_point_arc, reflect_across_line, rotate_around, scale_around,
     scale_by_three_point_ratio, three_point_arc_geometry,
+};
+pub use line_constraint::{
+    ResolvedLineConstraint, line_constraint_point_indices_json, resolve_line_constraint_json,
 };
 pub use object_ops::{
     AffineTargetHandle, BuiltinOperationTable, CurveOp, CustomTransformProgram, MatrixOp,
@@ -328,12 +332,13 @@ mod wasm_abi {
         circle_arc_control_points, circle_circle_intersections, clip_line_to_bounds,
         clip_ray_to_bounds, evaluate_expr, evaluate_object_graph_json,
         inverse_point_transform_json, lerp_point, line_circle_intersection_candidate,
-        line_circle_intersections, line_line_intersection, line_polyline_intersection,
-        measured_rotation_radians, normalize_angle_delta, parse_expression_json,
-        point_angle_degrees, point_circle_tangents, point_distance, point_distance_ratio,
-        point_on_circle_arc, point_on_three_point_arc, point_on_three_point_arc_complement,
-        polygon_area, project_to_circle_arc, project_to_line_like, project_to_three_point_arc,
-        reflect_across_line, rotate_around, rotate_iteration_points, sample_circle_arc,
+        line_circle_intersections, line_constraint_point_indices_json, line_line_intersection,
+        line_polyline_intersection, measured_rotation_radians, normalize_angle_delta,
+        parse_expression_json, point_angle_degrees, point_circle_tangents, point_distance,
+        point_distance_ratio, point_on_circle_arc, point_on_three_point_arc,
+        point_on_three_point_arc_complement, polygon_area, project_to_circle_arc,
+        project_to_line_like, project_to_three_point_arc, reflect_across_line,
+        resolve_line_constraint_json, rotate_around, rotate_iteration_points, sample_circle_arc,
         sample_coordinate_trace, sample_custom_transform_trace, sample_expression,
         sample_parametric_curve, sample_three_point_arc, scale_around, scale_by_three_point_ratio,
         three_point_arc_geometry, translation_iteration_deltas,
@@ -358,7 +363,7 @@ mod wasm_abi {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn gsp_runtime_abi_version() -> u32 {
-        7
+        8
     }
 
     #[unsafe(no_mangle)]
@@ -977,6 +982,58 @@ mod wasm_abi {
             }
             Err(error) => {
                 set_last_error(&format!("invalid inverse point transform input: {error}"));
+                write_geometry_results(std::iter::empty())
+            }
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_line_constraint_point_indices(ptr: u32, len: u32) -> u32 {
+        if ptr == 0 || len == 0 {
+            set_last_error("line constraint input is empty");
+            return write_batch_scalars(std::iter::empty());
+        }
+        // SAFETY: the caller owns an allocation of at least `len` bytes in this module's memory.
+        let bytes = unsafe { std::slice::from_raw_parts(ptr as usize as *const u8, len as usize) };
+        match line_constraint_point_indices_json(bytes) {
+            Ok(indices) => {
+                clear_last_error();
+                write_batch_scalars(indices.into_iter().map(|index| index as f64))
+            }
+            Err(error) => {
+                set_last_error(&format!("invalid line constraint: {error}"));
+                write_batch_scalars(std::iter::empty())
+            }
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn gsp_resolve_line_constraint(ptr: u32, len: u32) -> u32 {
+        if ptr == 0 || len == 0 {
+            set_last_error("line constraint resolution input is empty");
+            return write_geometry_results(std::iter::empty());
+        }
+        // SAFETY: the caller owns an allocation of at least `len` bytes in this module's memory.
+        let bytes = unsafe { std::slice::from_raw_parts(ptr as usize as *const u8, len as usize) };
+        match resolve_line_constraint_json(bytes) {
+            Ok(Some(line)) => {
+                clear_last_error();
+                let kind = match line.kind {
+                    LineKind::Segment => 0.0,
+                    LineKind::Line => 1.0,
+                    LineKind::Ray => 2.0,
+                };
+                write_geometry_scalars([kind]);
+                write_geometry_results_preserving_scalars([line.start, line.end])
+            }
+            Ok(None) => {
+                clear_last_error();
+                write_geometry_results(std::iter::empty())
+            }
+            Err(error) => {
+                set_last_error(&format!(
+                    "invalid line constraint resolution input: {error}"
+                ));
                 write_geometry_results(std::iter::empty())
             }
         }

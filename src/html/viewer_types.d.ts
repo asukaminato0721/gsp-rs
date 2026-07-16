@@ -3,6 +3,7 @@ declare const van: typeof import("./vendor/van-1.6.0").default;
 type PointJson = import("./generated/PointJson").PointJson;
 type Point = PointJson;
 type RuntimeLineKind = "segment" | "line" | "ray";
+type RuntimeResolvedLineConstraint = { start: Point; end: Point; kind: RuntimeLineKind };
 type RuntimeBounds = { minX: number; maxX: number; minY: number; maxY: number };
 type RuntimeProjection = { t: number; projected: Point; distanceSquared: number };
 type RuntimeArcGeometry = {
@@ -497,41 +498,6 @@ type ViewerSceneModule = {
   drawGrid: (env: ViewerEnv) => void;
 };
 
-type ViewerGeometryModule = {
-  normalizeAngleDelta: (from: number, to: number) => number;
-  lerpPoint: (start: Point, end: Point, t: number) => Point;
-  rotateAround: (point: Point, center: Point, radians: number) => Point;
-  scaleAround: (point: Point, center: Point, factor: number) => Point;
-  reflectAcrossLine: (point: Point, lineStart: Point, lineEnd: Point) => Point | null;
-  clipParametricLineToBounds: (
-    start: Point,
-    end: Point,
-    bounds: { minX: number; maxX: number; minY: number; maxY: number },
-    rayOnly: boolean,
-  ) => Point[] | null;
-  clipLineToBounds: (
-    start: Point,
-    end: Point,
-    bounds: { minX: number; maxX: number; minY: number; maxY: number },
-  ) => Point[] | null;
-  clipRayToBounds: (
-    start: Point,
-    end: Point,
-    bounds: { minX: number; maxX: number; minY: number; maxY: number },
-  ) => Point[] | null;
-  angleBisectorDirection: (start: Point, vertex: Point, end: Point) => Point | null;
-  measuredRotationRadians: (start: Point, vertex: Point, end: Point) => number | null;
-  scaleByThreePointRatio: (
-    source: Point,
-    center: Point,
-    ratioOrigin: Point,
-    ratioDenominator: Point,
-    ratioNumerator: Point,
-    signed?: boolean,
-    clampToUnit?: boolean,
-  ) => Point | null;
-};
-
 type ViewerRenderModule = {
   labelMetrics: (env: ViewerEnv, text: string) => { lines: string[]; width: number; height: number };
   drawImages: (env: ViewerEnv) => void;
@@ -798,7 +764,6 @@ type ViewerOverlayModule = {
 };
 
 type ViewerModules = {
-  geometry: ViewerGeometryModule;
   scene: ViewerSceneModule;
   render: ViewerRenderModule;
   overlay: ViewerOverlayModule;
@@ -873,6 +838,11 @@ interface Window {
       points: RuntimeScenePointJson[],
       parameters: Map<string, number>,
     ) => Point | null;
+    resolveLineConstraint: (
+      constraint: LineConstraintJson,
+      resolvePoint: (index: number) => Point | null,
+      parameters?: Map<string, number>,
+    ) => RuntimeResolvedLineConstraint | null;
     sampleFunction: (
       expr: FunctionExprJson | FunctionAstJson,
       parameters: Map<string, number>,

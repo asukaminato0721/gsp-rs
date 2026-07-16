@@ -2,29 +2,26 @@
   const modules =  (
     window.GspViewerModules || (window.GspViewerModules = {})
   );
-  const geometry = modules.geometry;
   const {
     normalizeAngleDelta,
     lerpPoint,
     scaleAround: scalePointAround,
     reflectAcrossLine: reflectPointAcrossLine,
-    clipParametricLineToBounds,
     angleBisectorDirection,
-  } = geometry;
-  
+  } = window.GspRuntimeCore;
+
   const extraPointConstraintResolvers: Partial<Record<RuntimePointConstraintJson["kind"], (
     env: ViewerSceneResolverEnv | null,
     constraint: RuntimePointConstraintJson,
     resolveFn: (index: number) => Point | null,
     reference?: RuntimeScenePointJson | Point | null,
   ) => Point | null>> = {};
-  
+
   const extraLineBindingResolvers: Partial<Record<RuntimeLineBindingJson["kind"], (
     env: ViewerEnv,
     line: RuntimeLineJson,
   ) => Point[] | null>> = {};
 
-  
   function registerPointConstraintResolver<K extends RuntimePointConstraintJson["kind"]>(
     kind: K,
     resolver: (
@@ -42,14 +39,13 @@
     ) => Point | null;
   }
 
-  
   function registerLineBindingResolver<K extends RuntimeLineBindingJson["kind"]>(
     kind: K,
     resolver: (env: ViewerEnv, line: RuntimeLineJson & { binding: Extract<RuntimeLineBindingJson, { kind: K }> }) => Point[] | null,
   ) {
     extraLineBindingResolvers[kind] = resolver as (env: ViewerEnv, line: RuntimeLineJson) => Point[] | null;
   }
-
+  
   
   function hasPointIndexHandle(handle: PointHandle): handle is Extract<PointHandle, { pointIndex: number }> {
     return !!handle && typeof handle === "object" && "pointIndex" in handle && typeof handle.pointIndex === "number";
@@ -315,104 +311,9 @@
   }
 
   
-  function resolveConstrainedPoint(env: ViewerSceneResolverEnv | null, constraint: RuntimePointConstraintJson | null, resolveFn: (index: number) => Point | null, reference: RuntimeScenePointJson | Point | null | undefined) {
-    if (!constraint) return null;
-    if (constraint.kind === "offset") {
-      const origin = resolveFn(constraint.originIndex);
-      return origin ? { x: origin.x + constraint.dx, y: origin.y + constraint.dy } : null;
-    }
-    if (constraint.kind === "segment") {
-      const start = resolveFn(constraint.startIndex);
-      const end = resolveFn(constraint.endIndex);
-      return start && end ? lerpPoint(start, end, constraint.t) : null;
-    }
-    if (constraint.kind === "line" || constraint.kind === "ray") {
-      const start = resolveFn(constraint.startIndex);
-      const end = resolveFn(constraint.endIndex);
-      return start && end ? lerpPoint(start, end, constraint.t) : null;
-    }
-    if (constraint.kind === "line-constraint" || constraint.kind === "ray-constraint") {
-      const scene = typeof env?.currentScene === "function"
-        ? env.currentScene()
-        : env?.sourceScene || null;
-      const line = scene && window.GspViewerModules.dynamics
-        ? window.GspViewerModules.dynamics.resolveLineConstraintParameterPoints(
-            resolveFn,
-            constraint.line,
-          )
-        : null;
-      return line ? lerpPoint(line[0], line[1], constraint.t) : null;
-    }
-    if (constraint.kind === "polygon-boundary") {
-      const count = constraint.vertexIndices.length;
-      if (count < 2) return null;
-      const start = resolveFn(constraint.vertexIndices[((constraint.edgeIndex % count) + count) % count]);
-      const end = resolveFn(constraint.vertexIndices[(constraint.edgeIndex + 1 + count) % count]);
-      return start && end ? lerpPoint(start, end, constraint.t) : null;
-    }
-    if (constraint.kind === "polygon-boundary-parameter") {
-      const vertices = constraint.vertexIndices
-        .map((index) => resolveFn(index))
-        .filter((point): point is Point => !!point);
-      if (vertices.length !== constraint.vertexIndices.length || vertices.length < 2) return null;
-      const lengths = vertices.map((start, index) => {
-        const end = vertices[(index + 1) % vertices.length];
-        return Math.hypot(end.x - start.x, end.y - start.y);
-      });
-      const perimeter = lengths.reduce((sum, length) => sum + length, 0);
-      if (perimeter <= 1e-9) return vertices[0];
-      const target = ((constraint.parameter % 1) + 1) % 1 * perimeter;
-      let traveled = 0;
-      for (let index = 0; index < lengths.length; index += 1) {
-        const length = lengths[index];
-        if (traveled + length >= target || index + 1 === lengths.length) {
-          const t = length <= 1e-9 ? 0 : Math.max(0, Math.min(1, (target - traveled) / length));
-          return lerpPoint(vertices[index], vertices[(index + 1) % vertices.length], t);
-        }
-        traveled += length;
-      }
-      return null;
-    }
-    if (constraint.kind === "polygon-shape-boundary") {
-      const polygon = typeof env?.currentScene === "function"
-        ? env.currentScene().polygons?.[constraint.polygonIndex]
-        : env?.sourceScene?.polygons?.[constraint.polygonIndex];
-      const points = polygon?.points
-        .map((handle) => {
-          if (!hasPointIndexHandle(handle)) return hasLineIndexHandle(handle) ? null : handle;
-          const point = resolveFn(handle.pointIndex);
-          return point && {
-            x: point.x + (handle.dx || 0),
-            y: point.y + (handle.dy || 0),
-          };
-        })
-        .filter((point): point is Point => !!point) || [];
-      const count = points.length;
-      if (count < 2 || count !== polygon?.points.length) return null;
-      const start = points[((constraint.edgeIndex % count) + count) % count];
-      const end = points[(constraint.edgeIndex + 1 + count) % count];
-      return lerpPoint(start, end, constraint.t);
-    }
-    if (constraint.kind === "circular-constraint") {
-      const circle = circleFromConstraint(env, constraint.circle, resolveFn);
-      if (!circle) return null;
-      return {
-        x: circle.center.x + circle.radius * constraint.unitX,
-        y: circle.center.y - circle.radius * constraint.unitY,
-      };
-    }
-    const extra = extraPointConstraintResolvers[constraint.kind];
-    return extra ? extra(env, constraint, resolveFn, reference) : null;
-  }
-
-  
   function resolveScenePoint(env: ViewerEnv, index: number) {
     const point = env.currentScene().points[index];
-    if (!point) return null;
-    if (!point.constraint) return point;
-    const resolved = resolveConstrainedPoint(env, point.constraint, (i) => resolveScenePoint(env, i), point);
-    if (resolved) return resolved;
-    return null;
+    return point && Number.isFinite(point.x) && Number.isFinite(point.y) ? point : null;
   }
 
   
@@ -552,11 +453,10 @@
       if (!start || !vertex || !end) return null;
       const direction = angleBisectorDirection(start, vertex, end);
       if (!direction) return null;
-      return clipParametricLineToBounds(
+      return window.GspRuntimeCore.clipRayToBounds(
         vertex,
         { x: vertex.x + direction.x, y: vertex.y + direction.y },
         getViewBounds(env),
-        true,
       );
     }
     if (line.binding?.kind === "perpendicular-line") {
@@ -569,11 +469,10 @@
       const dy = lineEnd.y - lineStart.y;
       const len = Math.hypot(dx, dy);
       if (len <= 1e-9) return null;
-      return clipParametricLineToBounds(
+      return window.GspRuntimeCore.clipLineToBounds(
         through,
         { x: through.x - dy / len, y: through.y + dx / len },
         getViewBounds(env),
-        false,
       );
     }
     if (line.binding?.kind === "parallel-line") {
@@ -586,24 +485,23 @@
       const dy = lineEnd.y - lineStart.y;
       const len = Math.hypot(dx, dy);
       if (len <= 1e-9) return null;
-      return clipParametricLineToBounds(
+      return window.GspRuntimeCore.clipLineToBounds(
         through,
         { x: through.x + dx / len, y: through.y + dy / len },
         getViewBounds(env),
-        false,
       );
     }
     if (line.binding?.kind === "line") {
       const start = resolveScenePoint(env, line.binding.startIndex);
       const end = resolveScenePoint(env, line.binding.endIndex);
       if (!start || !end) return null;
-      return clipParametricLineToBounds(start, end, getViewBounds(env), false);
+      return window.GspRuntimeCore.clipLineToBounds(start, end, getViewBounds(env));
     }
     if (line.binding?.kind === "ray") {
       const start = resolveScenePoint(env, line.binding.startIndex);
       const end = resolveScenePoint(env, line.binding.endIndex);
       if (!start || !end) return null;
-      return clipParametricLineToBounds(start, end, getViewBounds(env), true);
+      return window.GspRuntimeCore.clipRayToBounds(start, end, getViewBounds(env));
     }
     if (line.binding) {
       const extra = extraLineBindingResolvers[line.binding.kind];
@@ -837,7 +735,6 @@
     _circleArcControlPoints: circleArcControlPoints,
     _pointOnThreePointArcComplement: pointOnThreePointArcComplement,
     getViewBounds,
-    resolveConstrainedPoint,
     resolveScenePoint,
     resolvePoint,
     resolveAnchorBase,

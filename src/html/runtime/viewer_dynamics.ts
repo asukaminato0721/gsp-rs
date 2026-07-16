@@ -1,55 +1,12 @@
 (function() {
   const modules = (
     window.GspViewerModules || (window.GspViewerModules = {})
-  ) as Partial<ViewerModules> & { geometry: ViewerGeometryModule };
-  const geometry = modules.geometry;
-  const {
-    rotateAround,
-    reflectAcrossLine,
-    clipParametricLineToBounds,
-    angleBisectorDirection,
-    measuredRotationRadians,
-  } = geometry;
+  ) as Partial<ViewerModules>;
   type ViewBounds = { minX: number; maxX: number; minY: number; maxY: number; spanX?: number; spanY?: number };
 
   function isFiniteNumber(value: unknown): value is number {
     return typeof value === "number" && Number.isFinite(value);
   }
-
-  function resolveRotateTransformAngleDegrees(transform: { angleDegrees?: number; parameterName?: string | null; angleExpr?: FunctionExprJson | null; angleStartIndex?: number | null; angleVertexIndex?: number | null; angleEndIndex?: number | null; angleParameterPointIndex?: number | null; angleParameterStartIndex?: number | null; angleParameterEndIndex?: number | null; angleParameterScale?: number | null }, parameters: Map<string, number>, resolvePoint: (index: number) => Point | null | undefined) {
-    if (
-      typeof transform.angleParameterPointIndex === "number"
-      && typeof transform.angleParameterStartIndex === "number"
-      && typeof transform.angleParameterEndIndex === "number"
-    ) {
-      const point = resolvePoint(transform.angleParameterPointIndex);
-      const start = resolvePoint(transform.angleParameterStartIndex);
-      const end = resolvePoint(transform.angleParameterEndIndex);
-      if (!point || !start || !end) return null;
-      const projection = window.GspRuntimeCore.projectToLineLike(point, start, end, "segment");
-      return projection ? projection.t * (transform.angleParameterScale ?? 1) : null;
-    }
-    if (
-      typeof transform.angleStartIndex === "number"
-      && typeof transform.angleVertexIndex === "number"
-      && typeof transform.angleEndIndex === "number"
-    ) {
-      const start = resolvePoint(transform.angleStartIndex);
-      const vertex = resolvePoint(transform.angleVertexIndex);
-      const end = resolvePoint(transform.angleEndIndex);
-      if (!start || !vertex || !end) return null;
-      const radians = measuredRotationRadians(start, vertex, end);
-      return radians === null ? null : radians * 180 / Math.PI;
-    }
-    if (transform.angleExpr) {
-      return evaluateExpr(transform.angleExpr, 0, parameters);
-    }
-    if (transform.parameterName) {
-      return parameters.get(transform.parameterName) ?? null;
-    }
-    return transform.angleDegrees;
-  }
-
 
   function usesVerboseParameterLabel(label: RuntimeLabelJson) {
     return typeof label.text === "string" && label.text.includes("在");
@@ -548,184 +505,21 @@
     replaceTemplateTextRanges,
   } = modules.dynamicsRichText;
   function resolveLineConstraintPoints(resolvePointAt: (pointIndex: number) => Point | null, bounds: ViewBounds, constraint: LineConstraintJson) {
-    if (!constraint) return null;
-    if (constraint.kind === "segment") {
-      const start = resolvePointAt(constraint.startIndex);
-      const end = resolvePointAt(constraint.endIndex);
-      return start && end ? [start, end] : null;
+    const line = window.GspRuntimeCore.resolveLineConstraint(constraint, resolvePointAt);
+    if (!line) return null;
+    if (line.kind === "line") {
+      return window.GspRuntimeCore.clipLineToBounds(line.start, line.end, bounds);
     }
-    if (constraint.kind === "line") {
-      const start = resolvePointAt(constraint.startIndex);
-      const end = resolvePointAt(constraint.endIndex);
-      return start && end ? clipParametricLineToBounds(start, end, bounds, false) : null;
+    if (line.kind === "ray") {
+      return window.GspRuntimeCore.clipRayToBounds(line.start, line.end, bounds);
     }
-    if (constraint.kind === "ray") {
-      const start = resolvePointAt(constraint.startIndex);
-      const end = resolvePointAt(constraint.endIndex);
-      return start && end ? clipParametricLineToBounds(start, end, bounds, true) : null;
-    }
-    if (constraint.kind === "perpendicular-line") {
-      const through = resolvePointAt(constraint.throughIndex);
-      const lineStart = resolvePointAt(constraint.lineStartIndex);
-      const lineEnd = resolvePointAt(constraint.lineEndIndex);
-      if (!through || !lineStart || !lineEnd) return null;
-      const dx = lineEnd.x - lineStart.x;
-      const dy = lineEnd.y - lineStart.y;
-      const len = Math.hypot(dx, dy);
-      if (len <= 1e-9) return null;
-      return clipParametricLineToBounds(
-        through,
-        { x: through.x - dy / len, y: through.y + dx / len },
-        bounds,
-        false,
-      );
-    }
-    if (constraint.kind === "parallel-line") {
-      const through = resolvePointAt(constraint.throughIndex);
-      const lineStart = resolvePointAt(constraint.lineStartIndex);
-      const lineEnd = resolvePointAt(constraint.lineEndIndex);
-      if (!through || !lineStart || !lineEnd) return null;
-      const dx = lineEnd.x - lineStart.x;
-      const dy = lineEnd.y - lineStart.y;
-      const len = Math.hypot(dx, dy);
-      if (len <= 1e-9) return null;
-      return clipParametricLineToBounds(
-        through,
-        { x: through.x + dx / len, y: through.y + dy / len },
-        bounds,
-        false,
-      );
-    }
-    if (constraint.kind === "perpendicular-to" || constraint.kind === "parallel-to") {
-      const through = resolvePointAt(constraint.throughIndex);
-      const base = resolveLineConstraintPoints(resolvePointAt, bounds, constraint.line);
-      if (!through || !base || base.length < 2) return null;
-      const dx = base[1].x - base[0].x;
-      const dy = base[1].y - base[0].y;
-      const len = Math.hypot(dx, dy);
-      if (len <= 1e-9) return null;
-      return clipParametricLineToBounds(
-        through,
-        constraint.kind === "perpendicular-to"
-          ? { x: through.x - dy / len, y: through.y + dx / len }
-          : { x: through.x + dx / len, y: through.y + dy / len },
-        bounds,
-        false,
-      );
-    }
-    if (constraint.kind === "angle-bisector-ray") {
-      const start = resolvePointAt(constraint.startIndex);
-      const vertex = resolvePointAt(constraint.vertexIndex);
-      const end = resolvePointAt(constraint.endIndex);
-      if (!start || !vertex || !end) return null;
-      const direction = angleBisectorDirection(start, vertex, end);
-      if (!direction) return null;
-      return clipParametricLineToBounds(
-        vertex,
-        { x: vertex.x + direction.x, y: vertex.y + direction.y },
-        bounds,
-        true,
-      );
-    }
-    if (constraint.kind === "matrix-apply") {
-      const source = resolveLineConstraintPoints(resolvePointAt, bounds, constraint.source);
-      return source
-        ? applyLineConstraintMatrices(resolvePointAt, source, constraint.matrixApply)
-        : null;
-    }
-    return null;
+    return [line.start, line.end];
   }
 
 
   function resolveLineConstraintParameterPoints(resolvePointAt: (pointIndex: number) => Point | null, constraint: LineConstraintJson) {
-    if (!constraint) return null;
-    if (
-      constraint.kind === "segment"
-      || constraint.kind === "line"
-      || constraint.kind === "ray"
-    ) {
-      const start = resolvePointAt(constraint.startIndex);
-      const end = resolvePointAt(constraint.endIndex);
-      return start && end ? [start, end] : null;
-    }
-    if (constraint.kind === "perpendicular-line") {
-      const through = resolvePointAt(constraint.throughIndex);
-      const lineStart = resolvePointAt(constraint.lineStartIndex);
-      const lineEnd = resolvePointAt(constraint.lineEndIndex);
-      if (!through || !lineStart || !lineEnd) return null;
-      const dx = lineEnd.x - lineStart.x;
-      const dy = lineEnd.y - lineStart.y;
-      const len = Math.hypot(dx, dy);
-      if (len <= 1e-9) return null;
-      return [
-        through,
-        { x: through.x - dy, y: through.y + dx },
-      ];
-    }
-    if (constraint.kind === "parallel-line") {
-      const through = resolvePointAt(constraint.throughIndex);
-      const lineStart = resolvePointAt(constraint.lineStartIndex);
-      const lineEnd = resolvePointAt(constraint.lineEndIndex);
-      if (!through || !lineStart || !lineEnd) return null;
-      const dx = lineEnd.x - lineStart.x;
-      const dy = lineEnd.y - lineStart.y;
-      const len = Math.hypot(dx, dy);
-      if (len <= 1e-9) return null;
-      return [
-        through,
-        { x: through.x + dx, y: through.y + dy },
-      ];
-    }
-    if (constraint.kind === "angle-bisector-ray") {
-      const start = resolvePointAt(constraint.startIndex);
-      const vertex = resolvePointAt(constraint.vertexIndex);
-      const end = resolvePointAt(constraint.endIndex);
-      if (!start || !vertex || !end) return null;
-      const direction = angleBisectorDirection(start, vertex, end);
-      return direction
-        ? [vertex, { x: vertex.x + direction.x, y: vertex.y + direction.y }]
-        : null;
-    }
-    if (constraint.kind === "matrix-apply") {
-      const source = resolveLineConstraintParameterPoints(resolvePointAt, constraint.source);
-      return source
-        ? applyLineConstraintMatrices(resolvePointAt, source, constraint.matrixApply)
-        : null;
-    }
-    return null;
-  }
-
-  function applyLineConstraintMatrices(
-    resolvePointAt: (pointIndex: number) => Point | null,
-    source: Point[],
-    matrices: Extract<LineConstraintJson, { kind: "matrix-apply" }>["matrixApply"],
-  ): Point[] | null {
-    let points = source;
-    for (const matrix of matrices) {
-      if (matrix.kind === "translate-vector") {
-        const vectorStart = resolvePointAt(matrix.vectorStartIndex);
-        const vectorEnd = resolvePointAt(matrix.vectorEndIndex);
-        if (!vectorStart || !vectorEnd) return null;
-        const dx = vectorEnd.x - vectorStart.x;
-        const dy = vectorEnd.y - vectorStart.y;
-        points = points.map((point) => ({ x: point.x + dx, y: point.y + dy }));
-      } else if (matrix.kind === "translate-delta") {
-        points = points.map((point) => ({ x: point.x + matrix.dx, y: point.y + matrix.dy }));
-      } else if (matrix.kind === "reflect") {
-        const axis = resolveLineConstraintParameterPoints(resolvePointAt, matrix.axis);
-        if (!axis) return null;
-        const reflected = points.map((point) => reflectAcrossLine(point, axis[0], axis[1]));
-        if (!reflected.every((point): point is Point => point !== null)) return null;
-        points = reflected;
-      } else {
-        const center = resolvePointAt(matrix.centerIndex);
-        const angleDegrees = resolveRotateTransformAngleDegrees(matrix, new Map(), resolvePointAt);
-        if (!center || !isFiniteNumber(angleDegrees)) return null;
-        const radians = angleDegrees * Math.PI / 180;
-        points = points.map((point) => rotateAround(point, center, radians));
-      }
-    }
-    return points;
+    const line = window.GspRuntimeCore.resolveLineConstraint(constraint, resolvePointAt);
+    return line ? [line.start, line.end] : null;
   }
 
 

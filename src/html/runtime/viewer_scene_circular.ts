@@ -91,14 +91,13 @@
     }
     const point = pointOnArcConstraint(env, arc.arc, t, resolveFn);
     const dynamics = window.GspViewerModules.dynamics;
-    const geometry = window.GspViewerModules.geometry;
-    if (!dynamics || !geometry) return null;
+    if (!dynamics) return null;
     const axis = dynamics.resolveLineConstraintParameterPoints(
       resolveFn,
       arc.axis,
     );
     return point && axis
-      ? geometry.reflectAcrossLine(point, axis[0], axis[1])
+      ? window.GspRuntimeCore.reflectAcrossLine(point, axis[0], axis[1])
       : null;
   }
 

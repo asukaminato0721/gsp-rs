@@ -9,9 +9,9 @@ const repoRoot = path.resolve(__dirname, "..");
 const vectorsPath = path.join(repoRoot, "src/html/generated/geometry_parity_vectors.json");
 const vectorFile = JSON.parse(fs.readFileSync(vectorsPath, "utf8"));
 const modules = loadViewerModules(repoRoot);
-const geometry = modules.geometry;
 const scene = modules.scene;
 const runtimeCore = modules.runtimeCore;
+const geometry = runtimeCore;
 const epsilon = 1e-6;
 
 runPointCases("lerpPoint", vectorFile.lerpPoint, (testCase) =>
@@ -102,7 +102,6 @@ function loadViewerModules(rootDir) {
   );
   const modules = [
     "viewer_runtime_core",
-    "viewer_geometry",
     "viewer_scene_basic",
     "viewer_scene_circular",
   ];

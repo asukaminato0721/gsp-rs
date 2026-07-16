@@ -28,6 +28,8 @@
     gsp_json_result_ptr: () => number;
     gsp_json_result_len: () => number;
     gsp_inverse_point_transform: (pointer: number, length: number) => number;
+    gsp_line_constraint_point_indices: (pointer: number, length: number) => number;
+    gsp_resolve_line_constraint: (pointer: number, length: number) => number;
     gsp_dependency_topo_order: (handle: number) => number;
     gsp_dependency_affected: (handle: number, rootsPointer: number, rootsLength: number) => number;
     gsp_last_error_ptr: () => number;
@@ -99,7 +101,7 @@
   const module = new WebAssembly.Module(bytes);
   const instance = new WebAssembly.Instance(module, {});
   const wasm = instance.exports as unknown as RuntimeCoreWasmExports;
-  if (wasm.gsp_runtime_abi_version() !== 7) {
+  if (wasm.gsp_runtime_abi_version() !== 8) {
     throw new Error("Unsupported gsp-rs runtime core ABI");
   }
 
@@ -419,6 +421,35 @@
     }));
     return withInputBytes(input, (pointer) =>
       geometryResult(wasm.gsp_inverse_point_transform(pointer, input.length)));
+  }
+
+  function resolveLineConstraint(
+    constraint: LineConstraintJson,
+    resolvePoint: (index: number) => Point | null,
+    parameters: Map<string, number> = new Map(),
+  ): RuntimeResolvedLineConstraint | null {
+    const constraintBytes = encoder.encode(JSON.stringify(constraint));
+    const pointIndices = withInputBytes(constraintBytes, (pointer) =>
+      batchIndices(wasm.gsp_line_constraint_point_indices(pointer, constraintBytes.length)));
+    const points: Record<number, Point> = {};
+    for (const index of pointIndices) {
+      const point = resolvePoint(index);
+      if (!point) return null;
+      points[index] = point;
+    }
+    const input = encoder.encode(JSON.stringify({
+      constraint,
+      points,
+      parameters: Object.fromEntries(parameters),
+    }));
+    return withInputBytes(input, (pointer) => {
+      const count = wasm.gsp_resolve_line_constraint(pointer, input.length);
+      const resolved = geometryResults(count);
+      if (resolved.length !== 2) return null;
+      const kindCode = wasm.gsp_geometry_result_scalar(0);
+      const kind = kindCode === 0 ? "segment" : kindCode === 1 ? "line" : kindCode === 2 ? "ray" : null;
+      return kind ? { start: resolved[0], end: resolved[1], kind } : null;
+    });
   }
 
   function setExpressionParameters(compiled: CompiledExpression, parameters: Map<string, number>) {
@@ -881,6 +912,7 @@
     createDependencyPlan,
     evaluateObjectGraph,
     inversePointTransform,
+    resolveLineConstraint,
     sampleFunction,
     sampleParametricCurve,
     sampleCoordinateTrace,
