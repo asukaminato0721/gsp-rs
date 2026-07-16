@@ -165,7 +165,7 @@ fn exports_cans_in_container_inrm_fixture_with_live_bindings() {
             .iter()
             .filter(|point| {
                 point["binding"]["kind"].as_str() == Some("derived")
-                    && point["binding"]["transform"]["kind"].as_str() == Some("scale")
+                    && point["binding"]["matrixApply"][0]["kind"].as_str() == Some("scale")
             })
             .count(),
         4,
@@ -176,7 +176,7 @@ fn exports_cans_in_container_inrm_fixture_with_live_bindings() {
             .iter()
             .filter(|point| {
                 point["binding"]["kind"].as_str() == Some("derived")
-                    && point["binding"]["transform"]["kind"].as_str() == Some("rotate")
+                    && point["binding"]["matrixApply"][0]["kind"].as_str() == Some("rotate")
             })
             .count(),
         1,
@@ -187,7 +187,7 @@ fn exports_cans_in_container_inrm_fixture_with_live_bindings() {
             .iter()
             .filter(|point| {
                 point["binding"]["kind"].as_str() == Some("derived")
-                    && point["binding"]["transform"]["kind"].as_str() == Some("translate")
+                    && point["binding"]["matrixApply"][0]["kind"].as_str() == Some("translate")
             })
             .count(),
         5,

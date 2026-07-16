@@ -602,92 +602,7 @@ fn clone_circular_constraint(constraint: &CircularConstraint) -> CircularConstra
 }
 
 fn clone_line_constraint(constraint: &LineConstraint) -> LineConstraint {
-    match constraint {
-        LineConstraint::Segment {
-            start_index,
-            end_index,
-        } => LineConstraint::Segment {
-            start_index: *start_index,
-            end_index: *end_index,
-        },
-        LineConstraint::Line {
-            start_index,
-            end_index,
-        } => LineConstraint::Line {
-            start_index: *start_index,
-            end_index: *end_index,
-        },
-        LineConstraint::Ray {
-            start_index,
-            end_index,
-        } => LineConstraint::Ray {
-            start_index: *start_index,
-            end_index: *end_index,
-        },
-        LineConstraint::PerpendicularLine {
-            through_index,
-            line_start_index,
-            line_end_index,
-        } => LineConstraint::PerpendicularLine {
-            through_index: *through_index,
-            line_start_index: *line_start_index,
-            line_end_index: *line_end_index,
-        },
-        LineConstraint::ParallelLine {
-            through_index,
-            line_start_index,
-            line_end_index,
-        } => LineConstraint::ParallelLine {
-            through_index: *through_index,
-            line_start_index: *line_start_index,
-            line_end_index: *line_end_index,
-        },
-        LineConstraint::PerpendicularTo {
-            through_index,
-            line,
-        } => LineConstraint::PerpendicularTo {
-            through_index: *through_index,
-            line: Box::new(clone_line_constraint(line)),
-        },
-        LineConstraint::ParallelTo {
-            through_index,
-            line,
-        } => LineConstraint::ParallelTo {
-            through_index: *through_index,
-            line: Box::new(clone_line_constraint(line)),
-        },
-        LineConstraint::AngleBisectorRay {
-            start_index,
-            vertex_index,
-            end_index,
-        } => LineConstraint::AngleBisectorRay {
-            start_index: *start_index,
-            vertex_index: *vertex_index,
-            end_index: *end_index,
-        },
-        LineConstraint::Translated {
-            line,
-            vector_start_index,
-            vector_end_index,
-        } => LineConstraint::Translated {
-            line: Box::new(clone_line_constraint(line)),
-            vector_start_index: *vector_start_index,
-            vector_end_index: *vector_end_index,
-        },
-        LineConstraint::TranslatedDelta { line, dx, dy } => LineConstraint::TranslatedDelta {
-            line: Box::new(clone_line_constraint(line)),
-            dx: *dx,
-            dy: *dy,
-        },
-        LineConstraint::Reflected { line, axis } => LineConstraint::Reflected {
-            line: Box::new(clone_line_constraint(line)),
-            axis: Box::new(clone_line_constraint(axis)),
-        },
-        LineConstraint::Rotated { line, rotation } => LineConstraint::Rotated {
-            line: Box::new(clone_line_constraint(line)),
-            rotation: rotation.clone(),
-        },
-    }
+    constraint.clone()
 }
 
 pub(super) fn compute_scene_bounds(
@@ -710,12 +625,13 @@ pub(super) fn compute_scene_bounds(
         .iter()
         .filter(|circle| {
             !matches!(
-                circle.binding,
-                Some(ShapeBinding::DerivedTransform {
-                    transform: crate::runtime::scene::GeometryTransformBinding::TranslateDelta { .. }
-                        | crate::runtime::scene::GeometryTransformBinding::TranslateVector { .. },
-                    ..
-                })
+                &circle.binding,
+                Some(ShapeBinding::MatrixApply { matrices, .. })
+                    if matches!(
+                        matrices.as_slice(),
+                        [crate::runtime::scene::GeometryTransformBinding::TranslateDelta { .. }]
+                            | [crate::runtime::scene::GeometryTransformBinding::TranslateVector { .. }]
+                    )
             ) && circle.debug.is_some()
         })
         .cloned()

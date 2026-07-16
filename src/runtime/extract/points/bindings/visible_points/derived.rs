@@ -623,15 +623,16 @@ fn resolve_line_constraint(
                 )
             };
             let source_group = groups.get(source_group_index)?;
-            Some(LineConstraint::Rotated {
-                line: Box::new(resolve_line_constraint(
+            Some(LineConstraint::MatrixApply {
+                source: Box::new(resolve_line_constraint(
                     file,
                     groups,
                     source_group,
                     anchors,
                     group_to_point_index,
                 )?),
-                rotation: RotationBinding {
+                matrices: vec![crate::runtime::scene::LineConstraintMatrix::Rotate {
+                    rotation: RotationBinding {
                     center_index: mapped_point_index(
                         group_to_point_index,
                         center_group_index,
@@ -643,7 +644,8 @@ fn resolve_line_constraint(
                     angle_start_index: None,
                     angle_vertex_index: None,
                     angle_end_index: None,
-                },
+                    },
+                }],
             })
         }
         crate::format::GroupKind::AngleRotation => {
@@ -652,15 +654,16 @@ fn resolve_line_constraint(
             let angle_start = anchors.get(binding.angle_start_group_index)?.clone()?;
             let angle_vertex = anchors.get(binding.angle_vertex_group_index)?.clone()?;
             let angle_end = anchors.get(binding.angle_end_group_index)?.clone()?;
-            Some(LineConstraint::Rotated {
-                line: Box::new(resolve_line_constraint(
+            Some(LineConstraint::MatrixApply {
+                source: Box::new(resolve_line_constraint(
                     file,
                     groups,
                     source_group,
                     anchors,
                     group_to_point_index,
                 )?),
-                rotation: RotationBinding {
+                matrices: vec![crate::runtime::scene::LineConstraintMatrix::Rotate {
+                    rotation: RotationBinding {
                     center_index: mapped_point_index(
                         group_to_point_index,
                         binding.center_group_index,
@@ -685,7 +688,8 @@ fn resolve_line_constraint(
                         group_to_point_index,
                         binding.angle_end_group_index,
                     )?),
-                },
+                    },
+                }],
             })
         }
         crate::format::GroupKind::Translation => {
@@ -695,26 +699,32 @@ fn resolve_line_constraint(
             let source_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let line =
                 resolve_line_constraint(file, groups, source_group, anchors, group_to_point_index)?;
-            Some(LineConstraint::Translated {
-                line: Box::new(line),
-                vector_start_index: (*group_to_point_index.get(path.refs[1].checked_sub(1)?)?)?,
-                vector_end_index: (*group_to_point_index.get(path.refs[2].checked_sub(1)?)?)?,
+            Some(LineConstraint::MatrixApply {
+                source: Box::new(line),
+                matrices: vec![crate::runtime::scene::LineConstraintMatrix::TranslateVector {
+                    vector_start_index: (*group_to_point_index
+                        .get(path.refs[1].checked_sub(1)?)?)?,
+                    vector_end_index: (*group_to_point_index
+                        .get(path.refs[2].checked_sub(1)?)?)?,
+                }],
             })
         }
         crate::format::GroupKind::CartesianOffsetPoint
         | crate::format::GroupKind::PolarOffsetPoint => {
             let translation = decode_translated_point_constraint(file, group)?;
             let source_group = groups.get(translation.origin_group_index)?;
-            Some(LineConstraint::TranslatedDelta {
-                line: Box::new(resolve_line_constraint(
+            Some(LineConstraint::MatrixApply {
+                source: Box::new(resolve_line_constraint(
                     file,
                     groups,
                     source_group,
                     anchors,
                     group_to_point_index,
                 )?),
-                dx: translation.dx,
-                dy: translation.dy,
+                matrices: vec![crate::runtime::scene::LineConstraintMatrix::TranslateDelta {
+                    dx: translation.dx,
+                    dy: translation.dy,
+                }],
             })
         }
         crate::format::GroupKind::Reflection => {
@@ -723,21 +733,23 @@ fn resolve_line_constraint(
             }
             let source = groups.get(path.refs[0].checked_sub(1)?)?;
             let axis = groups.get(path.refs[1].checked_sub(1)?)?;
-            Some(LineConstraint::Reflected {
-                line: Box::new(resolve_line_constraint(
+            Some(LineConstraint::MatrixApply {
+                source: Box::new(resolve_line_constraint(
                     file,
                     groups,
                     source,
                     anchors,
                     group_to_point_index,
                 )?),
-                axis: Box::new(resolve_line_constraint(
-                    file,
-                    groups,
-                    axis,
-                    anchors,
-                    group_to_point_index,
-                )?),
+                matrices: vec![crate::runtime::scene::LineConstraintMatrix::Reflect {
+                    axis: Box::new(resolve_line_constraint(
+                        file,
+                        groups,
+                        axis,
+                        anchors,
+                        group_to_point_index,
+                    )?),
+                }],
             })
         }
         _ => None,
@@ -768,12 +780,16 @@ fn line_direction_reference(constraint: &LineConstraint) -> Option<(usize, usize
             line_end_index,
             ..
         } => Some((*line_start_index, *line_end_index, false)),
-        LineConstraint::Translated { line, .. }
-        | LineConstraint::TranslatedDelta { line, .. } => line_direction_reference(line),
+        LineConstraint::MatrixApply { source, matrices }
+            if matrices.iter().all(|matrix| {
+                matches!(
+                    matrix,
+                    crate::runtime::scene::LineConstraintMatrix::TranslateVector { .. }
+                        | crate::runtime::scene::LineConstraintMatrix::TranslateDelta { .. }
+                )
+            }) => line_direction_reference(source),
         LineConstraint::PerpendicularTo { .. } | LineConstraint::ParallelTo { .. } => None,
-        LineConstraint::AngleBisectorRay { .. }
-        | LineConstraint::Reflected { .. }
-        | LineConstraint::Rotated { .. } => None,
+        LineConstraint::AngleBisectorRay { .. } | LineConstraint::MatrixApply { .. } => None,
     }
 }
 

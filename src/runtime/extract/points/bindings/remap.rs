@@ -444,9 +444,9 @@ pub(crate) fn remap_circle_bindings(
                 *center_index = mapped_center_index;
                 continue;
             }
-            ShapeBinding::DerivedTransform {
+            ShapeBinding::MatrixApply {
                 source_index,
-                transform,
+                matrices,
             } => {
                 let Some(mapped_source_index) = mapped_index(group_to_circle_index, *source_index)
                 else {
@@ -454,7 +454,9 @@ pub(crate) fn remap_circle_bindings(
                     continue;
                 };
                 *source_index = mapped_source_index;
-                if !remap_geometry_transform(transform, group_to_point_index, group_to_line_index) {
+                if !matrices.iter_mut().all(|matrix| {
+                    remap_geometry_transform(matrix, group_to_point_index, group_to_line_index)
+                }) {
                     circle.binding = None;
                 }
                 continue;
@@ -503,22 +505,20 @@ pub(crate) fn remap_arc_bindings(
                 mid_index: mapped_index(group_to_point_index, *mid_index)?,
                 end_index: mapped_index(group_to_point_index, *end_index)?,
             }),
-            ArcBinding::DerivedTransform {
+            ArcBinding::MatrixApply {
                 source_index,
-                transform,
+                matrices,
             } => {
                 let source_index = mapped_index(group_to_arc_index, *source_index)?;
-                let mut transform = transform.clone();
-                if !remap_geometry_transform(
-                    &mut transform,
-                    group_to_point_index,
-                    group_to_line_index,
-                ) {
+                let mut matrices = matrices.clone();
+                if !matrices.iter_mut().all(|matrix| {
+                    remap_geometry_transform(matrix, group_to_point_index, group_to_line_index)
+                }) {
                     return None;
                 }
-                Some(ArcBinding::DerivedTransform {
+                Some(ArcBinding::MatrixApply {
                     source_index,
-                    transform,
+                    matrices,
                 })
             }
         })();
@@ -586,9 +586,9 @@ pub(crate) fn remap_polygon_bindings(
                 }
                 continue;
             }
-            ShapeBinding::DerivedTransform {
+            ShapeBinding::MatrixApply {
                 source_index,
-                transform,
+                matrices,
             } => {
                 let Some(mapped_source_index) = mapped_index(group_to_polygon_index, *source_index)
                 else {
@@ -596,7 +596,9 @@ pub(crate) fn remap_polygon_bindings(
                     continue;
                 };
                 *source_index = mapped_source_index;
-                if !remap_geometry_transform(transform, group_to_point_index, group_to_line_index) {
+                if !matrices.iter_mut().all(|matrix| {
+                    remap_geometry_transform(matrix, group_to_point_index, group_to_line_index)
+                }) {
                     polygon.binding = None;
                 }
                 continue;
@@ -717,9 +719,9 @@ pub(crate) fn remap_line_bindings(
                 *line_end_index = mapped_line_end_index;
                 *line_index = mapped_line_index;
             }
-            LineBinding::DerivedTransform {
+            LineBinding::MatrixApply {
                 source_index,
-                transform,
+                matrices,
             } => {
                 let Some(mapped_source_index) = mapped_index(group_to_line_index, *source_index)
                 else {
@@ -727,7 +729,9 @@ pub(crate) fn remap_line_bindings(
                     continue;
                 };
                 *source_index = mapped_source_index;
-                if !remap_geometry_transform(transform, group_to_point_index, group_to_line_index) {
+                if !matrices.iter_mut().all(|matrix| {
+                    remap_geometry_transform(matrix, group_to_point_index, group_to_line_index)
+                }) {
                     line.binding = None;
                 }
             }

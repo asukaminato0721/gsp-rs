@@ -142,27 +142,57 @@
       if (!direction) return null;
       return { start: vertex, end: { x: vertex.x + direction.x, y: vertex.y + direction.y }, kind: "ray" };
     }
-    if (constraint.kind === "translated") {
-      const base: ResolvedLineConstraint | null = resolveLineConstraint(_env, constraint.line, resolveFn);
-      const vectorStart = resolveFn(constraint.vectorStartIndex);
-      const vectorEnd = resolveFn(constraint.vectorEndIndex);
-      if (!base || !vectorStart || !vectorEnd) return null;
-      const dx = vectorEnd.x - vectorStart.x;
-      const dy = vectorEnd.y - vectorStart.y;
-      return {
-        start: { x: base.start.x + dx, y: base.start.y + dy },
-        end: { x: base.end.x + dx, y: base.end.y + dy },
-        kind: base.kind,
-      };
-    }
-    if (constraint.kind === "translated-delta") {
-      const base: ResolvedLineConstraint | null = resolveLineConstraint(_env, constraint.line, resolveFn);
+    if (constraint.kind === "matrix-apply") {
+      const base: ResolvedLineConstraint | null = resolveLineConstraint(_env, constraint.source, resolveFn);
       if (!base) return null;
-      return {
-        start: { x: base.start.x + constraint.dx, y: base.start.y + constraint.dy },
-        end: { x: base.end.x + constraint.dx, y: base.end.y + constraint.dy },
-        kind: base.kind,
-      };
+      let start = base.start;
+      let end = base.end;
+      for (const matrix of constraint.matrixApply) {
+        if (matrix.kind === "translate-vector") {
+          const vectorStart = resolveFn(matrix.vectorStartIndex);
+          const vectorEnd = resolveFn(matrix.vectorEndIndex);
+          if (!vectorStart || !vectorEnd) return null;
+          const dx = vectorEnd.x - vectorStart.x;
+          const dy = vectorEnd.y - vectorStart.y;
+          start = { x: start.x + dx, y: start.y + dy };
+          end = { x: end.x + dx, y: end.y + dy };
+        } else if (matrix.kind === "translate-delta") {
+          start = { x: start.x + matrix.dx, y: start.y + matrix.dy };
+          end = { x: end.x + matrix.dx, y: end.y + matrix.dy };
+        } else if (matrix.kind === "reflect") {
+          const axis = resolveLineConstraint(_env, matrix.axis, resolveFn);
+          if (!axis) return null;
+          const reflectedStart = window.GspRuntimeCore.reflectAcrossLine(start, axis.start, axis.end);
+          const reflectedEnd = window.GspRuntimeCore.reflectAcrossLine(end, axis.start, axis.end);
+          if (!reflectedStart || !reflectedEnd) return null;
+          start = reflectedStart;
+          end = reflectedEnd;
+        } else {
+          const center = resolveFn(matrix.centerIndex);
+          if (!center) return null;
+          let radians = matrix.angleDegrees * Math.PI / 180;
+          if (
+            typeof matrix.angleStartIndex === "number"
+            && typeof matrix.angleVertexIndex === "number"
+            && typeof matrix.angleEndIndex === "number"
+          ) {
+            const angleStart = resolveFn(matrix.angleStartIndex);
+            const angleVertex = resolveFn(matrix.angleVertexIndex);
+            const angleEnd = resolveFn(matrix.angleEndIndex);
+            if (!angleStart || !angleVertex || !angleEnd) return null;
+            const measured = window.GspRuntimeCore.measuredRotationRadians(
+              angleStart,
+              angleVertex,
+              angleEnd,
+            );
+            if (measured === null) return null;
+            radians = measured;
+          }
+          start = window.GspRuntimeCore.rotateAround(start, center, radians);
+          end = window.GspRuntimeCore.rotateAround(end, center, radians);
+        }
+      }
+      return { start, end, kind: base.kind };
     }
     return null;
   }

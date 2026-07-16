@@ -7,11 +7,11 @@ fn exports_translated_triangle_segments_into_html() {
         "congruent triangle fixture should compile",
     );
 
-    assert!(html.contains("\"kind\":\"derived\""));
+    assert!(html.contains("\"kind\":\"matrix-apply\""));
     assert!(html.contains("\"kind\":\"angle-marker\""));
     assert!(html.contains("\"kind\":\"segment-marker\""));
     assert!(html.contains(
-        "\"transform\":{\"kind\":\"translate\",\"vectorStartIndex\":0,\"vectorEndIndex\":3}"
+        "\"matrixApply\":[{\"kind\":\"translate\",\"vectorStartIndex\":0,\"vectorEndIndex\":3}]"
     ));
     assert!(html.contains("\"text\":\"B'\""));
     assert!(html.contains("\"text\":\"C'\""));

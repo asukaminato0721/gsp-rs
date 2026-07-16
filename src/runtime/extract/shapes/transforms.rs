@@ -169,13 +169,13 @@ pub(crate) fn collect_reflected_arc_shapes(
                 center,
                 counterclockwise,
                 visible: !group.header.is_hidden(),
-                binding: Some(ArcBinding::DerivedTransform {
+                binding: Some(ArcBinding::MatrixApply {
                     source_index: source_group_index,
-                    transform: GeometryTransformBinding::Reflect(reflection_axis_binding(
+                    matrices: vec![GeometryTransformBinding::Reflect(reflection_axis_binding(
                         file,
                         line_group,
                         line_group_index,
-                    )),
+                    ))],
                 }),
                 debug: Some(payload_debug_source(group)),
             })
@@ -985,9 +985,9 @@ fn derived_line_shape(
         dashed: line_is_dashed(source_group.header.style_a),
         stroke_width: Some(line_stroke_width_from_style(source_group.header.style_a)),
         visible: !group.header.is_hidden(),
-        binding: Some(LineBinding::DerivedTransform {
+        binding: Some(LineBinding::MatrixApply {
             source_index: source_group_index,
-            transform,
+            matrices: vec![transform],
         }),
         debug: Some(payload_debug_source(group)),
     })
@@ -1012,9 +1012,9 @@ fn derived_circle_shape(
         fill_color_binding: None,
         dashed: line_is_dashed(source_group.header.style_a),
         visible: !group.header.is_hidden(),
-        binding: Some(ShapeBinding::DerivedTransform {
+        binding: Some(ShapeBinding::MatrixApply {
             source_index: source_group_index,
-            transform,
+            matrices: vec![transform],
         }),
         debug: Some(payload_debug_source(group)),
     }
@@ -1031,9 +1031,9 @@ fn derived_polygon_shape(
         color: fill_color_from_styles(group.header.style_b, group.header.style_c),
         color_binding: None,
         visible: !group.header.is_hidden(),
-        binding: Some(ShapeBinding::DerivedTransform {
+        binding: Some(ShapeBinding::MatrixApply {
             source_index: source_group_index,
-            transform,
+            matrices: vec![transform],
         }),
         debug: Some(payload_debug_source(group)),
     })

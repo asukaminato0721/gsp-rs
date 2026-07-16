@@ -230,7 +230,7 @@ test('triangle angle sum measured-angle rotation updates dependent geometry', as
         && before.intersectionConstraint?.circle?.kind === 'segment-radius-circle',
       hasMeasuredAngleRotatedBc:
         before.rotatedBcVisible === true
-        && before.rotatedBcBinding?.kind === 'derived'
+        && before.rotatedBcBinding?.kind === 'matrix-apply'
         && before.rotatedBcBinding?.matrixApply?.[0]?.kind === 'rotate'
         && typeof before.rotatedBcBinding.matrixApply[0].angleStartIndex === 'number'
         && typeof before.rotatedBcBinding.matrixApply[0].angleVertexIndex === 'number'
@@ -647,6 +647,10 @@ test('three-moving-point fixture keeps measured rotation and move buttons live',
       objectGraphPending: window.gspDebug.sourceScene.objectGraph.pendingOperations,
       arcOperation: window.gspDebug.sourceScene.objectGraph.nodes
         .find((node: any) => node.id === 'arc:0')?.definition?.op?.kind,
+      arcInitialOperation: window.gspDebug.sourceScene.objectGraph.nodes
+        .find((node: any) => node.id === 'geometry:arc:0:initial')?.definition?.op?.kind,
+      arcMatrix: window.gspDebug.sourceScene.objectGraph.nodes
+        .find((node: any) => node.id === 'matrix:arc:0')?.definition?.op?.matrix?.kind,
       cPoint: scene.points.find((point: any) => point.debug?.groupOrdinal === 4),
       parameter: scene.parameters.find((parameter: any) => parameter.name === 't₁'),
       moveButtonOrdinals: moveButtons.map((button: any) => button.debug?.groupOrdinal),
@@ -662,7 +666,9 @@ test('three-moving-point fixture keeps measured rotation and move buttons live',
 
   expect(before.objectGraphComplete).toBe(true);
   expect(before.objectGraphPending).toEqual([]);
-  expect(before.arcOperation).toBe('center-arc');
+  expect(before.arcOperation).toBe('apply-matrices');
+  expect(before.arcInitialOperation).toBe('center-arc');
+  expect(before.arcMatrix).toBe('identity');
   expect(before.parameter?.value).toBeCloseTo(60, 6);
   expect(before.parameter?.unit).toBe('degree');
   expect(before.cPoint?.binding?.matrixApply?.[0]?.kind).toBe('rotate');

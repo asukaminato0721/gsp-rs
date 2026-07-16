@@ -1425,24 +1425,30 @@ enum LineConstraintJson {
         #[serde(rename = "endIndex")]
         end_index: usize,
     },
-    Translated {
-        line: Box<LineConstraintJson>,
+    MatrixApply {
+        source: Box<LineConstraintJson>,
+        #[serde(rename = "matrixApply")]
+        matrix_apply: Vec<LineConstraintMatrixJson>,
+    },
+}
+
+#[derive(Serialize, TS)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum LineConstraintMatrixJson {
+    TranslateVector {
         #[serde(rename = "vectorStartIndex")]
         vector_start_index: usize,
         #[serde(rename = "vectorEndIndex")]
         vector_end_index: usize,
     },
-    TranslatedDelta {
-        line: Box<LineConstraintJson>,
+    TranslateDelta {
         dx: f64,
         dy: f64,
     },
-    Reflected {
-        line: Box<LineConstraintJson>,
+    Reflect {
         axis: Box<LineConstraintJson>,
     },
-    Rotated {
-        line: Box<LineConstraintJson>,
+    Rotate {
         #[serde(rename = "centerIndex")]
         center_index: usize,
         #[serde(rename = "angleDegrees")]
@@ -1525,26 +1531,34 @@ impl LineConstraintJson {
                 vertex_index: *vertex_index,
                 end_index: *end_index,
             },
-            LineConstraint::Translated {
-                line,
+            LineConstraint::MatrixApply { source, matrices } => Self::MatrixApply {
+                source: Box::new(Self::from_constraint(source)),
+                matrix_apply: matrices
+                    .iter()
+                    .map(LineConstraintMatrixJson::from_matrix)
+                    .collect(),
+            },
+        }
+    }
+}
+
+impl LineConstraintMatrixJson {
+    fn from_matrix(matrix: &crate::runtime::scene::LineConstraintMatrix) -> Self {
+        match matrix {
+            crate::runtime::scene::LineConstraintMatrix::TranslateVector {
                 vector_start_index,
                 vector_end_index,
-            } => Self::Translated {
-                line: Box::new(Self::from_constraint(line)),
+            } => Self::TranslateVector {
                 vector_start_index: *vector_start_index,
                 vector_end_index: *vector_end_index,
             },
-            LineConstraint::TranslatedDelta { line, dx, dy } => Self::TranslatedDelta {
-                line: Box::new(Self::from_constraint(line)),
-                dx: *dx,
-                dy: *dy,
+            crate::runtime::scene::LineConstraintMatrix::TranslateDelta { dx, dy } => {
+                Self::TranslateDelta { dx: *dx, dy: *dy }
+            }
+            crate::runtime::scene::LineConstraintMatrix::Reflect { axis } => Self::Reflect {
+                axis: Box::new(LineConstraintJson::from_constraint(axis)),
             },
-            LineConstraint::Reflected { line, axis } => Self::Reflected {
-                line: Box::new(Self::from_constraint(line)),
-                axis: Box::new(Self::from_constraint(axis)),
-            },
-            LineConstraint::Rotated { line, rotation } => Self::Rotated {
-                line: Box::new(Self::from_constraint(line)),
+            crate::runtime::scene::LineConstraintMatrix::Rotate { rotation } => Self::Rotate {
                 center_index: rotation.center_index,
                 angle_degrees: rotation.angle_degrees,
                 parameter_name: rotation.parameter_name.clone(),

@@ -380,34 +380,35 @@ impl Collector<'_> {
                 self.point(deps, Some(*through_index));
                 self.line_constraint(deps, line);
             }
-            LineConstraint::Translated {
-                line,
-                vector_start_index,
-                vector_end_index,
-            } => {
-                self.line_constraint(deps, line);
-                self.points(deps, [*vector_start_index, *vector_end_index]);
-            }
-            LineConstraint::TranslatedDelta { line, .. } => self.line_constraint(deps, line),
-            LineConstraint::Reflected { line, axis } => {
-                self.line_constraint(deps, line);
-                self.line_constraint(deps, axis);
-            }
-            LineConstraint::Rotated { line, rotation } => {
-                self.line_constraint(deps, line);
-                self.point(deps, Some(rotation.center_index));
-                self.points(
-                    deps,
-                    [
-                        rotation.angle_start_index,
-                        rotation.angle_vertex_index,
-                        rotation.angle_end_index,
-                    ]
-                    .into_iter()
-                    .flatten(),
-                );
-                if let Some(expr) = &rotation.angle_expr {
-                    self.expr(deps, expr);
+            LineConstraint::MatrixApply { source, matrices } => {
+                self.line_constraint(deps, source);
+                for matrix in matrices {
+                    match matrix {
+                        crate::runtime::scene::LineConstraintMatrix::TranslateVector {
+                            vector_start_index,
+                            vector_end_index,
+                        } => self.points(deps, [*vector_start_index, *vector_end_index]),
+                        crate::runtime::scene::LineConstraintMatrix::TranslateDelta { .. } => {}
+                        crate::runtime::scene::LineConstraintMatrix::Reflect { axis } => {
+                            self.line_constraint(deps, axis);
+                        }
+                        crate::runtime::scene::LineConstraintMatrix::Rotate { rotation } => {
+                            self.point(deps, Some(rotation.center_index));
+                            self.points(
+                                deps,
+                                [
+                                    rotation.angle_start_index,
+                                    rotation.angle_vertex_index,
+                                    rotation.angle_end_index,
+                                ]
+                                .into_iter()
+                                .flatten(),
+                            );
+                            if let Some(expr) = &rotation.angle_expr {
+                                self.expr(deps, expr);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -981,12 +982,14 @@ impl Collector<'_> {
                 self.optional_points(deps, [*line_start_index, *line_end_index]);
                 self.line(deps, *line_index);
             }
-            LineBinding::DerivedTransform {
+            LineBinding::MatrixApply {
                 source_index,
-                transform,
+                matrices,
             } => {
                 self.line(deps, Some(*source_index));
-                self.geometry_transform(deps, transform);
+                for matrix in matrices {
+                    self.geometry_transform(deps, matrix);
+                }
             }
             LineBinding::CustomTransformTrace {
                 point_index,
@@ -1095,15 +1098,17 @@ impl Collector<'_> {
                 self.point(deps, Some(*center_index));
                 self.expr(deps, expr);
             }
-            ShapeBinding::DerivedTransform {
+            ShapeBinding::MatrixApply {
                 source_index,
-                transform,
+                matrices,
             } => {
                 match source {
                     ShapeSource::Circle => self.circle(deps, *source_index),
                     ShapeSource::Polygon => self.polygon(deps, *source_index),
                 }
-                self.geometry_transform(deps, transform);
+                for matrix in matrices {
+                    self.geometry_transform(deps, matrix);
+                }
             }
         }
     }

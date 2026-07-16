@@ -25,8 +25,8 @@ fn exports_scaled_circle_intersections_fixture_with_live_constraints() {
     );
     assert!(
         circles.iter().any(|circle| {
-            circle["binding"]["kind"].as_str() == Some("derived")
-                && circle["binding"]["transform"]["kind"].as_str() == Some("scale")
+            circle["binding"]["kind"].as_str() == Some("matrix-apply")
+                && circle["binding"]["matrixApply"][0]["kind"].as_str() == Some("scale")
         }),
         "expected the scaled payload circle to keep its live binding"
     );
@@ -76,15 +76,15 @@ fn exports_nested_scaled_reflected_circle_fixture_with_live_constraints() {
     );
     assert!(
         circles.iter().any(|circle| {
-            circle["binding"]["kind"].as_str() == Some("derived")
-                && circle["binding"]["transform"]["kind"].as_str() == Some("reflect")
+            circle["binding"]["kind"].as_str() == Some("matrix-apply")
+                && circle["binding"]["matrixApply"][0]["kind"].as_str() == Some("reflect")
         }),
         "expected the reflected payload circle to keep its live binding"
     );
     assert!(
         circles.iter().any(|circle| {
-            circle["binding"]["kind"].as_str() == Some("derived")
-                && circle["binding"]["transform"]["kind"].as_str() == Some("scale")
+            circle["binding"]["kind"].as_str() == Some("matrix-apply")
+                && circle["binding"]["matrixApply"][0]["kind"].as_str() == Some("scale")
         }),
         "expected the scaled payload circle to keep its live binding"
     );
@@ -129,11 +129,11 @@ fn exports_kaleidoscope_nested_reflected_polygons() {
             .unwrap_or_else(|| panic!("expected reflected polygon #{ordinal} to export"));
         assert_eq!(
             polygon["binding"]["kind"].as_str(),
-            Some("derived"),
+            Some("matrix-apply"),
             "expected reflected polygon #{ordinal} to keep a live transform binding"
         );
         assert_eq!(
-            polygon["binding"]["transform"]["kind"].as_str(),
+            polygon["binding"]["matrixApply"][0]["kind"].as_str(),
             Some("reflect"),
             "expected reflected polygon #{ordinal} to stay reflection-bound"
         );
@@ -146,8 +146,8 @@ fn exports_kaleidoscope_nested_reflected_polygons() {
         assert!(
             lines.iter().any(|line| {
                 line["debug"]["groupOrdinal"].as_u64() == Some(ordinal)
-                    && line["binding"]["kind"].as_str() == Some("derived")
-                    && line["binding"]["transform"]["kind"].as_str() == Some("rotate")
+                    && line["binding"]["kind"].as_str() == Some("matrix-apply")
+                    && line["binding"]["matrixApply"][0]["kind"].as_str() == Some("rotate")
             }),
             "expected rotated axis segment #{ordinal} to export for reflection axes"
         );
@@ -166,7 +166,7 @@ fn exports_kaleidoscope_nested_reflected_polygons() {
     );
     assert_eq!(
         transformed_midpoint["constraint"]["line"]["kind"].as_str(),
-        Some("rotated")
+        Some("matrix-apply")
     );
 
     let buttons = scene["buttons"]
@@ -217,8 +217,8 @@ fn exports_translation_fixture_with_live_circle_and_intersection() {
     assert_eq!(circles.len(), 2, "expected original and translated circles");
     assert!(
         circles.iter().any(|circle| {
-            circle["binding"]["kind"].as_str() == Some("derived")
-                && circle["binding"]["transform"]["kind"].as_str() == Some("translate-delta")
+            circle["binding"]["kind"].as_str() == Some("matrix-apply")
+                && circle["binding"]["matrixApply"][0]["kind"].as_str() == Some("translate-delta")
         }),
         "expected the translated payload circle to keep its live binding"
     );
@@ -241,7 +241,8 @@ fn exports_translation_fixture_with_live_circle_and_intersection() {
 
     let html = fixture_html(&data, "translation fixture should compile");
     assert!(
-        html.contains("\"kind\":\"derived\"") && html.contains("\"kind\":\"translate-delta\""),
+        html.contains("\"kind\":\"matrix-apply\"")
+            && html.contains("\"matrixApply\":[{\"kind\":\"translate-delta\""),
         "expected the translated circle binding to be embedded in the html scene payload"
     );
     assert!(

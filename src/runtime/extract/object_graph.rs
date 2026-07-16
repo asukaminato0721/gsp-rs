@@ -258,11 +258,11 @@ pub(crate) fn build_object_graph(scene: &Scene) -> SceneObjectGraph {
             }) => {
                 builder.expression_radius_circle(id, *center_index, expr, parameter_group_ordinals);
             }
-            Some(ShapeBinding::DerivedTransform {
+            Some(ShapeBinding::MatrixApply {
                 source_index,
-                transform,
+                matrices,
             }) => {
-                if !builder.geometry_transform(id.clone(), circle_id(*source_index), transform) {
+                if !builder.geometry_matrix_apply(id.clone(), circle_id(*source_index), matrices) {
                     builder.pending_source(
                         id,
                         "circle-binding",
@@ -364,11 +364,11 @@ pub(crate) fn build_object_graph(scene: &Scene) -> SceneObjectGraph {
                     );
                 }
             }
-            Some(ShapeBinding::DerivedTransform {
+            Some(ShapeBinding::MatrixApply {
                 source_index,
-                transform,
+                matrices,
             }) => {
-                if !builder.geometry_transform(id.clone(), polygon_id(*source_index), transform) {
+                if !builder.geometry_matrix_apply(id.clone(), polygon_id(*source_index), matrices) {
                     builder.pending_source(
                         id,
                         "polygon-binding",
@@ -462,11 +462,11 @@ pub(crate) fn build_object_graph(scene: &Scene) -> SceneObjectGraph {
                     point_id(*end_index),
                 ],
             ),
-            Some(ArcBinding::DerivedTransform {
+            Some(ArcBinding::MatrixApply {
                 source_index,
-                transform,
+                matrices,
             }) => {
-                if !builder.geometry_transform(id.clone(), arc_id(*source_index), transform) {
+                if !builder.geometry_matrix_apply(id.clone(), arc_id(*source_index), matrices) {
                     builder.pending_source(
                         id,
                         "arc-binding",
@@ -512,6 +512,13 @@ pub(crate) fn build_object_graph(scene: &Scene) -> SceneObjectGraph {
     for (index, line) in base_lines.filter(|(_, line)| is_segment_trace_line(line)) {
         builder.line(index, line);
     }
+    builder.wrap_initial_geometry(
+        (0..scene.lines.len())
+            .map(line_id)
+            .chain((0..scene.circles.len()).map(circle_id))
+            .chain((0..scene.arcs.len()).map(arc_id))
+            .chain((0..scene.polygons.len()).map(polygon_id)),
+    );
     if !supported_line_iterations || !supported_polygon_iterations {
         builder.pending("iteration-operations");
     }
@@ -770,6 +777,33 @@ impl Builder {
             matrix_parents,
         );
         self.derived(id, ObjectOp::ApplyMatrices, [source_id, matrix_id]);
+    }
+
+    /// Makes every rendered geometry ID an `ApplyMatrices` node. Initial
+    /// geometry receives an identity matrix; transformed geometry is already
+    /// represented as its immediate parent object plus matrix objects.
+    fn wrap_initial_geometry(&mut self, ids: impl IntoIterator<Item = String>) {
+        for id in ids {
+            let Some(node_index) = self.nodes.iter().position(|node| node.id == id) else {
+                continue;
+            };
+            if matches!(
+                self.nodes[node_index].definition,
+                ObjectDefinition::Derived {
+                    op: ObjectOp::ApplyMatrices,
+                    ..
+                }
+            ) {
+                continue;
+            }
+
+            let initial_id = format!("geometry:{id}:initial");
+            self.nodes[node_index].id.clone_from(&initial_id);
+            if let Some(source) = self.sources.iter_mut().find(|source| source.id == id) {
+                source.id.clone_from(&initial_id);
+            }
+            self.apply_matrix(id, initial_id, MatrixOp::Identity, []);
+        }
     }
 
     fn point_line_parameter(
@@ -3647,60 +3681,86 @@ impl Builder {
                     point_id(*end_index),
                 ],
             ),
-            LineConstraint::Translated {
-                line,
-                vector_start_index,
-                vector_end_index,
-            } => {
+            LineConstraint::MatrixApply { source, matrices } => {
                 let base_id = format!("{id}:base");
-                if !self.line_constraint(base_id.clone(), line) {
+                if !self.line_constraint(base_id.clone(), source) {
                     return false;
                 }
-                self.apply_matrix(
-                    id,
-                    base_id,
-                    MatrixOp::TranslateByVector,
-                    [point_id(*vector_start_index), point_id(*vector_end_index)],
-                );
-            }
-            LineConstraint::TranslatedDelta { line, dx, dy } => {
-                let base_id = format!("{id}:base");
-                if !self.line_constraint(base_id.clone(), line) {
+                if !self.line_constraint_matrix_apply(id, base_id, matrices) {
                     return false;
                 }
-                self.apply_matrix(
-                    id,
-                    base_id,
-                    MatrixOp::TranslateDelta { dx: *dx, dy: *dy },
-                    [],
-                );
-            }
-            LineConstraint::Reflected { line, axis } => {
-                let base_id = format!("{id}:base");
-                let axis_id = format!("{id}:axis");
-                if !self.line_constraint(base_id.clone(), line)
-                    || !self.line_constraint(axis_id.clone(), axis)
-                {
-                    return false;
-                }
-                self.apply_matrix(id, base_id, MatrixOp::ReflectByLine, [axis_id]);
-            }
-            LineConstraint::Rotated { line, rotation } => {
-                let base_id = format!("{id}:base");
-                if !self.line_constraint(base_id.clone(), line) {
-                    return false;
-                }
-                let Some(angle_id) = self.shape_rotation_scalar(&id, rotation) else {
-                    return false;
-                };
-                self.apply_matrix(
-                    id,
-                    base_id,
-                    MatrixOp::RotateDegrees,
-                    [point_id(rotation.center_index), angle_id],
-                );
             }
         }
+        true
+    }
+
+    fn line_constraint_matrix_apply(
+        &mut self,
+        id: String,
+        source_id: String,
+        matrices: &[crate::runtime::scene::LineConstraintMatrix],
+    ) -> bool {
+        let mut parents = Vec::with_capacity(matrices.len() + 1);
+        parents.push(source_id);
+        for (index, matrix) in matrices.iter().enumerate() {
+            let matrix_id = if matrices.len() == 1 {
+                format!("matrix:{id}")
+            } else {
+                format!("matrix:{id}:{index}")
+            };
+            let transform_id = if matrices.len() == 1 {
+                id.as_str().to_owned()
+            } else {
+                format!("{id}:{index}")
+            };
+            match matrix {
+                crate::runtime::scene::LineConstraintMatrix::TranslateVector {
+                    vector_start_index,
+                    vector_end_index,
+                } => self.derived(
+                    matrix_id.clone(),
+                    ObjectOp::Matrix {
+                        matrix: MatrixOp::TranslateByVector,
+                    },
+                    [point_id(*vector_start_index), point_id(*vector_end_index)],
+                ),
+                crate::runtime::scene::LineConstraintMatrix::TranslateDelta { dx, dy } => self
+                    .derived(
+                        matrix_id.clone(),
+                        ObjectOp::Matrix {
+                            matrix: MatrixOp::TranslateDelta { dx: *dx, dy: *dy },
+                        },
+                        [],
+                    ),
+                crate::runtime::scene::LineConstraintMatrix::Reflect { axis } => {
+                    let axis_id = format!("{transform_id}:axis");
+                    if !self.line_constraint(axis_id.clone(), axis) {
+                        return false;
+                    }
+                    self.derived(
+                        matrix_id.clone(),
+                        ObjectOp::Matrix {
+                            matrix: MatrixOp::ReflectByLine,
+                        },
+                        [axis_id],
+                    );
+                }
+                crate::runtime::scene::LineConstraintMatrix::Rotate { rotation } => {
+                    let Some(angle_id) = self.shape_rotation_scalar(&transform_id, rotation) else {
+                        return false;
+                    };
+                    self.derived(
+                        matrix_id.clone(),
+                        ObjectOp::Matrix {
+                            matrix: MatrixOp::RotateDegrees,
+                        },
+                        [point_id(rotation.center_index), angle_id],
+                    );
+                }
+            }
+            parents.push(matrix_id);
+        }
+        self.derived(id, ObjectOp::ApplyMatrices, parents);
         true
     }
 
@@ -4017,11 +4077,11 @@ impl Builder {
                     self.pending_source(id, "line-binding", value);
                 }
             }
-            Some(LineBinding::DerivedTransform {
+            Some(LineBinding::MatrixApply {
                 source_index,
-                transform,
+                matrices,
             }) => {
-                if !self.geometry_transform(id.clone(), line_id(*source_index), transform) {
+                if !self.geometry_matrix_apply(id.clone(), line_id(*source_index), matrices) {
                     self.pending_source(id, "line-binding", value);
                 }
             }
@@ -4842,53 +4902,86 @@ impl Builder {
         true
     }
 
-    fn geometry_transform(
+    fn geometry_matrix_apply(
         &mut self,
         id: String,
         source_id: String,
+        matrices: &[GeometryTransformBinding],
+    ) -> bool {
+        let mut parents = Vec::with_capacity(matrices.len() + 1);
+        parents.push(source_id);
+        for (index, transform) in matrices.iter().enumerate() {
+            let matrix_id = if matrices.len() == 1 {
+                format!("matrix:{id}")
+            } else {
+                format!("matrix:{id}:{index}")
+            };
+            let transform_id = if matrices.len() == 1 {
+                id.as_str().to_owned()
+            } else {
+                format!("{id}:{index}")
+            };
+            if !self.geometry_matrix(transform_id, matrix_id.clone(), transform) {
+                return false;
+            }
+            parents.push(matrix_id);
+        }
+        self.derived(id, ObjectOp::ApplyMatrices, parents);
+        true
+    }
+
+    fn geometry_matrix(
+        &mut self,
+        transform_id: String,
+        matrix_id: String,
         transform: &GeometryTransformBinding,
     ) -> bool {
         match transform {
-            GeometryTransformBinding::TranslateDelta { dx, dy } => self.apply_matrix(
-                id,
-                source_id,
-                MatrixOp::TranslateDelta { dx: *dx, dy: *dy },
+            GeometryTransformBinding::TranslateDelta { dx, dy } => self.derived(
+                matrix_id,
+                ObjectOp::Matrix {
+                    matrix: MatrixOp::TranslateDelta { dx: *dx, dy: *dy },
+                },
                 [],
             ),
             GeometryTransformBinding::TranslateVector {
                 vector_start_index,
                 vector_end_index,
-            } => self.apply_matrix(
-                id,
-                source_id,
-                MatrixOp::TranslateByVector,
+            } => self.derived(
+                matrix_id,
+                ObjectOp::Matrix {
+                    matrix: MatrixOp::TranslateByVector,
+                },
                 [point_id(*vector_start_index), point_id(*vector_end_index)],
             ),
             GeometryTransformBinding::Rotate(rotation) => {
-                let Some(angle_id) = self.shape_rotation_scalar(&id, rotation) else {
+                let Some(angle_id) = self.shape_rotation_scalar(&transform_id, rotation) else {
                     return false;
                 };
-                self.apply_matrix(
-                    id,
-                    source_id,
-                    MatrixOp::RotateDegrees,
+                self.derived(
+                    matrix_id,
+                    ObjectOp::Matrix {
+                        matrix: MatrixOp::RotateDegrees,
+                    },
                     [point_id(rotation.center_index), angle_id],
                 );
             }
-            GeometryTransformBinding::Scale(scale) => self.apply_matrix(
-                id,
-                source_id,
-                MatrixOp::Scale {
-                    factor: scale.factor,
+            GeometryTransformBinding::Scale(scale) => self.derived(
+                matrix_id,
+                ObjectOp::Matrix {
+                    matrix: MatrixOp::Scale {
+                        factor: scale.factor,
+                    },
                 },
                 [point_id(scale.center_index)],
             ),
-            GeometryTransformBinding::ScaleByRatio(scale) => self.apply_matrix(
-                id,
-                source_id,
-                MatrixOp::ScaleByRatio {
-                    signed: scale.signed,
-                    clamp_to_unit: scale.clamp_to_unit,
+            GeometryTransformBinding::ScaleByRatio(scale) => self.derived(
+                matrix_id,
+                ObjectOp::Matrix {
+                    matrix: MatrixOp::ScaleByRatio {
+                        signed: scale.signed,
+                        clamp_to_unit: scale.clamp_to_unit,
+                    },
                 },
                 [
                     point_id(scale.center_index),
@@ -4899,14 +4992,20 @@ impl Builder {
             ),
             GeometryTransformBinding::Reflect(axis) => {
                 let Some(axis_id) = self.axis_line_parent(
-                    format!("domain:{id}:reflection-axis"),
+                    format!("domain:{transform_id}:reflection-axis"),
                     axis.line_start_index,
                     axis.line_end_index,
                     axis.line_index,
                 ) else {
                     return false;
                 };
-                self.apply_matrix(id, source_id, MatrixOp::ReflectByLine, [axis_id]);
+                self.derived(
+                    matrix_id,
+                    ObjectOp::Matrix {
+                        matrix: MatrixOp::ReflectByLine,
+                    },
+                    [axis_id],
+                );
             }
         }
         true

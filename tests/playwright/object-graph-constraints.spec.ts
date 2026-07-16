@@ -228,6 +228,12 @@ test('a function point drives both sides of the point and segment trace construc
       segmentTraceOp: source.objectGraph.nodes.find(
         (node: any) => node.id === `line:${segmentTraceIndex}`,
       )?.definition.op,
+      segmentTraceInitialOp: source.objectGraph.nodes.find(
+        (node: any) => node.id === `geometry:line:${segmentTraceIndex}:initial`,
+      )?.definition.op,
+      segmentTraceMatrix: source.objectGraph.nodes.find(
+        (node: any) => node.id === `matrix:line:${segmentTraceIndex}`,
+      )?.definition.op.matrix.kind,
       beforePoint,
       afterPoint,
       beforeUpper,
@@ -245,8 +251,10 @@ test('a function point drives both sides of the point and segment trace construc
   expect(result.segmentTraceIndex).toBeGreaterThanOrEqual(0);
   expect(result.upperTraceIndex).toBeGreaterThanOrEqual(0);
   expect(result.lowerTraceIndex).toBeGreaterThanOrEqual(0);
-  expect(result.segmentTraceOp.kind).toBe('curve');
-  expect(result.segmentTraceOp.curve.kind).toBe('zip-point-traces');
+  expect(result.segmentTraceOp.kind).toBe('apply-matrices');
+  expect(result.segmentTraceInitialOp.kind).toBe('curve');
+  expect(result.segmentTraceInitialOp.curve.kind).toBe('zip-point-traces');
+  expect(result.segmentTraceMatrix).toBe('identity');
   expect(result.segmentPointCount).toBe(2000);
   expect(result.segmentCount).toBe(1000);
   expect(Math.hypot(

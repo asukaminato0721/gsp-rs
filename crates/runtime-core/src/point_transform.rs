@@ -160,28 +160,30 @@ enum LineConstraint {
         #[serde(rename = "endIndex")]
         end_index: usize,
     },
-    #[serde(rename = "translated")]
-    Translated {
-        line: Box<LineConstraint>,
+    #[serde(rename = "matrix-apply")]
+    MatrixApply {
+        source: Box<LineConstraint>,
+        #[serde(rename = "matrixApply")]
+        matrix_apply: Vec<LineConstraintMatrix>,
+    },
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(tag = "kind")]
+enum LineConstraintMatrix {
+    #[serde(rename = "translate-vector")]
+    TranslateVector {
         #[serde(rename = "vectorStartIndex")]
         vector_start_index: usize,
         #[serde(rename = "vectorEndIndex")]
         vector_end_index: usize,
     },
-    #[serde(rename = "translated-delta")]
-    TranslatedDelta {
-        line: Box<LineConstraint>,
-        dx: f64,
-        dy: f64,
-    },
-    #[serde(rename = "reflected")]
-    Reflected {
-        line: Box<LineConstraint>,
-        axis: Box<LineConstraint>,
-    },
-    #[serde(rename = "rotated")]
-    Rotated {
-        line: Box<LineConstraint>,
+    #[serde(rename = "translate-delta")]
+    TranslateDelta { dx: f64, dy: f64 },
+    #[serde(rename = "reflect")]
+    Reflect { axis: Box<LineConstraint> },
+    #[serde(rename = "rotate")]
+    Rotate {
         #[serde(rename = "centerIndex")]
         center_index: usize,
         #[serde(rename = "angleDegrees")]
@@ -419,40 +421,43 @@ impl InverseResolver<'_> {
                     LineKind::Ray,
                 ))
             }
-            LineConstraint::Translated {
-                line,
-                vector_start_index,
-                vector_end_index,
+            LineConstraint::MatrixApply {
+                source,
+                matrix_apply,
             } => {
-                let (start, end, kind) = self.line_geometry(line)?;
-                let vector_start = self.point(*vector_start_index)?;
-                let vector_end = self.point(*vector_end_index)?;
-                let matrix = AffineMatrix::translation(
-                    vector_end.x - vector_start.x,
-                    vector_end.y - vector_start.y,
-                );
-                Some((matrix.apply(start), matrix.apply(end), kind))
-            }
-            LineConstraint::TranslatedDelta { line, dx, dy } => {
-                let (start, end, kind) = self.line_geometry(line)?;
-                let matrix = AffineMatrix::translation(*dx, *dy);
-                Some((matrix.apply(start), matrix.apply(end), kind))
-            }
-            LineConstraint::Reflected { line, axis } => {
-                let (start, end, kind) = self.line_geometry(line)?;
-                let (axis_start, axis_end, _) = self.line_geometry(axis)?;
-                let matrix = AffineMatrix::reflection(axis_start, axis_end)?;
-                Some((matrix.apply(start), matrix.apply(end), kind))
-            }
-            LineConstraint::Rotated {
-                line,
-                center_index,
-                angle_degrees,
-            } => {
-                let (start, end, kind) = self.line_geometry(line)?;
-                let center = self.point(*center_index)?;
-                let matrix = AffineMatrix::rotation(center, angle_degrees.to_radians());
-                Some((matrix.apply(start), matrix.apply(end), kind))
+                let (mut start, mut end, kind) = self.line_geometry(source)?;
+                for matrix in matrix_apply {
+                    let matrix = match matrix {
+                        LineConstraintMatrix::TranslateVector {
+                            vector_start_index,
+                            vector_end_index,
+                        } => {
+                            let vector_start = self.point(*vector_start_index)?;
+                            let vector_end = self.point(*vector_end_index)?;
+                            AffineMatrix::translation(
+                                vector_end.x - vector_start.x,
+                                vector_end.y - vector_start.y,
+                            )
+                        }
+                        LineConstraintMatrix::TranslateDelta { dx, dy } => {
+                            AffineMatrix::translation(*dx, *dy)
+                        }
+                        LineConstraintMatrix::Reflect { axis } => {
+                            let (axis_start, axis_end, _) = self.line_geometry(axis)?;
+                            AffineMatrix::reflection(axis_start, axis_end)?
+                        }
+                        LineConstraintMatrix::Rotate {
+                            center_index,
+                            angle_degrees,
+                        } => AffineMatrix::rotation(
+                            self.point(*center_index)?,
+                            angle_degrees.to_radians(),
+                        ),
+                    };
+                    start = matrix.apply(start);
+                    end = matrix.apply(end);
+                }
+                Some((start, end, kind))
             }
         }
     }
@@ -540,5 +545,25 @@ mod tests {
         let source = inverse_point_transform_json(composed).unwrap().unwrap();
         assert!((source.x - 2.0).abs() < 1e-9);
         assert!(source.y.abs() < 1e-9);
+
+        let reflected_by_transformed_line = br#"{
+          "world":{"x":3,"y":4},
+          "points":[{"x":0,"y":0},{"x":0,"y":1}],
+          "matrixApply":[{
+            "kind":"reflect-constraint",
+            "line":{
+              "kind":"matrix-apply",
+              "source":{"kind":"line","startIndex":0,"endIndex":1},
+              "matrixApply":[
+                {"kind":"translate-delta","dx":2,"dy":0},
+                {"kind":"rotate","centerIndex":0,"angleDegrees":90}
+              ]
+            }
+          }]
+        }"#;
+        assert_eq!(
+            inverse_point_transform_json(reflected_by_transformed_line).unwrap(),
+            Some(Point { x: 3.0, y: -8.0 })
+        );
     }
 }

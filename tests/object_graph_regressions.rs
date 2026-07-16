@@ -16,10 +16,7 @@ fn compile_fixture_error(path: &str) -> String {
 }
 
 fn operation_kind<'a>(scene: &'a Value, id: &str) -> Option<&'a str> {
-    let op = &scene["objectGraph"]["nodes"]
-        .as_array()?
-        .iter()
-        .find(|node| node["id"] == id)?["definition"]["op"];
+    let op = operation(scene, id)?;
     if op["kind"] == "curve" {
         op["curve"]["kind"].as_str()
     } else {
@@ -28,6 +25,10 @@ fn operation_kind<'a>(scene: &'a Value, id: &str) -> Option<&'a str> {
 }
 
 fn object_op_kind<'a>(scene: &'a Value, id: &str) -> Option<&'a str> {
+    semantic_node(scene, id)["definition"]["op"]["kind"].as_str()
+}
+
+fn raw_object_op_kind<'a>(scene: &'a Value, id: &str) -> Option<&'a str> {
     scene["objectGraph"]["nodes"]
         .as_array()?
         .iter()
@@ -36,15 +37,42 @@ fn object_op_kind<'a>(scene: &'a Value, id: &str) -> Option<&'a str> {
 }
 
 fn operation<'a>(scene: &'a Value, id: &str) -> Option<&'a Value> {
-    let op = &scene["objectGraph"]["nodes"]
-        .as_array()?
-        .iter()
-        .find(|node| node["id"] == id)?["definition"]["op"];
+    let nodes = scene["objectGraph"]["nodes"].as_array()?;
+    let node = nodes.iter().find(|node| node["id"] == id)?;
+    let op = &node["definition"]["op"];
+    if op["kind"] == "apply-matrices" {
+        let parents = node["definition"]["parents"].as_array()?;
+        let matrix_id = parents.get(1)?.as_str()?;
+        let matrix = nodes.iter().find(|node| node["id"] == matrix_id)?;
+        if matrix["definition"]["op"]["matrix"]["kind"] == "identity" {
+            return operation(scene, parents.first()?.as_str()?);
+        }
+    }
     Some(if op["kind"] == "curve" {
         &op["curve"]
     } else {
         op
     })
+}
+
+fn semantic_node<'a>(scene: &'a Value, id: &str) -> &'a Value {
+    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
+    let node = nodes
+        .iter()
+        .find(|node| node["id"] == id)
+        .unwrap_or_else(|| panic!("missing object graph node {id}"));
+    if node["definition"]["op"]["kind"] == "apply-matrices" {
+        let parents = node["definition"]["parents"].as_array().unwrap();
+        if let Some(matrix_id) = parents.get(1).and_then(Value::as_str)
+            && nodes.iter().any(|matrix| {
+                matrix["id"] == matrix_id
+                    && matrix["definition"]["op"]["matrix"]["kind"] == "identity"
+            })
+        {
+            return semantic_node(scene, parents[0].as_str().unwrap());
+        }
+    }
+    node
 }
 
 fn transform_kind<'a>(scene: &'a Value, id: &str) -> Option<&'a str> {
@@ -61,13 +89,7 @@ fn assert_matrix_apply_parents(
     source_id: &str,
     matrix_parents: impl IntoIterator<Item = String>,
 ) {
-    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
-    let node = |node_id: &str| {
-        nodes
-            .iter()
-            .find(|node| node["id"] == node_id)
-            .unwrap_or_else(|| panic!("missing object graph node {node_id}"))
-    };
+    let node = |id: &str| semantic_node(&scene, id);
     let matrix_id = format!("matrix:{id}");
     assert_eq!(
         node(id)["definition"]["parents"],
@@ -397,7 +419,11 @@ fn fixed_translated_line_keeps_running_person_table_driven() {
         .expect("point on the translated segment");
     assert_eq!(
         translated_point["constraint"]["line"]["kind"],
-        "translated-delta"
+        "matrix-apply"
+    );
+    assert_eq!(
+        translated_point["constraint"]["line"]["matrixApply"][0]["kind"],
+        "translate-delta"
     );
 }
 
@@ -479,13 +505,7 @@ fn projected_coordinate_points_keep_mixed_payload_parents_and_feed_translations(
 
     let point = |ordinal| object_id_for_group(&scene, "points", "point", ordinal);
     let line = |ordinal| object_id_for_group(&scene, "lines", "line", ordinal);
-    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
-    let node = |id: &str| {
-        nodes
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("missing graph node {id}"))
-    };
+    let node = |id: &str| semantic_node(&scene, id);
 
     let projected = point(58);
     assert_eq!(
@@ -530,13 +550,7 @@ fn projected_coordinate_points_keep_mixed_payload_parents_and_feed_translations(
 fn projected_coordinate_program_materializes_unrendered_payload_parents() {
     let scene = compile_fixture("tests/Samples/热研系列/滚动系列/椭圆在正多边形上的滚动.gsp");
     let projected = object_id_for_group(&scene, "points", "point", 42);
-    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
-    let node = |id: &str| {
-        nodes
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("missing graph node {id}"))
-    };
+    let node = |id: &str| semantic_node(&scene, id);
     assert_eq!(
         operation_kind(&scene, &projected),
         Some("projected-coordinate-point")
@@ -586,13 +600,7 @@ fn fraction_arc_keeps_its_symbolic_rotation_parent_chain() {
     let point = |ordinal| object_id_for_group(&scene, "points", "point", ordinal);
     let arc = object_id_for_group(&scene, "arcs", "arc", 95);
     let scalar = object_id_for_group(&scene, "labels", "scalar:label", 33);
-    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
-    let node = |id: &str| {
-        nodes
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("missing graph node {id}"))
-    };
+    let node = |id: &str| semantic_node(&scene, id);
 
     for ordinal in [92, 94] {
         let rotated = point(ordinal);
@@ -621,13 +629,7 @@ fn arbitrary_sector_arc_uses_the_arc_measurement_scalar_program() {
     );
     let point = |ordinal| object_id_for_group(&scene, "points", "point", ordinal);
     let arc = object_id_for_group(&scene, "arcs", "arc", 61);
-    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
-    let node = |id: &str| {
-        nodes
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("missing graph node {id}"))
-    };
+    let node = |id: &str| semantic_node(&scene, id);
 
     let measured_rotation = point(49);
     let angle = format!("scalar:{measured_rotation}:rotation-degrees");
@@ -693,12 +695,7 @@ fn colorized_spectrum_lines_are_table_driven_from_the_trace() {
         operation_kind(&scene, &line),
         Some("colorized-spectrum-line")
     );
-    let node = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == line)
-        .expect("colorized spectrum line node");
+    let node = semantic_node(&scene, &line);
     assert_eq!(node["definition"]["op"]["step_index"], 0);
     assert_eq!(node["definition"]["parents"][0], "line:1");
     assert_eq!(node["definition"]["parents"][1], "line:12");
@@ -732,13 +729,7 @@ fn ellipse_trace_intersection_chain_is_table_driven() {
         Some("apply-matrices")
     );
 
-    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
-    let node = |id: &str| {
-        nodes
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("missing object graph node {id}"))
-    };
+    let node = |id: &str| semantic_node(&scene, id);
     let first_trace = object_id_for_group(&scene, "lines", "line", 103);
     assert_eq!(
         node(&first_intersection)["definition"]["parents"][1],
@@ -1221,6 +1212,35 @@ fn directed_angle_anchor_and_reflected_arc_are_fully_table_driven() {
         transform_kind(&scene, &reflected_arc_id),
         Some("reflect-by-line")
     );
+    let graph_nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
+    let reflected_arc_node = graph_nodes
+        .iter()
+        .find(|node| node["id"] == reflected_arc_id)
+        .unwrap();
+    let reflected_parents = reflected_arc_node["definition"]["parents"]
+        .as_array()
+        .unwrap();
+    assert_eq!(reflected_parents.len(), 2);
+    assert_eq!(reflected_parents[1], format!("matrix:{reflected_arc_id}"));
+    let reflection_matrix = graph_nodes
+        .iter()
+        .find(|node| node["id"] == format!("matrix:{reflected_arc_id}"))
+        .unwrap();
+    let axis_id = reflection_matrix["definition"]["parents"][0]
+        .as_str()
+        .unwrap();
+    assert!(!reflected_parents.iter().any(|parent| parent == axis_id));
+    let reflected_arc = scene["arcs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|arc| arc["debug"]["groupOrdinal"] == 61)
+        .expect("reflected arc #61");
+    assert_eq!(reflected_arc["binding"]["kind"], "matrix-apply");
+    assert_eq!(
+        reflected_arc["binding"]["matrixApply"][0]["kind"],
+        "reflect"
+    );
 
     let controlled_point_id = object_id_for_group(&scene, "points", "point", 71);
     assert_eq!(
@@ -1234,12 +1254,7 @@ fn directed_angle_anchor_and_reflected_arc_are_fully_table_driven() {
 
     let result_arc_id = object_id_for_group(&scene, "arcs", "arc", 72);
     assert_eq!(operation_kind(&scene, &result_arc_id), Some("center-arc"));
-    let result_arc_node = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == result_arc_id)
-        .unwrap();
+    let result_arc_node = semantic_node(&scene, &result_arc_id);
     assert!(
         result_arc_node["definition"]["parents"]
             .as_array()
@@ -1516,12 +1531,7 @@ fn nested_function_plot_uses_live_parameters_and_payload_defaults() {
             .expect("normal density plot line")
     );
     assert_eq!(operation_kind(scene, &line_id), Some("function-plot"));
-    let node = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == line_id)
-        .unwrap();
+    let node = semantic_node(scene, &line_id);
     assert!(
         node["definition"]["parents"]
             .as_array()
@@ -1752,12 +1762,7 @@ fn function_point_drives_the_complete_point_and_segment_trace_chain() {
         operation_kind(&scene, &segment_trace_id),
         Some("zip-point-traces")
     );
-    let segment_trace = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == segment_trace_id)
-        .unwrap();
+    let segment_trace = semantic_node(&scene, &segment_trace_id);
     assert_eq!(
         segment_trace["definition"]["parents"],
         serde_json::json!([
@@ -1801,12 +1806,7 @@ fn parameter_anchor_expression_keeps_center_arc_live() {
         Some("point-on-circle-parameter")
     );
     assert_eq!(operation_kind(&scene, "arc:2"), Some("center-arc"));
-    let arc = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == "arc:2")
-        .unwrap();
+    let arc = semantic_node(&scene, "arc:2");
     assert_eq!(arc["definition"]["parents"][0], "point:15");
 }
 
@@ -1843,14 +1843,7 @@ fn fixed_coordinate_root_keeps_heart_curve_transform_chain_table_driven() {
         assert_eq!(operation_kind(&scene, id), Some(op), "object {id}");
     }
 
-    let node = |id: &str| {
-        scene["objectGraph"]["nodes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("object graph node {id}"))
-    };
+    let node = |id: &str| semantic_node(&scene, id);
     assert_matrix_apply_parents(
         &scene,
         &first_translation,
@@ -1930,14 +1923,7 @@ fn moon_center_arcs_use_parameter_root_endpoint_chains_on_both_pages() {
             serde_json::json!([])
         );
         let point = |ordinal| object_id_for_group(scene, "points", "point", ordinal);
-        let node = |id: &str| {
-            scene["objectGraph"]["nodes"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|node| node["id"] == id)
-                .unwrap_or_else(|| panic!("page {} object graph node {id}", page_index + 1))
-        };
+        let node = |id: &str| semantic_node(&scene, id);
         let expected = match page_index {
             0 => [(20, 16, 17, 18), (21, 16, 18, 17)],
             1 => [(26, 22, 24, 25), (28, 22, 25, 24)],
@@ -1977,12 +1963,7 @@ fn function_rotation_chain_keeps_its_center_arc_live() {
     let center_id = object_id_for_group(&scene, "points", "point", 21);
     let start_id = object_id_for_group(&scene, "points", "point", 40);
     let end_id = object_id_for_group(&scene, "points", "point", 41);
-    let arc = scene["objectGraph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|node| node["id"] == arc_id)
-        .unwrap();
+    let arc = semantic_node(&scene, &arc_id);
     assert_eq!(
         arc["definition"]["parents"],
         serde_json::json!([center_id, start_id, end_id])
@@ -1997,13 +1978,7 @@ fn circle_measurement_function_rotations_keep_center_arcs_table_driven() {
     let scene = &document["pages"][3]["scene"];
     let point = |ordinal| object_id_for_group(scene, "points", "point", ordinal);
     let arc = |ordinal| object_id_for_group(scene, "arcs", "arc", ordinal);
-    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
-    let node = |id: &str| {
-        nodes
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("missing object graph node {id}"))
-    };
+    let node = |id: &str| semantic_node(&scene, id);
     for ordinal in [13, 15, 30] {
         assert_eq!(
             operation_kind(scene, &point(ordinal)),
@@ -2072,13 +2047,7 @@ fn circle_measurement_function_rotations_keep_center_arcs_table_driven() {
     let point = |ordinal| object_id_for_group(scene, "points", "point", ordinal);
     let arc = |ordinal| object_id_for_group(scene, "arcs", "arc", ordinal);
     let circle = |ordinal| object_id_for_group(scene, "circles", "circle", ordinal);
-    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
-    let node = |id: &str| {
-        nodes
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("missing object graph node {id}"))
-    };
+    let node = |id: &str| semantic_node(&scene, id);
     let circumference = "scalar:group:44";
     let radius = "scalar:group:44:radius";
     assert_eq!(operation_kind(scene, circumference), Some("scale-scalar"));
@@ -2714,14 +2683,7 @@ fn rotor_expressions_with_the_same_display_name_use_exact_payload_parents() {
         serde_json::json!([])
     );
 
-    let node = |id: &str| {
-        scene["objectGraph"]["nodes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("missing object graph node {id}"))
-    };
+    let node = |id: &str| semantic_node(&scene, id);
     for (expression_group, parameter_group) in [(11, 10), (23, 17), (27, 18)] {
         let expression_id = object_id_for_group(&scene, "labels", "scalar:label", expression_group);
         let parameter_id = object_id_for_group(&scene, "labels", "scalar:label", parameter_group);
@@ -3030,14 +2992,7 @@ fn half_sector_pages_keep_scale_translation_intersection_and_arc_programs() {
         );
         let point = |ordinal| object_id_for_group(scene, "points", "point", ordinal);
         let arc = |ordinal| object_id_for_group(scene, "arcs", "arc", ordinal);
-        let node = |id: &str| {
-            scene["objectGraph"]["nodes"]
-                .as_array()
-                .expect("graph nodes")
-                .iter()
-                .find(|node| node["id"] == id)
-                .unwrap_or_else(|| panic!("page {} graph node {id}", page_index + 1))
-        };
+        let node = |id: &str| semantic_node(&scene, id);
 
         let scaled = point(6);
         assert_eq!(operation_kind(scene, &scaled), Some("apply-matrices"));
@@ -3136,13 +3091,7 @@ fn ellipse_polygon_rolling_is_an_exact_table_driven_program() {
     );
     let point = |ordinal| object_id_for_group(&scene, "points", "point", ordinal);
     let line = |ordinal| object_id_for_group(&scene, "lines", "line", ordinal);
-    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
-    let node = |id: &str| {
-        nodes
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("missing graph node {id}"))
-    };
+    let node = |id: &str| semantic_node(&scene, id);
 
     let focus = point(69);
     let distance = format!("scalar:{focus}:marked-angle-translation-distance");
@@ -3264,13 +3213,7 @@ fn boundary_curve_length_radius_circle_is_table_driven() {
         operation_kind(&scene, &intersection),
         Some("line-circle-intersection")
     );
-    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
-    let node = |id: &str| {
-        nodes
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("missing graph node {id}"))
-    };
+    let node = |id: &str| semantic_node(&scene, id);
     assert_eq!(
         node(scalar)["definition"]["parents"],
         serde_json::json!([arc])
@@ -3323,13 +3266,7 @@ fn normalized_polygon_path_point_keeps_boundary_intersection_chain() {
     );
     let point = |ordinal| object_id_for_group(&scene, "points", "point", ordinal);
     let polygon = |ordinal| object_id_for_group(&scene, "polygons", "polygon", ordinal);
-    let nodes = scene["objectGraph"]["nodes"].as_array().unwrap();
-    let node = |id: &str| {
-        nodes
-            .iter()
-            .find(|node| node["id"] == id)
-            .unwrap_or_else(|| panic!("missing graph node {id}"))
-    };
+    let node = |id: &str| semantic_node(&scene, id);
 
     for (ordinal, parameter) in [(20, 0.5), (21, 0.0)] {
         let id = point(ordinal);
@@ -3422,11 +3359,16 @@ fn payload_intersections_can_depend_on_source_line_and_circle_nodes() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|source| source["id"] == "line:45")
+        .find(|source| source["id"] == "geometry:line:45:initial")
         .expect("payload ray source");
     assert_eq!(source_ray["value"]["kind"], "line");
     assert_eq!(source_ray["value"]["line_kind"], "ray");
     assert_eq!(source_ray["binding"]["lineKind"], "ray");
+    assert_eq!(
+        raw_object_op_kind(&scene, "line:45"),
+        Some("apply-matrices")
+    );
+    assert_eq!(transform_kind(&scene, "line:45"), Some("identity"));
 }
 
 #[test]

@@ -120,91 +120,70 @@ fn resolve_trace_line_constraint(
                 LineLikeKind::Ray,
             ))
         }
-        LineConstraint::Translated {
-            line,
-            vector_start_index,
-            vector_end_index,
-        } => {
-            let (start, end, kind) = resolve_trace_line_constraint(points, line, visiting)?;
-            let vector_start = resolve_trace_point(points, *vector_start_index, visiting)?;
-            let vector_end = resolve_trace_point(points, *vector_end_index, visiting)?;
-            let dx = vector_end.x - vector_start.x;
-            let dy = vector_end.y - vector_start.y;
-            Some((
-                PointRecord {
-                    x: start.x + dx,
-                    y: start.y + dy,
-                },
-                PointRecord {
-                    x: end.x + dx,
-                    y: end.y + dy,
-                },
-                kind,
-            ))
-        }
-        LineConstraint::TranslatedDelta { line, dx, dy } => {
-            let (start, end, kind) = resolve_trace_line_constraint(points, line, visiting)?;
-            Some((
-                PointRecord {
-                    x: start.x + dx,
-                    y: start.y + dy,
-                },
-                PointRecord {
-                    x: end.x + dx,
-                    y: end.y + dy,
-                },
-                kind,
-            ))
-        }
-        LineConstraint::Reflected { line, axis } => {
-            let (start, end, kind) = resolve_trace_line_constraint(points, line, visiting)?;
-            let (axis_start, axis_end, _) =
-                resolve_trace_line_constraint(points, axis, visiting)?;
-            let start = gsp_runtime_core::reflect_across_line(
-                to_core_point(&start),
-                to_core_point(&axis_start),
-                to_core_point(&axis_end),
-            )?;
-            let end = gsp_runtime_core::reflect_across_line(
-                to_core_point(&end),
-                to_core_point(&axis_start),
-                to_core_point(&axis_end),
-            )?;
+        LineConstraint::MatrixApply { source, matrices } => {
+            let (start, end, kind) = resolve_trace_line_constraint(points, source, visiting)?;
+            let mut start = to_core_point(&start);
+            let mut end = to_core_point(&end);
+            for matrix in matrices {
+                let matrix = match matrix {
+                    crate::runtime::scene::LineConstraintMatrix::TranslateVector {
+                        vector_start_index,
+                        vector_end_index,
+                    } => {
+                        let vector_start =
+                            resolve_trace_point(points, *vector_start_index, visiting)?;
+                        let vector_end = resolve_trace_point(points, *vector_end_index, visiting)?;
+                        gsp_runtime_core::AffineMatrix::translation(
+                            vector_end.x - vector_start.x,
+                            vector_end.y - vector_start.y,
+                        )
+                    }
+                    crate::runtime::scene::LineConstraintMatrix::TranslateDelta { dx, dy } => {
+                        gsp_runtime_core::AffineMatrix::translation(*dx, *dy)
+                    }
+                    crate::runtime::scene::LineConstraintMatrix::Reflect { axis } => {
+                        let (axis_start, axis_end, _) =
+                            resolve_trace_line_constraint(points, axis, visiting)?;
+                        gsp_runtime_core::AffineMatrix::reflection(
+                            to_core_point(&axis_start),
+                            to_core_point(&axis_end),
+                        )?
+                    }
+                    crate::runtime::scene::LineConstraintMatrix::Rotate { rotation } => {
+                        let center =
+                            resolve_trace_point(points, rotation.center_index, visiting)?;
+                        let angle_degrees = if let (
+                            Some(start_index),
+                            Some(vertex_index),
+                            Some(end_index),
+                        ) = (
+                            rotation.angle_start_index,
+                            rotation.angle_vertex_index,
+                            rotation.angle_end_index,
+                        ) {
+                            let angle_start =
+                                resolve_trace_point(points, start_index, visiting)?;
+                            let angle_vertex =
+                                resolve_trace_point(points, vertex_index, visiting)?;
+                            let angle_end = resolve_trace_point(points, end_index, visiting)?;
+                            crate::runtime::geometry::angle_degrees_from_points(
+                                &angle_start,
+                                &angle_vertex,
+                                &angle_end,
+                            )?
+                        } else {
+                            rotation.angle_degrees
+                        };
+                        gsp_runtime_core::AffineMatrix::rotation(
+                            to_core_point(&center),
+                            angle_degrees.to_radians(),
+                        )
+                    }
+                };
+                start = matrix.apply(start);
+                end = matrix.apply(end);
+            }
             Some((from_core_point(start), from_core_point(end), kind))
-        }
-        LineConstraint::Rotated { line, rotation } => {
-            let (start, end, kind) = resolve_trace_line_constraint(points, line, visiting)?;
-            let center = resolve_trace_point(points, rotation.center_index, visiting)?;
-            let angle_degrees = if let (Some(start_index), Some(vertex_index), Some(end_index)) = (
-                rotation.angle_start_index,
-                rotation.angle_vertex_index,
-                rotation.angle_end_index,
-            ) {
-                let angle_start = resolve_trace_point(points, start_index, visiting)?;
-                let angle_vertex = resolve_trace_point(points, vertex_index, visiting)?;
-                let angle_end = resolve_trace_point(points, end_index, visiting)?;
-                crate::runtime::geometry::angle_degrees_from_points(
-                    &angle_start,
-                    &angle_vertex,
-                    &angle_end,
-                )?
-            } else {
-                rotation.angle_degrees
-            };
-            let radians = angle_degrees.to_radians();
-            Some((
-                from_core_point(gsp_runtime_core::rotate_around(
-                    to_core_point(&start),
-                    to_core_point(&center),
-                    radians,
-                )),
-                from_core_point(gsp_runtime_core::rotate_around(
-                    to_core_point(&end),
-                    to_core_point(&center),
-                    radians,
-                )),
-                kind,
-            ))
         }
     }
 }

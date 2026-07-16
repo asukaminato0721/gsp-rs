@@ -123,11 +123,12 @@ enum LineBindingJson {
         #[serde(rename = "endIndex")]
         end_index: usize,
     },
-    #[serde(rename = "derived")]
-    Derived {
+    #[serde(rename = "matrix-apply")]
+    MatrixApply {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
-        transform: TransformJson,
+        #[serde(rename = "matrixApply")]
+        matrix_apply: Vec<TransformJson>,
     },
     #[serde(rename = "custom-transform-trace")]
     CustomTransformTrace {
@@ -336,12 +337,12 @@ impl LineBindingJson {
                 start_index: *start_index,
                 end_index: *end_index,
             },
-            LineBinding::DerivedTransform {
+            LineBinding::MatrixApply {
                 source_index,
-                transform,
-            } => Self::Derived {
+                matrices,
+            } => Self::MatrixApply {
                 source_index: *source_index,
-                transform: TransformJson::from_transform(transform),
+                matrix_apply: matrices.iter().map(TransformJson::from_transform).collect(),
             },
             LineBinding::CustomTransformTrace {
                 point_index,
@@ -628,6 +629,7 @@ pub(super) struct ArcJson {
     center: Option<PointJson>,
     counterclockwise: bool,
     visible: bool,
+    binding: Option<ArcBindingJson>,
     #[serde(skip_serializing_if = "Option::is_none")]
     debug: Option<DebugSourceJson>,
 }
@@ -640,7 +642,89 @@ impl ArcJson {
             center: arc.center.as_ref().map(PointJson::from_point),
             counterclockwise: arc.counterclockwise,
             visible: arc.visible,
+            binding: arc.binding.as_ref().map(ArcBindingJson::from_binding),
             debug: arc.debug.as_ref().map(DebugSourceJson::from_source),
+        }
+    }
+}
+
+#[derive(Serialize, TS)]
+#[serde(tag = "kind")]
+enum ArcBindingJson {
+    #[serde(rename = "center-arc")]
+    CenterArc {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+    #[serde(rename = "circle-arc")]
+    CircleArc {
+        #[serde(rename = "circleIndex")]
+        circle_index: usize,
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+    #[serde(rename = "three-point-arc")]
+    ThreePointArc {
+        #[serde(rename = "startIndex")]
+        start_index: usize,
+        #[serde(rename = "midIndex")]
+        mid_index: usize,
+        #[serde(rename = "endIndex")]
+        end_index: usize,
+    },
+    #[serde(rename = "matrix-apply")]
+    MatrixApply {
+        #[serde(rename = "sourceIndex")]
+        source_index: usize,
+        #[serde(rename = "matrixApply")]
+        matrix_apply: Vec<TransformJson>,
+    },
+}
+
+impl ArcBindingJson {
+    fn from_binding(binding: &crate::runtime::scene::ArcBinding) -> Self {
+        use crate::runtime::scene::ArcBinding;
+        match binding {
+            ArcBinding::CenterArc {
+                center_index,
+                start_index,
+                end_index,
+            } => Self::CenterArc {
+                center_index: *center_index,
+                start_index: *start_index,
+                end_index: *end_index,
+            },
+            ArcBinding::CircleArc {
+                circle_index,
+                start_index,
+                end_index,
+            } => Self::CircleArc {
+                circle_index: *circle_index,
+                start_index: *start_index,
+                end_index: *end_index,
+            },
+            ArcBinding::ThreePointArc {
+                start_index,
+                mid_index,
+                end_index,
+            } => Self::ThreePointArc {
+                start_index: *start_index,
+                mid_index: *mid_index,
+                end_index: *end_index,
+            },
+            ArcBinding::MatrixApply {
+                source_index,
+                matrices,
+            } => Self::MatrixApply {
+                source_index: *source_index,
+                matrix_apply: matrices.iter().map(TransformJson::from_transform).collect(),
+            },
         }
     }
 }
@@ -701,11 +785,12 @@ enum ShapeBindingJson {
         center_index: usize,
         expr: FunctionExprJson,
     },
-    #[serde(rename = "derived")]
-    Derived {
+    #[serde(rename = "matrix-apply")]
+    MatrixApply {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
-        transform: TransformJson,
+        #[serde(rename = "matrixApply")]
+        matrix_apply: Vec<TransformJson>,
     },
 }
 
@@ -734,12 +819,12 @@ impl ShapeBindingJson {
                 reversed: *reversed,
                 complement: *complement,
             }),
-            ShapeBinding::DerivedTransform {
+            ShapeBinding::MatrixApply {
                 source_index,
-                transform,
-            } => Some(Self::Derived {
+                matrices,
+            } => Some(Self::MatrixApply {
                 source_index: *source_index,
-                transform: TransformJson::from_transform(transform),
+                matrix_apply: matrices.iter().map(TransformJson::from_transform).collect(),
             }),
             ShapeBinding::PointRadiusCircle { .. }
             | ShapeBinding::SegmentRadiusCircle { .. }
@@ -781,12 +866,12 @@ impl ShapeBindingJson {
                 center_index: *center_index,
                 expr: FunctionExprJson::from_expr(expr),
             }),
-            ShapeBinding::DerivedTransform {
+            ShapeBinding::MatrixApply {
                 source_index,
-                transform,
-            } => Some(Self::Derived {
+                matrices,
+            } => Some(Self::MatrixApply {
                 source_index: *source_index,
-                transform: TransformJson::from_transform(transform),
+                matrix_apply: matrices.iter().map(TransformJson::from_transform).collect(),
             }),
             ShapeBinding::PointPolygon { .. } | ShapeBinding::ArcBoundaryPolygon { .. } => None,
         }

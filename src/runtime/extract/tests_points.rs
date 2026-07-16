@@ -346,7 +346,7 @@ fn fixed_translated_line_restores_running_person_dependency_chain() {
     assert!(matches!(
         point(42).map(|point| &point.constraint),
         Some(ScenePointConstraint::OnLineConstraint {
-            line: crate::runtime::scene::LineConstraint::TranslatedDelta { .. },
+            line: crate::runtime::scene::LineConstraint::MatrixApply { .. },
             ..
         })
     ));
@@ -1133,10 +1133,9 @@ fn initially_undefined_rotated_ray_keeps_circle_intersection_chain() {
         .expect("rotated ray #14");
     assert!(matches!(
         &rotated_ray.binding,
-        Some(LineBinding::DerivedTransform {
-            transform: GeometryTransformBinding::Rotate(binding),
-            ..
-        }) if binding.angle_degrees == 0.0 && binding.angle_expr.is_some()
+        Some(LineBinding::MatrixApply { matrices, .. })
+            if matches!(matrices.as_slice(), [GeometryTransformBinding::Rotate(binding)]
+                if binding.angle_degrees == 0.0 && binding.angle_expr.is_some())
     ));
     let intersection = scene
         .points
@@ -1584,7 +1583,7 @@ fn angle_bisector_fixture_decodes_its_angle_anchor_and_reflected_arc_from_payloa
         .expect("reflected arc #61 is materialized");
     assert!(matches!(
         reflected_arc.binding,
-        Some(ArcBinding::DerivedTransform { .. })
+        Some(ArcBinding::MatrixApply { .. })
     ));
 
     let expression_circle_intersection = scene
@@ -2236,14 +2235,15 @@ fn triangle_angle_sum_fixture_keeps_measured_angle_rotation_live() {
     assert!(
         matches!(
             &scene.lines[rotated_bc_line_index].binding,
-            Some(LineBinding::DerivedTransform {
+            Some(LineBinding::MatrixApply {
                 source_index,
-                transform: GeometryTransformBinding::Rotate(binding),
+                matrices,
             }) if *source_index == source_bl_line_index
-                && binding.center_index == center_point_index
-                && binding.angle_start_index == Some(point_index_for_group(16))
-                && binding.angle_vertex_index == Some(point_index_for_group(15))
-                && binding.angle_end_index == Some(point_index_for_group(18))
+                && matches!(matrices.as_slice(), [GeometryTransformBinding::Rotate(binding)]
+                    if binding.center_index == center_point_index
+                        && binding.angle_start_index == Some(point_index_for_group(16))
+                        && binding.angle_vertex_index == Some(point_index_for_group(15))
+                        && binding.angle_end_index == Some(point_index_for_group(18)))
         ),
         "expected #32 to rotate #29 from measured angle #30"
     );
@@ -3238,19 +3238,15 @@ fn ellipse_polygon_rolling_keeps_marked_translation_and_intersection_chain() {
     ));
     for ordinal in [85, 101, 110] {
         assert!(matches!(
-            line(ordinal).binding,
-            Some(LineBinding::DerivedTransform {
-                transform: GeometryTransformBinding::Rotate(_),
-                ..
-            })
+            &line(ordinal).binding,
+            Some(LineBinding::MatrixApply { matrices, .. })
+                if matches!(matrices.as_slice(), [GeometryTransformBinding::Rotate(_)])
         ));
     }
     assert!(matches!(
-        line(102).binding,
-        Some(LineBinding::DerivedTransform {
-            transform: GeometryTransformBinding::Reflect(_),
-            ..
-        })
+        &line(102).binding,
+        Some(LineBinding::MatrixApply { matrices, .. })
+            if matches!(matrices.as_slice(), [GeometryTransformBinding::Reflect(_)])
     ));
     for ordinal in [87, 118] {
         assert!(matches!(

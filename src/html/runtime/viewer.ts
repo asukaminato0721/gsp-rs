@@ -384,6 +384,7 @@
         points: arc.points.map((point: PointJson) => ({ ...point })),
         center: arc.center ? { ...arc.center } : null,
         counterclockwise: !!arc.counterclockwise,
+        binding: arc.binding ? { ...arc.binding } : null,
         debug: clonePayloadDebug(arc.debug),
       })),
       labels: scene.labels.map((label: LabelJson): RuntimeLabelJson => ({

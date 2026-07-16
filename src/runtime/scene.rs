@@ -817,22 +817,26 @@ pub(crate) enum LineConstraint {
         vertex_index: usize,
         end_index: usize,
     },
-    Translated {
-        line: Box<LineConstraint>,
+    MatrixApply {
+        source: Box<LineConstraint>,
+        matrices: Vec<LineConstraintMatrix>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum LineConstraintMatrix {
+    TranslateVector {
         vector_start_index: usize,
         vector_end_index: usize,
     },
-    TranslatedDelta {
-        line: Box<LineConstraint>,
+    TranslateDelta {
         dx: f64,
         dy: f64,
     },
-    Reflected {
-        line: Box<LineConstraint>,
+    Reflect {
         axis: Box<LineConstraint>,
     },
-    Rotated {
-        line: Box<LineConstraint>,
+    Rotate {
         rotation: RotationBinding,
     },
 }
@@ -946,9 +950,9 @@ pub(crate) enum LineBinding {
         start_index: usize,
         end_index: usize,
     },
-    DerivedTransform {
+    MatrixApply {
         source_index: usize,
-        transform: GeometryTransformBinding,
+        matrices: Vec<GeometryTransformBinding>,
     },
     CustomTransformTrace {
         point_index: usize,
@@ -1290,9 +1294,9 @@ pub(crate) enum ArcBinding {
         mid_index: usize,
         end_index: usize,
     },
-    DerivedTransform {
+    MatrixApply {
         source_index: usize,
-        transform: GeometryTransformBinding,
+        matrices: Vec<GeometryTransformBinding>,
     },
 }
 
@@ -1352,9 +1356,9 @@ pub(crate) enum ShapeBinding {
         expr: FunctionExpr,
         parameter_group_ordinals: BTreeMap<String, usize>,
     },
-    DerivedTransform {
+    MatrixApply {
         source_index: usize,
-        transform: GeometryTransformBinding,
+        matrices: Vec<GeometryTransformBinding>,
     },
 }
 

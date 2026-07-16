@@ -75,6 +75,7 @@ pub enum TraceDriver {
 #[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum MatrixOp {
+    Identity,
     TranslateDelta {
         dx: f64,
         dy: f64,
@@ -2934,6 +2935,10 @@ fn expect_arc(
 fn matrix_value(matrix: MatrixOp, parents: &[&ObjectValue]) -> Result<ObjectValue, ObjectOpError> {
     let op = "matrix";
     let matrix = match matrix {
+        MatrixOp::Identity => {
+            expect_arity(op, parents, 0)?;
+            AffineMatrix::IDENTITY
+        }
         MatrixOp::TranslateDelta { dx, dy } => {
             expect_arity(op, parents, 0)?;
             AffineMatrix::translation(dx, dy)
@@ -3331,6 +3336,7 @@ mod tests {
             start: Point { x: 0.0, y: -1.0 },
             end: Point { x: 0.0, y: 1.0 },
         };
+        assert_eq!(transformed(&segment, MatrixOp::Identity, &[]), segment);
 
         let transformed_lines = [
             transformed(

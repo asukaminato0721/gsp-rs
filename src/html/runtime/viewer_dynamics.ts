@@ -627,43 +627,11 @@
         true,
       );
     }
-    if (constraint.kind === "translated") {
-
-      const source = resolveLineConstraintPoints(resolvePointAt, bounds, constraint.line);
-      const vectorStart = resolvePointAt(constraint.vectorStartIndex);
-      const vectorEnd = resolvePointAt(constraint.vectorEndIndex);
-      if (!source || !vectorStart || !vectorEnd) return null;
-      const dx = vectorEnd.x - vectorStart.x;
-      const dy = vectorEnd.y - vectorStart.y;
-      return source.map(( point) => ({ x: point.x + dx, y: point.y + dy }));
-    }
-    if (constraint.kind === "translated-delta") {
-      const source = resolveLineConstraintPoints(resolvePointAt, bounds, constraint.line);
-      if (!source) return null;
-      return source.map((point) => ({
-        x: point.x + constraint.dx,
-        y: point.y + constraint.dy,
-      }));
-    }
-    if (constraint.kind === "reflected") {
-      const source = resolveLineConstraintPoints(resolvePointAt, bounds, constraint.line);
-      const axis = resolveLineConstraintParameterPoints(resolvePointAt, constraint.axis);
-      if (!source || !axis) return null;
-      const reflected = source.map((point) => reflectAcrossLine(point, axis[0], axis[1]));
-      return reflected.every((point): point is Point => point !== null) ? reflected : null;
-    }
-    if (constraint.kind === "rotated") {
-      const source = resolveLineConstraintPoints(resolvePointAt, bounds, constraint.line);
-      const center = resolvePointAt(constraint.centerIndex);
-      if (!source || !center) return null;
-      const angleDegrees = resolveRotateTransformAngleDegrees(
-        constraint,
-        new Map(),
-        resolvePointAt,
-      );
-      if (!isFiniteNumber(angleDegrees)) return null;
-      const radians = angleDegrees * Math.PI / 180;
-      return source.map((point) => rotateAround(point, center, radians));
+    if (constraint.kind === "matrix-apply") {
+      const source = resolveLineConstraintPoints(resolvePointAt, bounds, constraint.source);
+      return source
+        ? applyLineConstraintMatrices(resolvePointAt, source, constraint.matrixApply)
+        : null;
     }
     return null;
   }
@@ -718,44 +686,46 @@
         ? [vertex, { x: vertex.x + direction.x, y: vertex.y + direction.y }]
         : null;
     }
-    if (constraint.kind === "translated") {
-      const source = resolveLineConstraintParameterPoints(resolvePointAt, constraint.line);
-      const vectorStart = resolvePointAt(constraint.vectorStartIndex);
-      const vectorEnd = resolvePointAt(constraint.vectorEndIndex);
-      if (!source || !vectorStart || !vectorEnd) return null;
-      const dx = vectorEnd.x - vectorStart.x;
-      const dy = vectorEnd.y - vectorStart.y;
-      return source.map(( point) => ({ x: point.x + dx, y: point.y + dy }));
-    }
-    if (constraint.kind === "translated-delta") {
-      const source = resolveLineConstraintParameterPoints(resolvePointAt, constraint.line);
-      if (!source) return null;
-      return source.map((point) => ({
-        x: point.x + constraint.dx,
-        y: point.y + constraint.dy,
-      }));
-    }
-    if (constraint.kind === "reflected") {
-      const source = resolveLineConstraintParameterPoints(resolvePointAt, constraint.line);
-      const axis = resolveLineConstraintParameterPoints(resolvePointAt, constraint.axis);
-      if (!source || !axis) return null;
-      const reflected = source.map((point) => reflectAcrossLine(point, axis[0], axis[1]));
-      return reflected.every((point): point is Point => point !== null) ? reflected : null;
-    }
-    if (constraint.kind === "rotated") {
-      const source = resolveLineConstraintParameterPoints(resolvePointAt, constraint.line);
-      const center = resolvePointAt(constraint.centerIndex);
-      if (!source || !center) return null;
-      const angleDegrees = resolveRotateTransformAngleDegrees(
-        constraint,
-        new Map(),
-        resolvePointAt,
-      );
-      if (!isFiniteNumber(angleDegrees)) return null;
-      const radians = angleDegrees * Math.PI / 180;
-      return source.map((point) => rotateAround(point, center, radians));
+    if (constraint.kind === "matrix-apply") {
+      const source = resolveLineConstraintParameterPoints(resolvePointAt, constraint.source);
+      return source
+        ? applyLineConstraintMatrices(resolvePointAt, source, constraint.matrixApply)
+        : null;
     }
     return null;
+  }
+
+  function applyLineConstraintMatrices(
+    resolvePointAt: (pointIndex: number) => Point | null,
+    source: Point[],
+    matrices: Extract<LineConstraintJson, { kind: "matrix-apply" }>["matrixApply"],
+  ): Point[] | null {
+    let points = source;
+    for (const matrix of matrices) {
+      if (matrix.kind === "translate-vector") {
+        const vectorStart = resolvePointAt(matrix.vectorStartIndex);
+        const vectorEnd = resolvePointAt(matrix.vectorEndIndex);
+        if (!vectorStart || !vectorEnd) return null;
+        const dx = vectorEnd.x - vectorStart.x;
+        const dy = vectorEnd.y - vectorStart.y;
+        points = points.map((point) => ({ x: point.x + dx, y: point.y + dy }));
+      } else if (matrix.kind === "translate-delta") {
+        points = points.map((point) => ({ x: point.x + matrix.dx, y: point.y + matrix.dy }));
+      } else if (matrix.kind === "reflect") {
+        const axis = resolveLineConstraintParameterPoints(resolvePointAt, matrix.axis);
+        if (!axis) return null;
+        const reflected = points.map((point) => reflectAcrossLine(point, axis[0], axis[1]));
+        if (!reflected.every((point): point is Point => point !== null)) return null;
+        points = reflected;
+      } else {
+        const center = resolvePointAt(matrix.centerIndex);
+        const angleDegrees = resolveRotateTransformAngleDegrees(matrix, new Map(), resolvePointAt);
+        if (!center || !isFiniteNumber(angleDegrees)) return null;
+        const radians = angleDegrees * Math.PI / 180;
+        points = points.map((point) => rotateAround(point, center, radians));
+      }
+    }
+    return points;
   }
 
 
