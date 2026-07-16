@@ -37,8 +37,9 @@ use crate::runtime::geometry::{
     three_point_arc_geometry,
 };
 use crate::runtime::scene::{
-    ArcConstraint, CircularConstraint, LineConstraint, RotationBinding, ScenePoint,
-    ScenePointBinding, ScenePointConstraint, ScenePointParameterSource,
+    ArcConstraint, AxisBinding, CircularConstraint, GeometryTransformBinding, LineConstraint,
+    RotationBinding, ScaleBinding, ScenePoint, ScenePointBinding, ScenePointConstraint,
+    ScenePointParameterSource,
 };
 
 fn mapped_point_index(group_to_point_index: &[Option<usize>], group_index: usize) -> Option<usize> {
@@ -276,11 +277,13 @@ fn scene_point_from_perpendicular_segment_payload(
                 start_index: center_index,
                 end_index: line_end_index,
             },
-            right: LineConstraint::PerpendicularLine {
+            right: LineConstraint::perpendicular_through(
+                LineConstraint::Line {
+                    start_index: center_index,
+                    end_index: line_end_index,
+                },
                 through_index,
-                line_start_index: center_index,
-                line_end_index,
-            },
+            ),
         },
         None,
     ))
@@ -3035,8 +3038,29 @@ fn resolve_arc_constraint(
             };
             let source_group = groups.get(source.checked_sub(1)?)?;
             let axis_group = groups.get(axis.checked_sub(1)?)?;
-            Some(ArcConstraint::Reflected {
-                arc: Box::new(resolve_arc_constraint(
+            let axis_constraint =
+                resolve_line_constraint(file, groups, axis_group, anchors, group_to_point_index)?;
+            let (line_start_index, line_end_index) = match axis_constraint {
+                LineConstraint::Segment {
+                    start_index,
+                    end_index,
+                }
+                | LineConstraint::Line {
+                    start_index,
+                    end_index,
+                }
+                | LineConstraint::Ray {
+                    start_index,
+                    end_index,
+                } => (Some(start_index), Some(end_index)),
+                _ => (None, None),
+            };
+            let line_index = build_group_to_line_index(groups)
+                .get(axis.checked_sub(1)?)
+                .copied()
+                .flatten();
+            Some(ArcConstraint::MatrixApply {
+                source: Box::new(resolve_arc_constraint(
                     file,
                     groups,
                     source_group,
@@ -3044,13 +3068,11 @@ fn resolve_arc_constraint(
                     group_to_point_index,
                     stack,
                 )?),
-                axis: resolve_line_constraint(
-                    file,
-                    groups,
-                    axis_group,
-                    anchors,
-                    group_to_point_index,
-                )?,
+                matrices: vec![GeometryTransformBinding::Reflect(AxisBinding {
+                    line_start_index,
+                    line_end_index,
+                    line_index,
+                })],
             })
         }
         _ => None,

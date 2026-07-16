@@ -709,9 +709,9 @@ pub(crate) enum ArcConstraint {
         mid_index: usize,
         end_index: usize,
     },
-    Reflected {
-        arc: Box<ArcConstraint>,
-        axis: LineConstraint,
+    MatrixApply {
+        source: Box<ArcConstraint>,
+        matrices: Vec<GeometryTransformBinding>,
     },
 }
 
@@ -738,31 +738,9 @@ pub(crate) enum CircularConstraint {
         initial_value: f64,
         parameter_group_ordinals: BTreeMap<String, usize>,
     },
-    TranslateCircle {
+    MatrixApply {
         source: Box<CircularConstraint>,
-        dx: f64,
-        dy: f64,
-    },
-    VectorTranslateCircle {
-        source: Box<CircularConstraint>,
-        vector_start_index: usize,
-        vector_end_index: usize,
-    },
-    ReflectCircle {
-        source: Box<CircularConstraint>,
-        line_start_index: Option<usize>,
-        line_end_index: Option<usize>,
-        line_index: Option<usize>,
-    },
-    ScaleCircle {
-        source: Box<CircularConstraint>,
-        center_index: usize,
-        factor: f64,
-    },
-    RotateCircle {
-        source: Box<CircularConstraint>,
-        center_index: usize,
-        angle_degrees: f64,
+        matrices: Vec<GeometryTransformBinding>,
     },
     CircleArc {
         center_index: usize,
@@ -797,24 +775,6 @@ pub(crate) enum LineConstraint {
         start_index: usize,
         end_index: usize,
     },
-    PerpendicularLine {
-        through_index: usize,
-        line_start_index: usize,
-        line_end_index: usize,
-    },
-    ParallelLine {
-        through_index: usize,
-        line_start_index: usize,
-        line_end_index: usize,
-    },
-    PerpendicularTo {
-        through_index: usize,
-        line: Box<LineConstraint>,
-    },
-    ParallelTo {
-        through_index: usize,
-        line: Box<LineConstraint>,
-    },
     AngleBisectorRay {
         start_index: usize,
         vertex_index: usize,
@@ -842,6 +802,42 @@ pub(crate) enum LineConstraintMatrix {
     Rotate {
         rotation: RotationBinding,
     },
+    RotateAroundSourcePoint {
+        source_point_index: usize,
+        angle_degrees: f64,
+    },
+    TranslateSourcePointToPoint {
+        source_point_index: usize,
+        target_index: usize,
+    },
+}
+
+impl LineConstraint {
+    pub(crate) fn parallel_through(source: Self, through_index: usize) -> Self {
+        Self::MatrixApply {
+            source: Box::new(source),
+            matrices: vec![LineConstraintMatrix::TranslateSourcePointToPoint {
+                source_point_index: 0,
+                target_index: through_index,
+            }],
+        }
+    }
+
+    pub(crate) fn perpendicular_through(source: Self, through_index: usize) -> Self {
+        Self::MatrixApply {
+            source: Box::new(source),
+            matrices: vec![
+                LineConstraintMatrix::RotateAroundSourcePoint {
+                    source_point_index: 0,
+                    angle_degrees: -90.0,
+                },
+                LineConstraintMatrix::TranslateSourcePointToPoint {
+                    source_point_index: 0,
+                    target_index: through_index,
+                },
+            ],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -904,6 +900,14 @@ pub(crate) enum GeometryTransformBinding {
     Scale(ScaleBinding),
     ScaleByRatio(RatioScaleBinding),
     Reflect(AxisBinding),
+    RotateAroundSourcePoint {
+        source_point_index: usize,
+        angle_degrees: f64,
+    },
+    TranslateSourcePointToPoint {
+        source_point_index: usize,
+        target_index: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -933,18 +937,6 @@ pub(crate) enum LineBinding {
         vertex_index: usize,
         end_index: usize,
     },
-    PerpendicularLine {
-        through_index: usize,
-        line_start_index: Option<usize>,
-        line_end_index: Option<usize>,
-        line_index: Option<usize>,
-    },
-    ParallelLine {
-        through_index: usize,
-        line_start_index: Option<usize>,
-        line_end_index: Option<usize>,
-        line_index: Option<usize>,
-    },
     Line {
         start_index: usize,
         end_index: usize,
@@ -954,7 +946,9 @@ pub(crate) enum LineBinding {
         end_index: usize,
     },
     MatrixApply {
-        source_index: usize,
+        source_index: Option<usize>,
+        source_start_index: Option<usize>,
+        source_end_index: Option<usize>,
         matrices: Vec<GeometryTransformBinding>,
     },
     CustomTransformTrace {

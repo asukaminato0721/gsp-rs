@@ -115,7 +115,7 @@ fn exports_regular_polygon_fixture_with_interactive_seed_segment() {
     );
     assert!(
         points.get(end_index).is_some_and(|point| {
-            point["binding"]["kind"].as_str() == Some("derived")
+            point["binding"]["kind"].as_str() == Some("matrix-apply")
                 && point["binding"]["sourceIndex"].as_u64() == Some(start_index as u64)
                 && point["binding"]["matrixApply"][0]["kind"].as_str() == Some("rotate")
                 && point["binding"]["matrixApply"][0]["parameterName"].as_str() == Some("n")
@@ -181,7 +181,7 @@ fn exports_circle_formation_fixture_with_non_draggable_rotate_points() {
     let rotate_points = points
         .iter()
         .filter(|point| {
-            point["binding"]["kind"].as_str() == Some("derived")
+            point["binding"]["kind"].as_str() == Some("matrix-apply")
                 && point["binding"]["matrixApply"][0]["kind"].as_str() == Some("rotate")
         })
         .collect::<Vec<_>>();

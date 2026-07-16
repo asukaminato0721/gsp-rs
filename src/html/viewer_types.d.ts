@@ -44,20 +44,10 @@ type ParameterJson = import("./generated/ParameterJson").ParameterJson;
 type FunctionJson = import("./generated/FunctionJson").FunctionJson;
 type FunctionExprJson = import("./generated/FunctionExprJson").FunctionExprJson;
 type FunctionAstJson = import("./generated/FunctionAstJson").FunctionAstJson;
-type PointIterationJson = import("./generated/PointIterationJson").PointIterationJson;
-type LineIterationJson = import("./generated/LineIterationJson").LineIterationJson;
-type PolygonIterationJson = import("./generated/PolygonIterationJson").PolygonIterationJson;
-type LabelIterationJson = import("./generated/LabelIterationJson").LabelIterationJson;
-type CircleIterationJson = import("./generated/CircleIterationJson").CircleIterationJson;
 type LineConstraintJson = import("./generated/LineConstraintJson").LineConstraintJson;
 type CircularConstraintJson = import("./generated/CircularConstraintJson").CircularConstraintJson;
-type ArcBoundaryKind = import("./generated/ArcBoundaryKindJson").ArcBoundaryKindJson;
-type CoordinateAxisJson = import("./generated/CoordinateAxisJson").CoordinateAxisJson;
 type ShapeBindingJson = import("./generated/ShapeBindingJson").ShapeBindingJson;
-type ColorBindingJson = import("./generated/ColorBindingJson").ColorBindingJson;
 type RichTextExpressionRefJson = import("./generated/RichTextExpressionRefJson").RichTextExpressionRefJson;
-type IterationPointHandleJson = import("./generated/IterationPointHandleJson").IterationPointHandleJson;
-type DomainJson = import("./generated/DomainJson").DomainJson;
 type DebugSourceJson = import("./generated/DebugSourceJson").DebugSourceJson;
 
 type RuntimeJsonPrimitive = string | number | boolean | null;
@@ -152,8 +142,6 @@ type RuntimeLabelJson = Omit<LabelJson, "anchor" | "binding" | "hotspots"> & {
   centeredOnAnchor: boolean;
   hotspots: RuntimeLabelHotspotJson[];
 };
-type TextLabel = RuntimeLabelJson;
-
 type RuntimeIterationRow = {
   index: number;
   value: number;
@@ -175,10 +163,8 @@ type DebugTarget = {
   label?: string | null;
 };
 
-type SceneLabelJson = RuntimeLabelJson;
 type SceneLineJson = RuntimeLineJson;
 type ScenePolygonJson = RuntimePolygonJson;
-type SceneIterationTableJson = RuntimeIterationTableJson;
 
 type RuntimeDynamicsState = {
   parameters: ParameterJson[];
@@ -186,18 +172,6 @@ type RuntimeDynamicsState = {
 };
 
 type RuntimeFunctionJson = FunctionJson;
-
-type RuntimePointIterationFamily = PointIterationJson;
-type RuntimeLineIterationFamily = LineIterationJson;
-type RuntimePolygonIterationFamily = PolygonIterationJson;
-type RuntimeLabelIterationFamily = LabelIterationJson;
-type RuntimeCircleIterationFamily = CircleIterationJson;
-
-type ViewerSceneResolverEnv = {
-  sourceScene: SceneData | ViewerSceneData;
-  currentScene?: () => ViewerSceneData;
-  resolveScenePoint?: (index: number) => Point | null;
-} | ViewerEnv;
 
 type ViewerSceneData = Omit<
   SceneData,
@@ -245,72 +219,11 @@ type HotspotFlash = {
   action: LabelHotspotActionJson;
 };
 
-type PointConstraintParameterReader = (
-  scene: ViewerSceneData,
-  pointIndex: number,
-) => number | null;
-
-type PointConstraintParameterApplier = (
-  point: RuntimeScenePointJson,
-  scene: ViewerSceneData,
-  wrapped: number,
-) => void;
-
-type PointBindingRefresher = (
-  env: ViewerEnv,
-  scene: ViewerSceneData,
-  point: RuntimeScenePointJson,
-  parameters: Map<string, number>,
-) => void;
-
 type DynamicLabelRefresher = (
   env: ViewerEnv,
   scene: ViewerSceneData,
   label: RuntimeLabelJson,
   parameters: Map<string, number>,
-) => void;
-
-type LineBindingRefreshContext = {
-  env: ViewerEnv;
-  scene: ViewerSceneData;
-  bounds: {
-    minX: number;
-    maxX: number;
-    minY: number;
-    maxY: number;
-    spanX?: number;
-    spanY?: number;
-  };
-  parameters: Map<string, number>;
-};
-
-type LineBindingRefresher = (
-  ctx: LineBindingRefreshContext,
-  line: RuntimeLineJson,
-) => void;
-
-type CircleBindingRefreshContext = {
-  env: ViewerEnv;
-  scene: ViewerSceneData;
-  parameters: Map<string, number>;
-  resolveHandle: (handle: RuntimePointRef) => Point | null;
-};
-
-type CircleBindingRefresher = (
-  ctx: CircleBindingRefreshContext,
-  circle: RuntimeCircleJson,
-) => void;
-
-type PolygonBindingRefreshContext = {
-  env: ViewerEnv;
-  scene: ViewerSceneData;
-  parameters: Map<string, number>;
-  resolveHandle: (handle: RuntimePointRef) => Point | null;
-};
-
-type PolygonBindingRefresher = (
-  ctx: PolygonBindingRefreshContext,
-  polygon: RuntimePolygonJson,
 ) => void;
 
 type ViewerEnv = {

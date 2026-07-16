@@ -350,35 +350,12 @@ impl Collector<'_> {
                 start_index,
                 end_index,
             } => self.points(deps, [*start_index, *end_index]),
-            LineConstraint::PerpendicularLine {
-                through_index,
-                line_start_index,
-                line_end_index,
-            }
-            | LineConstraint::ParallelLine {
-                through_index,
-                line_start_index,
-                line_end_index,
-            } => {
-                self.points(deps, [*through_index, *line_start_index, *line_end_index]);
-            }
             LineConstraint::AngleBisectorRay {
                 start_index,
                 vertex_index,
                 end_index,
             } => {
                 self.points(deps, [*start_index, *vertex_index, *end_index]);
-            }
-            LineConstraint::PerpendicularTo {
-                through_index,
-                line,
-            }
-            | LineConstraint::ParallelTo {
-                through_index,
-                line,
-            } => {
-                self.point(deps, Some(*through_index));
-                self.line_constraint(deps, line);
             }
             LineConstraint::MatrixApply { source, matrices } => {
                 self.line_constraint(deps, source);
@@ -408,6 +385,13 @@ impl Collector<'_> {
                                 self.expr(deps, expr);
                             }
                         }
+                        crate::runtime::scene::LineConstraintMatrix::RotateAroundSourcePoint {
+                            ..
+                        } => {}
+                        crate::runtime::scene::LineConstraintMatrix::TranslateSourcePointToPoint {
+                            target_index,
+                            ..
+                        } => self.point(deps, Some(*target_index)),
                     }
                 }
             }
@@ -441,42 +425,11 @@ impl Collector<'_> {
                 self.point(deps, Some(*center_index));
                 self.expr(deps, expr);
             }
-            CircularConstraint::TranslateCircle { source, .. } => {
-                self.circular_constraint(deps, source)
-            }
-            CircularConstraint::VectorTranslateCircle {
-                source,
-                vector_start_index,
-                vector_end_index,
-            } => {
+            CircularConstraint::MatrixApply { source, matrices } => {
                 self.circular_constraint(deps, source);
-                self.points(deps, [*vector_start_index, *vector_end_index]);
-            }
-            CircularConstraint::ReflectCircle {
-                source,
-                line_start_index,
-                line_end_index,
-                line_index,
-            } => {
-                self.circular_constraint(deps, source);
-                self.optional_points(deps, [*line_start_index, *line_end_index]);
-                self.line(deps, *line_index);
-            }
-            CircularConstraint::ScaleCircle {
-                source,
-                center_index,
-                ..
-            } => {
-                self.circular_constraint(deps, source);
-                self.point(deps, Some(*center_index));
-            }
-            CircularConstraint::RotateCircle {
-                source,
-                center_index,
-                ..
-            } => {
-                self.circular_constraint(deps, source);
-                self.point(deps, Some(*center_index));
+                for matrix in matrices {
+                    self.geometry_transform(deps, matrix);
+                }
             }
             CircularConstraint::CircleArc {
                 center_index,
@@ -515,9 +468,11 @@ impl Collector<'_> {
                 mid_index,
                 end_index,
             } => self.points(deps, [*start_index, *mid_index, *end_index]),
-            ArcConstraint::Reflected { arc, axis } => {
-                self.arc_constraint(deps, arc);
-                self.line_constraint(deps, axis);
+            ArcConstraint::MatrixApply { source, matrices } => {
+                self.arc_constraint(deps, source);
+                for matrix in matrices {
+                    self.geometry_transform(deps, matrix);
+                }
             }
         }
     }
@@ -557,6 +512,10 @@ impl Collector<'_> {
                 ],
             ),
             GeometryTransformBinding::Reflect(axis) => self.axis(deps, axis),
+            GeometryTransformBinding::RotateAroundSourcePoint { .. } => {}
+            GeometryTransformBinding::TranslateSourcePointToPoint { target_index, .. } => {
+                self.point(deps, Some(*target_index));
+            }
         }
     }
 
@@ -966,27 +925,15 @@ impl Collector<'_> {
                 vertex_index,
                 end_index,
             } => self.points(deps, [*start_index, *vertex_index, *end_index]),
-            LineBinding::PerpendicularLine {
-                through_index,
-                line_start_index,
-                line_end_index,
-                line_index,
-            }
-            | LineBinding::ParallelLine {
-                through_index,
-                line_start_index,
-                line_end_index,
-                line_index,
-            } => {
-                self.point(deps, Some(*through_index));
-                self.optional_points(deps, [*line_start_index, *line_end_index]);
-                self.line(deps, *line_index);
-            }
             LineBinding::MatrixApply {
                 source_index,
+                source_start_index,
+                source_end_index,
                 matrices,
             } => {
-                self.line(deps, Some(*source_index));
+                self.line(deps, *source_index);
+                self.point(deps, *source_start_index);
+                self.point(deps, *source_end_index);
                 for matrix in matrices {
                     self.geometry_transform(deps, matrix);
                 }

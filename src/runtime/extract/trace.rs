@@ -2082,17 +2082,14 @@ fn resolve_trace_arc_constraint(
             resolve_trace_point(points, *mid_index, visiting)?,
             resolve_trace_point(points, *end_index, visiting)?,
         ]),
-        ArcConstraint::Reflected { arc, axis } => {
-            let [start, mid, end] = resolve_trace_arc_constraint(points, arc, visiting)?;
-            let (axis_start, axis_end, _) = resolve_trace_line_constraint(points, axis, visiting)?;
-            Some(
-                [start, mid, end]
-                    .map(|point| reflect_across_line(&point, &axis_start, &axis_end))
-                    .into_iter()
-                    .collect::<Option<Vec<_>>>()?
-                    .try_into()
-                    .ok()?,
-            )
+        ArcConstraint::MatrixApply { source, matrices } => {
+            let mut controls = resolve_trace_arc_constraint(points, source, visiting)?;
+            for transform in matrices {
+                let matrix = trace_geometry_matrix(points, transform, visiting)?;
+                controls =
+                    controls.map(|point| from_core_point(matrix.apply(to_core_point(&point))));
+            }
+            Some(controls)
         }
     }
 }

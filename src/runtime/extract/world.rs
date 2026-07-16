@@ -21,10 +21,16 @@ pub(super) fn world_line_shape(
             LineBinding::AngleBisectorRay { .. } if world_points.len() >= 2 => {
                 clip_ray_to_bounds(&world_points[0], &world_points[1], bounds)
             }
-            LineBinding::PerpendicularLine { .. } if world_points.len() >= 2 => {
-                clip_line_to_bounds(&world_points[0], &world_points[1], bounds)
-            }
-            LineBinding::ParallelLine { .. } if world_points.len() >= 2 => {
+            LineBinding::MatrixApply { matrices, .. }
+                if world_points.len() >= 2
+                    && matrices.iter().any(|matrix| {
+                        matches!(
+                            matrix,
+                            crate::runtime::scene::GeometryTransformBinding::RotateAroundSourcePoint { .. }
+                                | crate::runtime::scene::GeometryTransformBinding::TranslateSourcePointToPoint { .. }
+                        )
+                    }) =>
+            {
                 clip_line_to_bounds(&world_points[0], &world_points[1], bounds)
             }
             LineBinding::Line { .. } if world_points.len() >= 2 => {

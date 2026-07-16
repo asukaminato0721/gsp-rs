@@ -442,8 +442,8 @@ for (const sample of samples) {
       for (const [x, y, draggable, bindingKind] of [
         [1.0, 0.0, true, 'graph-calibration'],
         [0.0, 1.0, true, 'graph-calibration'],
-        [-1.0, 0.0, true, 'derived'],
-        [0.0, -1.0, true, 'derived'],
+        [-1.0, 0.0, true, 'matrix-apply'],
+        [0.0, -1.0, true, 'matrix-apply'],
       ] as const) {
         expect(result.axisEndpointControls.some((point: any) =>
           Math.abs(point.x - x) < 1e-6

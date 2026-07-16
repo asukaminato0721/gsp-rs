@@ -1,8 +1,67 @@
 use super::test_support::{fixture_bytes, fixture_log, fixture_scene, function_expr_has_parameter};
 use crate::runtime::scene::{
-    ArcBinding, ButtonAction, LineBinding, LineConstraint, ScenePointBinding, ScenePointConstraint,
-    ShapeBinding, TextLabelBinding,
+    ArcBinding, ButtonAction, GeometryTransformBinding, LineBinding, LineConstraint,
+    ScenePointBinding, ScenePointConstraint, ShapeBinding, TextLabelBinding,
 };
+
+fn constructed_line_binding(
+    binding: &Option<LineBinding>,
+    perpendicular: bool,
+) -> Option<(usize, usize)> {
+    let Some(LineBinding::MatrixApply {
+        source_index,
+        matrices,
+        ..
+    }) = binding
+    else {
+        return None;
+    };
+    let target_index = if let [
+        GeometryTransformBinding::RotateAroundSourcePoint {
+            source_point_index: 0,
+            angle_degrees,
+        },
+        GeometryTransformBinding::TranslateSourcePointToPoint {
+            source_point_index: 0,
+            target_index,
+        },
+    ] = matrices.as_slice()
+        && (*angle_degrees + 90.0).abs() < 1e-9
+    {
+        perpendicular.then_some(*target_index)
+    } else if let [
+        GeometryTransformBinding::TranslateSourcePointToPoint {
+            source_point_index: 0,
+            target_index,
+        },
+    ] = matrices.as_slice()
+    {
+        (!perpendicular).then_some(*target_index)
+    } else {
+        None
+    }?;
+    Some(((*source_index)?, target_index))
+}
+
+fn is_perpendicular_constraint(constraint: &LineConstraint, target_index: usize) -> bool {
+    matches!(
+        constraint,
+        LineConstraint::MatrixApply { matrices, .. }
+            if matches!(
+                matrices.as_slice(),
+                [
+                    crate::runtime::scene::LineConstraintMatrix::RotateAroundSourcePoint {
+                        source_point_index: 0,
+                        angle_degrees,
+                    },
+                    crate::runtime::scene::LineConstraintMatrix::TranslateSourcePointToPoint {
+                        source_point_index: 0,
+                        target_index: actual,
+                    },
+                ] if (*angle_degrees + 90.0).abs() < 1e-9 && *actual == target_index
+            )
+    )
+}
 
 #[test]
 fn cylinder_family_center_arc_payload_parents_are_preserved() {
@@ -400,7 +459,7 @@ fn cylinder_net_exports_live_translation_parallel_trace_and_move_buttons() {
         line.debug
             .as_ref()
             .is_some_and(|debug| debug.group_ordinal == 112)
-            && matches!(line.binding, Some(LineBinding::ParallelLine { .. }))
+            && constructed_line_binding(&line.binding, false).is_some()
     }));
     assert!(scene.lines.iter().any(|line| {
         line.debug
@@ -750,7 +809,7 @@ fn preserves_perpendicular_gsp() {
     let perpendicular = scene
         .lines
         .iter()
-        .find(|line| matches!(line.binding, Some(LineBinding::PerpendicularLine { .. })))
+        .find(|line| constructed_line_binding(&line.binding, true).is_some())
         .expect("expected synthesized perpendicular line");
 
     let base_dx = base.points[1].x - base.points[0].x;
@@ -800,7 +859,7 @@ fn preserves_parallel_gsp() {
     let parallel = scene
         .lines
         .iter()
-        .find(|line| matches!(line.binding, Some(LineBinding::ParallelLine { .. })))
+        .find(|line| constructed_line_binding(&line.binding, false).is_some())
         .expect("expected synthesized parallel line");
 
     let base_dx = base.points[1].x - base.points[0].x;
@@ -861,20 +920,17 @@ fn preserves_perpendicular_segment_fixture_as_line_with_perp_segment() {
 
     let foot = &scene.points[3];
     assert!(
-        matches!(
-            foot.constraint,
+        match &foot.constraint {
             ScenePointConstraint::LineIntersection {
-                left: LineConstraint::Line {
-                    start_index: 0,
-                    end_index: 2,
-                },
-                right: LineConstraint::PerpendicularLine {
-                    through_index: 1,
-                    line_start_index: 0,
-                    line_end_index: 2,
-                },
-            }
-        ),
+                left:
+                    LineConstraint::Line {
+                        start_index: 0,
+                        end_index: 2,
+                    },
+                right,
+            } => is_perpendicular_constraint(right, 1),
+            _ => false,
+        },
         "expected the foot point to stay constrained by the payload line and perpendicular segment"
     );
     assert!(
@@ -944,40 +1000,23 @@ fn preserves_nested_perpendicular_parallel_bindings_in_pert_vert_gsp() {
     let main_perpendicular_index = scene
         .lines
         .iter()
-        .position(|line| {
-            matches!(
-                line.binding,
-                Some(LineBinding::PerpendicularLine {
-                    through_index: 3,
-                    line_index: Some(0),
-                    ..
-                })
-            )
-        })
+        .position(|line| constructed_line_binding(&line.binding, true) == Some((0, 3)))
         .expect("expected midpoint perpendicular line bound to the source segment");
     assert_eq!(main_perpendicular_index, 1);
     assert_eq!(base_index, 0);
 
-    assert!(scene.lines.iter().any(|line| {
-        matches!(
-            line.binding,
-            Some(LineBinding::PerpendicularLine {
-                through_index: 1,
-                line_index: Some(1),
-                ..
-            })
-        )
-    }));
-    assert!(scene.lines.iter().any(|line| {
-        matches!(
-            line.binding,
-            Some(LineBinding::ParallelLine {
-                through_index: 1,
-                line_index: Some(1),
-                ..
-            })
-        )
-    }));
+    assert!(
+        scene
+            .lines
+            .iter()
+            .any(|line| { constructed_line_binding(&line.binding, true) == Some((1, 1)) })
+    );
+    assert!(
+        scene
+            .lines
+            .iter()
+            .any(|line| { constructed_line_binding(&line.binding, false) == Some((1, 1)) })
+    );
 }
 
 #[test]

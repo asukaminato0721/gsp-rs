@@ -366,7 +366,7 @@ mod wasm_abi {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn gsp_runtime_abi_version() -> u32 {
-        9
+        10
     }
 
     #[unsafe(no_mangle)]

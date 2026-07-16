@@ -102,7 +102,7 @@
   const module = new WebAssembly.Module(bytes);
   const instance = new WebAssembly.Instance(module, {});
   const wasm = instance.exports as unknown as RuntimeCoreWasmExports;
-  if (wasm.gsp_runtime_abi_version() !== 9) {
+  if (wasm.gsp_runtime_abi_version() !== 10) {
     throw new Error("Unsupported gsp-rs runtime core ABI");
   }
 

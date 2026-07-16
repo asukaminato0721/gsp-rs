@@ -16,6 +16,65 @@ use crate::runtime::scene::{
 use gsp_runtime_core::ObjectOp;
 use gsp_runtime_core::object_graph::ObjectDefinition;
 
+fn is_constructed_line_constraint(
+    constraint: &LineConstraint,
+    perpendicular: bool,
+    target_index: Option<usize>,
+) -> bool {
+    fn construction(constraint: &LineConstraint) -> Option<(usize, Option<usize>)> {
+        match constraint {
+            LineConstraint::Segment { .. }
+            | LineConstraint::Line { .. }
+            | LineConstraint::Ray { .. } => Some((0, None)),
+            LineConstraint::MatrixApply { source, matrices } => {
+                let (mut quarter_turns, mut target) = construction(source)?;
+                for matrix in matrices {
+                    match matrix {
+                        crate::runtime::scene::LineConstraintMatrix::RotateAroundSourcePoint {
+                            source_point_index: 0,
+                            angle_degrees,
+                        } if (*angle_degrees + 90.0).abs() < 1e-9 => quarter_turns += 1,
+                        crate::runtime::scene::LineConstraintMatrix::TranslateSourcePointToPoint {
+                            source_point_index: 0,
+                            target_index,
+                        } => target = Some(*target_index),
+                        crate::runtime::scene::LineConstraintMatrix::TranslateVector { .. }
+                        | crate::runtime::scene::LineConstraintMatrix::TranslateDelta { .. } => {}
+                        _ => return None,
+                    }
+                }
+                Some((quarter_turns, target))
+            }
+            LineConstraint::AngleBisectorRay { .. } => None,
+        }
+    }
+    let Some((quarter_turns, target)) = construction(constraint) else {
+        return false;
+    };
+    quarter_turns % 2 == usize::from(perpendicular)
+        && target.is_some_and(|target| target_index.is_none_or(|expected| target == expected))
+}
+
+fn is_perpendicular_line_binding(binding: &Option<LineBinding>) -> bool {
+    matches!(
+        binding,
+        Some(LineBinding::MatrixApply { matrices, .. })
+            if matches!(
+                matrices.as_slice(),
+                [
+                    GeometryTransformBinding::RotateAroundSourcePoint {
+                        source_point_index: 0,
+                        angle_degrees,
+                    },
+                    GeometryTransformBinding::TranslateSourcePointToPoint {
+                        source_point_index: 0,
+                        ..
+                    },
+                ] if (*angle_degrees + 90.0).abs() < 1e-9
+            )
+    )
+}
+
 #[test]
 fn point_trace_constraint_keeps_its_payload_parameter() {
     let data = fixture_bytes("tests/Samples/个人专栏/向忠作品/n叶草系列迭代.gsp")
@@ -1339,10 +1398,9 @@ fn transformed_line_intersections_keep_nested_line_parents() {
     assert!(matches!(
         scene.points[translated_circle_point].constraint,
         ScenePointConstraint::OnCircularConstraint {
-            circle: CircularConstraint::VectorTranslateCircle {
+            circle: CircularConstraint::MatrixApply {
                 ref source,
-                vector_start_index,
-                vector_end_index,
+                ref matrices,
             },
             ..
         } if matches!(
@@ -1351,7 +1409,13 @@ fn transformed_line_intersections_keep_nested_line_parents() {
                 center_index,
                 radius_index,
             } if *center_index == circle_center && *radius_index == circle_radius
-        ) && vector_start_index == circle_center && vector_end_index == vector_end
+        ) && matches!(
+            matrices.as_slice(),
+            [GeometryTransformBinding::TranslateVector {
+                vector_start_index,
+                vector_end_index,
+            }] if *vector_start_index == circle_center && *vector_end_index == vector_end
+        )
     ));
     for ordinal in [26, 27, 29, 30, 34, 38] {
         assert!(matches!(
@@ -1566,11 +1630,11 @@ fn angle_bisector_fixture_decodes_its_angle_anchor_and_reflected_arc_from_payloa
         })
         .expect("point #71 on the reflected arc");
     assert!(matches!(
-        controlled.constraint,
+        &controlled.constraint,
         ScenePointConstraint::OnArcConstraint {
-            arc: ArcConstraint::Reflected { .. },
+            arc: ArcConstraint::MatrixApply { matrices, .. },
             ..
-        }
+        } if matches!(matrices.as_slice(), [GeometryTransformBinding::Reflect(_)])
     ));
     let reflected_arc = scene
         .arcs
@@ -1979,11 +2043,9 @@ fn refraction_sample_uses_raw_translation_offsets_and_live_iteration_depth() {
         })
         .expect("expected refracted-ray intersection #68");
     assert!(matches!(
-        refracted_intersection.constraint,
-        ScenePointConstraint::LineIntersection {
-            left: LineConstraint::Ray { .. },
-            right: LineConstraint::ParallelLine { .. },
-        }
+        &refracted_intersection.constraint,
+        ScenePointConstraint::LineIntersection { left: LineConstraint::Ray { .. }, right }
+            if is_constructed_line_constraint(right, false, None)
     ));
 
     assert!(scene.parameters.iter().any(|parameter| {
@@ -2273,7 +2335,8 @@ fn triangle_angle_sum_fixture_keeps_measured_angle_rotation_live() {
             Some(LineBinding::MatrixApply {
                 source_index,
                 matrices,
-            }) if *source_index == source_bl_line_index
+                ..
+            }) if *source_index == Some(source_bl_line_index)
                 && matches!(matrices.as_slice(), [GeometryTransformBinding::Rotate(binding)]
                     if binding.center_index == center_point_index
                         && binding.angle_start_index == Some(point_index_for_group(16))
@@ -2843,17 +2906,12 @@ fn preserves_perpendicular_intersection_points_in_perp_fixture() {
     let intersection = scene
         .points
         .iter()
-        .find(|point| {
-            matches!(
-                point.constraint,
-                ScenePointConstraint::LineIntersection {
-                    left: LineConstraint::Segment { .. } | LineConstraint::Line { .. },
-                    right: LineConstraint::PerpendicularLine {
-                        through_index: 2,
-                        ..
-                    },
-                }
-            )
+        .find(|point| match &point.constraint {
+            ScenePointConstraint::LineIntersection {
+                left: LineConstraint::Segment { .. } | LineConstraint::Line { .. },
+                right,
+            } => is_constructed_line_constraint(right, true, Some(2)),
+            _ => false,
         })
         .expect("expected reactive intersection point bound to the perpendicular line");
 
@@ -3284,10 +3342,7 @@ fn ellipse_polygon_rolling_keeps_marked_translation_and_intersection_chain() {
             if matches!(matrices.as_slice(), [GeometryTransformBinding::Reflect(_)])
     ));
     for ordinal in [87, 118] {
-        assert!(matches!(
-            line(ordinal).binding,
-            Some(LineBinding::PerpendicularLine { .. })
-        ));
+        assert!(is_perpendicular_line_binding(&line(ordinal).binding));
     }
 }
 

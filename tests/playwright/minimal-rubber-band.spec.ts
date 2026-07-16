@@ -33,7 +33,9 @@ test('minimal rubber-band fixture keeps three-point ratio dilation live', async 
       segmentLines,
       bendPoint: { x: bendPoint.x, y: bendPoint.y },
       sourcePoint2: { x: sourcePoint2.x, y: sourcePoint2.y },
-      scaleByRatioCount: afterScene.points.filter((point) => point.binding?.kind === 'scale-by-ratio').length,
+      scaleByRatioCount: afterScene.points.filter((point) =>
+        point.binding?.kind === 'matrix-apply'
+        && point.binding.matrixApply.some((matrix) => matrix.kind === 'scale-by-ratio')).length,
     };
   });
 

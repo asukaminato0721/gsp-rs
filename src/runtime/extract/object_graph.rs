@@ -776,7 +776,11 @@ impl Builder {
             ObjectOp::Matrix { matrix },
             matrix_parents,
         );
-        self.derived(id, ObjectOp::ApplyMatrices, [source_id, matrix_id]);
+        self.derived(
+            id,
+            ObjectOp::ApplyMatrices { line_kind: None },
+            [source_id, matrix_id],
+        );
     }
 
     /// Makes every rendered geometry ID an `ApplyMatrices` node. Initial
@@ -790,7 +794,7 @@ impl Builder {
             if matches!(
                 self.nodes[node_index].definition,
                 ObjectDefinition::Derived {
-                    op: ObjectOp::ApplyMatrices,
+                    op: ObjectOp::ApplyMatrices { .. },
                     ..
                 }
             ) {
@@ -3636,66 +3640,6 @@ impl Builder {
                 },
                 [point_id(*start_index), point_id(*end_index)],
             ),
-            LineConstraint::PerpendicularLine {
-                through_index,
-                line_start_index,
-                line_end_index,
-            } => {
-                let base_id = format!("{id}:base");
-                self.derived(
-                    base_id.clone(),
-                    ObjectOp::Line {
-                        line_kind: LineKind::Line,
-                    },
-                    [point_id(*line_start_index), point_id(*line_end_index)],
-                );
-                self.derived(
-                    id,
-                    ObjectOp::PerpendicularLine,
-                    [point_id(*through_index), base_id],
-                );
-            }
-            LineConstraint::ParallelLine {
-                through_index,
-                line_start_index,
-                line_end_index,
-            } => {
-                let base_id = format!("{id}:base");
-                self.derived(
-                    base_id.clone(),
-                    ObjectOp::Line {
-                        line_kind: LineKind::Line,
-                    },
-                    [point_id(*line_start_index), point_id(*line_end_index)],
-                );
-                self.derived(
-                    id,
-                    ObjectOp::ParallelLine,
-                    [point_id(*through_index), base_id],
-                );
-            }
-            LineConstraint::PerpendicularTo {
-                through_index,
-                line,
-            }
-            | LineConstraint::ParallelTo {
-                through_index,
-                line,
-            } => {
-                let base_id = format!("{id}:base");
-                if !self.line_constraint(base_id.clone(), line) {
-                    return false;
-                }
-                self.derived(
-                    id,
-                    if matches!(constraint, LineConstraint::PerpendicularTo { .. }) {
-                        ObjectOp::PerpendicularLine
-                    } else {
-                        ObjectOp::ParallelLine
-                    },
-                    [point_id(*through_index), base_id],
-                );
-            }
             LineConstraint::AngleBisectorRay {
                 start_index,
                 vertex_index,
@@ -3729,7 +3673,7 @@ impl Builder {
         matrices: &[crate::runtime::scene::LineConstraintMatrix],
     ) -> bool {
         let mut parents = Vec::with_capacity(matrices.len() + 1);
-        parents.push(source_id);
+        parents.push(source_id.clone());
         for (index, matrix) in matrices.iter().enumerate() {
             let matrix_id = if matrices.len() == 1 {
                 format!("matrix:{id}")
@@ -3785,10 +3729,65 @@ impl Builder {
                         [point_id(rotation.center_index), angle_id],
                     );
                 }
+                crate::runtime::scene::LineConstraintMatrix::RotateAroundSourcePoint {
+                    source_point_index,
+                    angle_degrees,
+                } => {
+                    let source_point_id = format!("{transform_id}:source-point");
+                    self.derived(
+                        source_point_id.clone(),
+                        ObjectOp::ShapePoint {
+                            index: *source_point_index,
+                        },
+                        [source_id.clone()],
+                    );
+                    self.derived(
+                        matrix_id.clone(),
+                        ObjectOp::Matrix {
+                            matrix: MatrixOp::RotateRadians {
+                                radians: angle_degrees.to_radians(),
+                            },
+                        },
+                        [source_point_id],
+                    );
+                }
+                crate::runtime::scene::LineConstraintMatrix::TranslateSourcePointToPoint {
+                    source_point_index,
+                    target_index,
+                } => {
+                    let source_point_id = format!("{transform_id}:source-point");
+                    self.derived(
+                        source_point_id.clone(),
+                        ObjectOp::ShapePoint {
+                            index: *source_point_index,
+                        },
+                        [source_id.clone()],
+                    );
+                    self.derived(
+                        matrix_id.clone(),
+                        ObjectOp::Matrix {
+                            matrix: MatrixOp::TranslateByVector,
+                        },
+                        [source_point_id, point_id(*target_index)],
+                    );
+                }
             }
             parents.push(matrix_id);
         }
-        self.derived(id, ObjectOp::ApplyMatrices, parents);
+        let constructs_line = matrices.iter().any(|matrix| {
+            matches!(
+                matrix,
+                crate::runtime::scene::LineConstraintMatrix::RotateAroundSourcePoint { .. }
+                    | crate::runtime::scene::LineConstraintMatrix::TranslateSourcePointToPoint { .. }
+            )
+        });
+        self.derived(
+            id,
+            ObjectOp::ApplyMatrices {
+                line_kind: constructs_line.then_some(LineKind::Line),
+            },
+            parents,
+        );
         true
     }
 
@@ -3831,90 +3830,14 @@ impl Builder {
                 parameter_group_ordinals,
                 ..
             } => self.expression_radius_circle(id, *center_index, expr, parameter_group_ordinals),
-            CircularConstraint::TranslateCircle { source, dx, dy } => {
+            CircularConstraint::MatrixApply { source, matrices } => {
                 let source_id = format!("{id}:source");
                 if !self.circular_constraint(source_id.clone(), source) {
                     return false;
                 }
-                self.apply_matrix(
-                    id,
-                    source_id,
-                    MatrixOp::TranslateDelta { dx: *dx, dy: *dy },
-                    [],
-                );
-            }
-            CircularConstraint::VectorTranslateCircle {
-                source,
-                vector_start_index,
-                vector_end_index,
-            } => {
-                let source_id = format!("{id}:source");
-                if !self.circular_constraint(source_id.clone(), source) {
+                if !self.geometry_matrix_apply(id, source_id, matrices) {
                     return false;
                 }
-                self.apply_matrix(
-                    id,
-                    source_id,
-                    MatrixOp::TranslateByVector,
-                    [point_id(*vector_start_index), point_id(*vector_end_index)],
-                );
-            }
-            CircularConstraint::ReflectCircle {
-                source,
-                line_start_index,
-                line_end_index,
-                line_index,
-            } => {
-                let source_id = format!("{id}:source");
-                let axis_id = format!("{id}:axis");
-                if !self.circular_constraint(source_id.clone(), source) {
-                    return false;
-                }
-                let Some(axis_id) =
-                    self.axis_line_parent(axis_id, *line_start_index, *line_end_index, *line_index)
-                else {
-                    return false;
-                };
-                self.apply_matrix(id, source_id, MatrixOp::ReflectByLine, [axis_id]);
-            }
-            CircularConstraint::ScaleCircle {
-                source,
-                center_index,
-                factor,
-            } => {
-                let source_id = format!("{id}:source");
-                if !self.circular_constraint(source_id.clone(), source) {
-                    return false;
-                }
-                self.apply_matrix(
-                    id,
-                    source_id,
-                    MatrixOp::Scale { factor: *factor },
-                    [point_id(*center_index)],
-                );
-            }
-            CircularConstraint::RotateCircle {
-                source,
-                center_index,
-                angle_degrees,
-            } => {
-                let source_id = format!("{id}:source");
-                if !self.circular_constraint(source_id.clone(), source) {
-                    return false;
-                }
-                let angle_id = format!("scalar:{id}:rotation-degrees");
-                self.source(
-                    angle_id.clone(),
-                    ObjectValue::Scalar {
-                        value: *angle_degrees,
-                    },
-                );
-                self.apply_matrix(
-                    id,
-                    source_id,
-                    MatrixOp::RotateDegrees,
-                    [point_id(*center_index), angle_id],
-                );
             }
             CircularConstraint::CircleArc {
                 center_index,
@@ -4063,53 +3986,31 @@ impl Builder {
                 },
                 [point_id(*start_index), point_id(*end_index)],
             ),
-            Some(LineBinding::PerpendicularLine {
-                through_index,
-                line_start_index,
-                line_end_index,
-                line_index,
-            }) => {
-                if let Some(axis_id) = self.axis_line_parent(
-                    format!("domain:{id}:axis"),
-                    *line_start_index,
-                    *line_end_index,
-                    *line_index,
-                ) {
-                    self.derived(
-                        id,
-                        ObjectOp::PerpendicularLine,
-                        [point_id(*through_index), axis_id],
-                    );
-                } else {
-                    self.pending_source(id, "line-binding", value);
-                }
-            }
-            Some(LineBinding::ParallelLine {
-                through_index,
-                line_start_index,
-                line_end_index,
-                line_index,
-            }) => {
-                if let Some(axis_id) = self.axis_line_parent(
-                    format!("domain:{id}:axis"),
-                    *line_start_index,
-                    *line_end_index,
-                    *line_index,
-                ) {
-                    self.derived(
-                        id,
-                        ObjectOp::ParallelLine,
-                        [point_id(*through_index), axis_id],
-                    );
-                } else {
-                    self.pending_source(id, "line-binding", value);
-                }
-            }
             Some(LineBinding::MatrixApply {
                 source_index,
+                source_start_index,
+                source_end_index,
                 matrices,
             }) => {
-                if !self.geometry_matrix_apply(id.clone(), line_id(*source_index), matrices) {
+                let source_id = if let Some(source_index) = source_index {
+                    line_id(*source_index)
+                } else if let (Some(start_index), Some(end_index)) =
+                    (source_start_index, source_end_index)
+                {
+                    let source_id = format!("{id}:source");
+                    self.derived(
+                        source_id.clone(),
+                        ObjectOp::Line {
+                            line_kind: LineKind::Line,
+                        },
+                        [point_id(*start_index), point_id(*end_index)],
+                    );
+                    source_id
+                } else {
+                    self.pending_source(id, "line-binding", value);
+                    return;
+                };
+                if !self.geometry_matrix_apply(id.clone(), source_id, matrices) {
                     self.pending_source(id, "line-binding", value);
                 }
             }
@@ -4937,7 +4838,7 @@ impl Builder {
         matrices: &[GeometryTransformBinding],
     ) -> bool {
         let mut parents = Vec::with_capacity(matrices.len() + 1);
-        parents.push(source_id);
+        parents.push(source_id.clone());
         for (index, transform) in matrices.iter().enumerate() {
             let matrix_id = if matrices.len() == 1 {
                 format!("matrix:{id}")
@@ -4949,12 +4850,30 @@ impl Builder {
             } else {
                 format!("{id}:{index}")
             };
-            if !self.geometry_matrix(transform_id, matrix_id.clone(), transform) {
+            if !self.geometry_matrix(
+                transform_id,
+                matrix_id.clone(),
+                source_id.clone(),
+                transform,
+            ) {
                 return false;
             }
             parents.push(matrix_id);
         }
-        self.derived(id, ObjectOp::ApplyMatrices, parents);
+        let constructs_line = matrices.iter().any(|matrix| {
+            matches!(
+                matrix,
+                GeometryTransformBinding::RotateAroundSourcePoint { .. }
+                    | GeometryTransformBinding::TranslateSourcePointToPoint { .. }
+            )
+        });
+        self.derived(
+            id,
+            ObjectOp::ApplyMatrices {
+                line_kind: constructs_line.then_some(LineKind::Line),
+            },
+            parents,
+        );
         true
     }
 
@@ -4962,6 +4881,7 @@ impl Builder {
         &mut self,
         transform_id: String,
         matrix_id: String,
+        source_id: String,
         transform: &GeometryTransformBinding,
     ) -> bool {
         match transform {
@@ -5035,6 +4955,48 @@ impl Builder {
                     [axis_id],
                 );
             }
+            GeometryTransformBinding::RotateAroundSourcePoint {
+                source_point_index,
+                angle_degrees,
+            } => {
+                let source_point_id = format!("{transform_id}:source-point");
+                self.derived(
+                    source_point_id.clone(),
+                    ObjectOp::ShapePoint {
+                        index: *source_point_index,
+                    },
+                    [source_id],
+                );
+                self.derived(
+                    matrix_id,
+                    ObjectOp::Matrix {
+                        matrix: MatrixOp::RotateRadians {
+                            radians: angle_degrees.to_radians(),
+                        },
+                    },
+                    [source_point_id],
+                );
+            }
+            GeometryTransformBinding::TranslateSourcePointToPoint {
+                source_point_index,
+                target_index,
+            } => {
+                let source_point_id = format!("{transform_id}:source-point");
+                self.derived(
+                    source_point_id.clone(),
+                    ObjectOp::ShapePoint {
+                        index: *source_point_index,
+                    },
+                    [source_id],
+                );
+                self.derived(
+                    matrix_id,
+                    ObjectOp::Matrix {
+                        matrix: MatrixOp::TranslateByVector,
+                    },
+                    [source_point_id, point_id(*target_index)],
+                );
+            }
         }
         true
     }
@@ -5082,15 +5044,14 @@ impl Builder {
                     point_id(*end_index),
                 ],
             ),
-            ArcConstraint::Reflected { arc, axis } => {
+            ArcConstraint::MatrixApply { source, matrices } => {
                 let source_id = format!("{id}:source");
-                let axis_id = format!("{id}:axis");
-                if !self.arc_constraint(source_id.clone(), arc)
-                    || !self.line_constraint(axis_id.clone(), axis)
-                {
+                if !self.arc_constraint(source_id.clone(), source) {
                     return false;
                 }
-                self.apply_matrix(id, source_id, MatrixOp::ReflectByLine, [axis_id]);
+                if !self.geometry_matrix_apply(id, source_id, matrices) {
+                    return false;
+                }
             }
         }
         true

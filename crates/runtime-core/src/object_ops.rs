@@ -322,6 +322,9 @@ pub enum ObjectOp {
     SelectParent {
         index: usize,
     },
+    ShapePoint {
+        index: usize,
+    },
     ProjectedCoordinatePoint {
         source_parent: usize,
     },
@@ -355,8 +358,6 @@ pub enum ObjectOp {
     Line {
         line_kind: LineKind,
     },
-    PerpendicularLine,
-    ParallelLine,
     AngleBisectorRay,
     AngleMarker {
         marker_class: u32,
@@ -497,7 +498,9 @@ pub enum ObjectOp {
     Matrix {
         matrix: MatrixOp,
     },
-    ApplyMatrices,
+    ApplyMatrices {
+        line_kind: Option<LineKind>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -736,6 +739,14 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                     .ok_or(ObjectOpError::Degenerate {
                         op: "select-parent",
                     }),
+                ObjectOp::ShapePoint { index } => {
+                    expect_arity("shape-point", parents, 1)?;
+                    parents[0]
+                        .as_points()
+                        .and_then(|points| points.get(*index).copied())
+                        .map(ObjectValue::point)
+                        .ok_or(ObjectOpError::Degenerate { op: "shape-point" })
+                }
                 ObjectOp::ProjectedCoordinatePoint { source_parent } => Ok(ObjectValue::point(
                     expect_point("projected-coordinate-point", parents, *source_parent)?,
                 )),
@@ -921,44 +932,6 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                         line_kind: *line_kind,
                         start: expect_point("line", parents, 0)?,
                         end: expect_point("line", parents, 1)?,
-                    })
-                }
-                ObjectOp::PerpendicularLine => {
-                    expect_arity("perpendicular-line", parents, 2)?;
-                    let through = expect_point("perpendicular-line", parents, 0)?;
-                    let (_, start, end) = expect_line("perpendicular-line", parents, 1)?;
-                    let dx = end.x - start.x;
-                    let dy = end.y - start.y;
-                    Ok(ObjectValue::Line {
-                        line_kind: LineKind::Line,
-                        start: through,
-                        end: if dx.hypot(dy) <= 1e-9 {
-                            through
-                        } else {
-                            Point {
-                                x: through.x - dy,
-                                y: through.y + dx,
-                            }
-                        },
-                    })
-                }
-                ObjectOp::ParallelLine => {
-                    expect_arity("parallel-line", parents, 2)?;
-                    let through = expect_point("parallel-line", parents, 0)?;
-                    let (_, start, end) = expect_line("parallel-line", parents, 1)?;
-                    let dx = end.x - start.x;
-                    let dy = end.y - start.y;
-                    Ok(ObjectValue::Line {
-                        line_kind: LineKind::Line,
-                        start: through,
-                        end: if dx.hypot(dy) <= 1e-9 {
-                            through
-                        } else {
-                            Point {
-                                x: through.x + dx,
-                                y: through.y + dy,
-                            }
-                        },
                     })
                 }
                 ObjectOp::AngleBisectorRay => {
@@ -2268,7 +2241,7 @@ impl OperationTable<ObjectOp, ObjectValue> for BuiltinOperationTable {
                     })
                 }
                 ObjectOp::Matrix { matrix } => matrix_value(*matrix, parents),
-                ObjectOp::ApplyMatrices => apply_matrices(parents),
+                ObjectOp::ApplyMatrices { line_kind } => apply_matrices(parents, *line_kind),
             }
         };
         match evaluate_defined() {
@@ -3021,7 +2994,10 @@ fn matrix_value(matrix: MatrixOp, parents: &[&ObjectValue]) -> Result<ObjectValu
     Ok(ObjectValue::Matrix { matrix })
 }
 
-fn apply_matrices(parents: &[&ObjectValue]) -> Result<ObjectValue, ObjectOpError> {
+fn apply_matrices(
+    parents: &[&ObjectValue],
+    line_kind: Option<LineKind>,
+) -> Result<ObjectValue, ObjectOpError> {
     let op = "apply-matrices";
     if parents.len() < 2 {
         return Err(ObjectOpError::WrongArity {
@@ -3036,7 +3012,7 @@ fn apply_matrices(parents: &[&ObjectValue]) -> Result<ObjectValue, ObjectOpError
         .try_fold(AffineMatrix::IDENTITY, |combined, (index, value)| {
             Ok(combined.then(expect_matrix(op, value, index + 1)?))
         })?;
-    transform_shape(op, parents[0], matrix)
+    transform_shape(op, parents[0], matrix, line_kind)
 }
 
 fn expect_matrix(
@@ -3054,6 +3030,7 @@ fn transform_shape(
     op: &'static str,
     value: &ObjectValue,
     matrix: AffineMatrix,
+    line_kind_override: Option<LineKind>,
 ) -> Result<ObjectValue, ObjectOpError> {
     let map_point = |point| Ok(matrix.apply(point));
     match value {
@@ -3068,7 +3045,7 @@ fn transform_shape(
             start,
             end,
         } => Ok(ObjectValue::Line {
-            line_kind: *line_kind,
+            line_kind: line_kind_override.unwrap_or(*line_kind),
             start: map_point(*start)?,
             end: map_point(*end)?,
         }),
@@ -3162,7 +3139,11 @@ mod tests {
             .evaluate("matrix", &ObjectOp::Matrix { matrix }, matrix_parents)
             .unwrap();
         BuiltinOperationTable
-            .evaluate("apply", &ObjectOp::ApplyMatrices, &[source, &matrix])
+            .evaluate(
+                "apply",
+                &ObjectOp::ApplyMatrices { line_kind: None },
+                &[source, &matrix],
+            )
             .unwrap()
     }
 
@@ -3281,7 +3262,7 @@ mod tests {
             ),
             ObjectNode::derived(
                 "reflected",
-                ObjectOp::ApplyMatrices,
+                ObjectOp::ApplyMatrices { line_kind: None },
                 ["midpoint", "reflection-matrix"],
             ),
             ObjectNode::derived(
@@ -3464,7 +3445,7 @@ mod tests {
         let transformed = BuiltinOperationTable
             .evaluate(
                 "apply-list",
-                &ObjectOp::ApplyMatrices,
+                &ObjectOp::ApplyMatrices { line_kind: None },
                 &[&arc, &translate, &reflect],
             )
             .unwrap();
@@ -4000,25 +3981,52 @@ mod tests {
     }
 
     #[test]
-    fn constructed_lines_keep_a_typed_degenerate_initial_value() {
+    fn line_constructions_use_shape_points_and_generic_matrices() {
         let through = ObjectValue::point(Point { x: 3.0, y: 4.0 });
         let host = ObjectValue::Line {
             line_kind: LineKind::Line,
             start: Point { x: 1.0, y: 2.0 },
-            end: Point { x: 1.0, y: 2.0 },
+            end: Point { x: 5.0, y: 2.0 },
         };
-        for op in [ObjectOp::PerpendicularLine, ObjectOp::ParallelLine] {
-            assert_eq!(
-                BuiltinOperationTable
-                    .evaluate("line", &op, &[&through, &host])
-                    .unwrap(),
-                ObjectValue::Line {
-                    line_kind: LineKind::Line,
-                    start: Point { x: 3.0, y: 4.0 },
-                    end: Point { x: 3.0, y: 4.0 },
-                }
-            );
-        }
+        let start = BuiltinOperationTable
+            .evaluate("start", &ObjectOp::ShapePoint { index: 0 }, &[&host])
+            .unwrap();
+        let rotate = BuiltinOperationTable
+            .evaluate(
+                "rotate",
+                &ObjectOp::Matrix {
+                    matrix: MatrixOp::RotateRadians {
+                        radians: -std::f64::consts::FRAC_PI_2,
+                    },
+                },
+                &[&start],
+            )
+            .unwrap();
+        let translate = BuiltinOperationTable
+            .evaluate(
+                "translate",
+                &ObjectOp::Matrix {
+                    matrix: MatrixOp::TranslateByVector,
+                },
+                &[&start, &through],
+            )
+            .unwrap();
+        assert_eq!(
+            BuiltinOperationTable
+                .evaluate(
+                    "line",
+                    &ObjectOp::ApplyMatrices {
+                        line_kind: Some(LineKind::Line),
+                    },
+                    &[&host, &rotate, &translate],
+                )
+                .unwrap(),
+            ObjectValue::Line {
+                line_kind: LineKind::Line,
+                start: Point { x: 3.0, y: 4.0 },
+                end: Point { x: 3.0, y: 8.0 },
+            }
+        );
     }
 
     #[test]

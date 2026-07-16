@@ -43,10 +43,10 @@ fn exports_scaled_circle_intersections_fixture_with_live_constraints() {
         "expected both payload circle intersections to stay live"
     );
     assert!(constrained_points.iter().all(|point| {
-        (point["constraint"]["left"]["kind"].as_str() == Some("derived")
-            && point["constraint"]["left"]["transform"]["kind"].as_str() == Some("scale"))
-            || (point["constraint"]["right"]["kind"].as_str() == Some("derived")
-                && point["constraint"]["right"]["transform"]["kind"].as_str() == Some("scale"))
+        (point["constraint"]["left"]["kind"].as_str() == Some("matrix-apply")
+            && point["constraint"]["left"]["matrixApply"][0]["kind"].as_str() == Some("scale"))
+            || (point["constraint"]["right"]["kind"].as_str() == Some("matrix-apply")
+                && point["constraint"]["right"]["matrixApply"][0]["kind"].as_str() == Some("scale"))
     }));
 
     assert!(
@@ -102,10 +102,10 @@ fn exports_nested_scaled_reflected_circle_fixture_with_live_constraints() {
         "expected both nested circle intersections to stay live"
     );
     assert!(constrained_points.iter().all(|point| {
-        (point["constraint"]["left"]["kind"].as_str() == Some("derived")
-            && point["constraint"]["left"]["transform"]["kind"].as_str() == Some("scale"))
-            || (point["constraint"]["right"]["kind"].as_str() == Some("derived")
-                && point["constraint"]["right"]["transform"]["kind"].as_str() == Some("scale"))
+        (point["constraint"]["left"]["kind"].as_str() == Some("matrix-apply")
+            && point["constraint"]["left"]["matrixApply"][0]["kind"].as_str() == Some("scale"))
+            || (point["constraint"]["right"]["kind"].as_str() == Some("matrix-apply")
+                && point["constraint"]["right"]["matrixApply"][0]["kind"].as_str() == Some("scale"))
     }));
 }
 

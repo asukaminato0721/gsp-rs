@@ -3,7 +3,10 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::line_constraint::{LineConstraint, LineConstraintResolver};
-use crate::{AffineMatrix, LineKind, Point, measured_rotation_radians, project_to_line_like};
+use crate::{
+    AffineMatrix, LineKind, Point, measured_rotation_radians, project_to_line_like,
+    scale_by_three_point_ratio,
+};
 
 #[derive(Clone, Copy, Deserialize)]
 struct ScenePoint {
@@ -91,6 +94,20 @@ enum PointTransform {
         #[serde(rename = "factorParameterEndIndex")]
         factor_parameter_end_index: Option<usize>,
     },
+    #[serde(rename = "scale-by-ratio")]
+    ScaleByRatio {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "ratioOriginIndex")]
+        ratio_origin_index: usize,
+        #[serde(rename = "ratioDenominatorIndex")]
+        ratio_denominator_index: usize,
+        #[serde(rename = "ratioNumeratorIndex")]
+        ratio_numerator_index: usize,
+        signed: bool,
+        #[serde(rename = "clampToUnit")]
+        clamp_to_unit: bool,
+    },
     #[serde(other)]
     Unsupported,
 }
@@ -155,6 +172,30 @@ impl InverseResolver<'_> {
             ),
             PointTransform::Scale { center_index, .. } => {
                 AffineMatrix::scale(self.point(*center_index)?, self.scale_factor(transform)?)
+            }
+            PointTransform::ScaleByRatio {
+                center_index,
+                ratio_origin_index,
+                ratio_denominator_index,
+                ratio_numerator_index,
+                signed,
+                clamp_to_unit,
+            } => {
+                let center = self.point(*center_index)?;
+                let probe = Point {
+                    x: center.x + 1.0,
+                    y: center.y,
+                };
+                let scaled = scale_by_three_point_ratio(
+                    probe,
+                    center,
+                    self.point(*ratio_origin_index)?,
+                    self.point(*ratio_denominator_index)?,
+                    self.point(*ratio_numerator_index)?,
+                    *signed,
+                    *clamp_to_unit,
+                )?;
+                AffineMatrix::scale(center, scaled.x - center.x)
             }
             PointTransform::Unsupported => return None,
         })

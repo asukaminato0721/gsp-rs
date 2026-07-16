@@ -66,7 +66,11 @@ fn exports_perpendicular_intersection_fixture_into_html() {
     assert!(html.contains("\"x\":867.3347427619246"));
     assert!(html.contains("\"y\":469.95590501978756"));
     assert!(html.contains("\"kind\":\"line-intersection\""));
-    assert!(html.contains("\"right\":{\"kind\":\"perpendicular-line\",\"throughIndex\":2"));
+    assert!(html.contains("\"right\":{\"kind\":\"matrix-apply\""));
+    assert!(html.contains(
+        "\"kind\":\"rotate-source-point\",\"sourcePointIndex\":0,\"angleDegrees\":-90.0"
+    ));
+    assert!(html.contains("\"targetIndex\":2"));
 }
 
 #[test]
@@ -77,7 +81,9 @@ fn exports_perpendicular_segment_fixture_into_html() {
     );
 
     assert!(html.contains("\"constraint\":{\"kind\":\"line-intersection\""));
-    assert!(html.contains("\"right\":{\"kind\":\"perpendicular-line\",\"throughIndex\":1"));
+    assert!(html.contains("\"right\":{\"kind\":\"matrix-apply\""));
+    assert!(html.contains("\"targetIndex\":1"));
+    assert!(!html.contains("\"kind\":\"perpendicular-line\""));
     assert!(!html.contains("\"kind\":\"segment\",\"startIndex\":0,\"endIndex\":3"));
 }
 

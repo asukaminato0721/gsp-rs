@@ -427,9 +427,9 @@ fn clone_arc_constraint(
             mid_index: *mid_index,
             end_index: *end_index,
         },
-        ArcConstraint::Reflected { arc, axis } => ArcConstraint::Reflected {
-            arc: Box::new(clone_arc_constraint(arc)),
-            axis: clone_line_constraint(axis),
+        ArcConstraint::MatrixApply { source, matrices } => ArcConstraint::MatrixApply {
+            source: Box::new(clone_arc_constraint(source)),
+            matrices: matrices.clone(),
         },
     }
 }
@@ -535,50 +535,9 @@ fn clone_circular_constraint(constraint: &CircularConstraint) -> CircularConstra
             initial_value: *initial_value,
             parameter_group_ordinals: parameter_group_ordinals.clone(),
         },
-        CircularConstraint::TranslateCircle { source, dx, dy } => {
-            CircularConstraint::TranslateCircle {
-                source: Box::new(clone_circular_constraint(source)),
-                dx: *dx,
-                dy: *dy,
-            }
-        }
-        CircularConstraint::VectorTranslateCircle {
-            source,
-            vector_start_index,
-            vector_end_index,
-        } => CircularConstraint::VectorTranslateCircle {
+        CircularConstraint::MatrixApply { source, matrices } => CircularConstraint::MatrixApply {
             source: Box::new(clone_circular_constraint(source)),
-            vector_start_index: *vector_start_index,
-            vector_end_index: *vector_end_index,
-        },
-        CircularConstraint::ReflectCircle {
-            source,
-            line_start_index,
-            line_end_index,
-            line_index,
-        } => CircularConstraint::ReflectCircle {
-            source: Box::new(clone_circular_constraint(source)),
-            line_start_index: *line_start_index,
-            line_end_index: *line_end_index,
-            line_index: *line_index,
-        },
-        CircularConstraint::ScaleCircle {
-            source,
-            center_index,
-            factor,
-        } => CircularConstraint::ScaleCircle {
-            source: Box::new(clone_circular_constraint(source)),
-            center_index: *center_index,
-            factor: *factor,
-        },
-        CircularConstraint::RotateCircle {
-            source,
-            center_index,
-            angle_degrees,
-        } => CircularConstraint::RotateCircle {
-            source: Box::new(clone_circular_constraint(source)),
-            center_index: *center_index,
-            angle_degrees: *angle_degrees,
+            matrices: matrices.clone(),
         },
         CircularConstraint::CircleArc {
             center_index,

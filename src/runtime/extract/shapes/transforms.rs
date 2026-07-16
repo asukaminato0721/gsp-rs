@@ -986,7 +986,9 @@ fn derived_line_shape(
         stroke_width: Some(line_stroke_width_from_style(source_group.header.style_a)),
         visible: !group.header.is_hidden(),
         binding: Some(LineBinding::MatrixApply {
-            source_index: source_group_index,
+            source_index: Some(source_group_index),
+            source_start_index: None,
+            source_end_index: None,
             matrices: vec![transform],
         }),
         debug: Some(payload_debug_source(group)),

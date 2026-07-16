@@ -56,10 +56,11 @@ enum CircularConstraint {
         #[serde(rename = "initialValue")]
         initial_value: f64,
     },
-    #[serde(rename = "derived")]
-    Derived {
+    #[serde(rename = "matrix-apply")]
+    MatrixApply {
         source: Box<CircularConstraint>,
-        transform: GeometryTransform,
+        #[serde(rename = "matrixApply")]
+        matrix_apply: Vec<GeometryTransform>,
     },
     #[serde(rename = "circle-arc")]
     CircleArc {
@@ -139,6 +140,20 @@ enum GeometryTransform {
         #[serde(rename = "lineIndex")]
         line_index: Option<usize>,
     },
+    #[serde(rename = "rotate-source-point")]
+    RotateSourcePoint {
+        #[serde(rename = "sourcePointIndex")]
+        source_point_index: usize,
+        #[serde(rename = "angleDegrees")]
+        angle_degrees: f64,
+    },
+    #[serde(rename = "translate-source-point")]
+    TranslateSourcePoint {
+        #[serde(rename = "sourcePointIndex")]
+        source_point_index: usize,
+        #[serde(rename = "targetIndex")]
+        target_index: usize,
+    },
 }
 
 pub fn resolve_circular_constraint_center_json(
@@ -211,10 +226,16 @@ impl CircularCenterResolver<'_> {
                     .then(|| self.point(*center_index))
                     .flatten()
             }
-            CircularConstraint::Derived { source, transform } => self
-                .transform_matrix(transform)?
-                .apply(self.resolve(source)?)
-                .finite(),
+            CircularConstraint::MatrixApply {
+                source,
+                matrix_apply,
+            } => matrix_apply
+                .iter()
+                .try_fold(self.resolve(source)?, |center, transform| {
+                    self.transform_matrix(transform, center)
+                        .map(|matrix| matrix.apply(center))
+                })
+                .and_then(FinitePoint::finite),
             CircularConstraint::CircleArc {
                 center_index,
                 start_index,
@@ -237,7 +258,11 @@ impl CircularCenterResolver<'_> {
         }
     }
 
-    fn transform_matrix(&self, transform: &GeometryTransform) -> Option<AffineMatrix> {
+    fn transform_matrix(
+        &self,
+        transform: &GeometryTransform,
+        source_center: Point,
+    ) -> Option<AffineMatrix> {
         Some(match transform {
             GeometryTransform::Translate {
                 vector_start_index,
@@ -315,6 +340,25 @@ impl CircularCenterResolver<'_> {
                 };
                 AffineMatrix::reflection(axis[0], axis[1])?
             }
+            GeometryTransform::RotateSourcePoint {
+                source_point_index,
+                angle_degrees,
+            } => {
+                if *source_point_index != 0 {
+                    return None;
+                }
+                AffineMatrix::rotation(source_center, angle_degrees.to_radians())
+            }
+            GeometryTransform::TranslateSourcePoint {
+                source_point_index,
+                target_index,
+            } => {
+                if *source_point_index != 0 {
+                    return None;
+                }
+                let target = self.point(*target_index)?;
+                AffineMatrix::translation(target.x - source_center.x, target.y - source_center.y)
+            }
         })
     }
 
@@ -346,12 +390,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolves_derived_circle_center() {
+    fn resolves_matrix_applied_circle_center() {
         let input = br#"{
           "constraint": {
-            "kind":"derived",
+            "kind":"matrix-apply",
             "source":{"kind":"circle","centerIndex":0,"radiusIndex":1},
-            "transform":{"kind":"reflect","lineStartIndex":2,"lineEndIndex":3,"lineIndex":null}
+            "matrixApply":[{"kind":"reflect","lineStartIndex":2,"lineEndIndex":3,"lineIndex":null}]
           },
           "points":[{"x":2,"y":1},{"x":3,"y":1},{"x":0,"y":0},{"x":0,"y":1}]
         }"#;

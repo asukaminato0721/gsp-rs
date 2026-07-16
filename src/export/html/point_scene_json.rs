@@ -3,8 +3,7 @@ use super::scene_json::{DebugSourceJson, PointJson};
 use super::transform_json::TransformJson;
 use crate::runtime::functions::{FunctionExpr, FunctionPlotMode};
 use crate::runtime::scene::{
-    ArcConstraint, AxisBinding, CircularConstraint, LineConstraint, ScenePointBinding,
-    ScenePointConstraint,
+    ArcConstraint, CircularConstraint, LineConstraint, ScenePointBinding, ScenePointConstraint,
 };
 use serde::Serialize;
 use ts_rs::TS;
@@ -94,8 +93,8 @@ enum PointBindingJson {
         #[serde(rename = "absoluteValue")]
         absolute_value: bool,
     },
-    #[serde(rename = "derived")]
-    Derived {
+    #[serde(rename = "matrix-apply")]
+    MatrixApply {
         #[serde(rename = "sourceIndex")]
         source_index: usize,
         #[serde(rename = "matrixApply")]
@@ -113,22 +112,6 @@ enum PointBindingJson {
         second_end_index: usize,
         distance: f64,
         parameter: f64,
-    },
-    #[serde(rename = "scale-by-ratio")]
-    ScaleByRatio {
-        #[serde(rename = "sourceIndex")]
-        source_index: usize,
-        #[serde(rename = "centerIndex")]
-        center_index: usize,
-        #[serde(rename = "ratioOriginIndex")]
-        ratio_origin_index: usize,
-        #[serde(rename = "ratioDenominatorIndex")]
-        ratio_denominator_index: usize,
-        #[serde(rename = "ratioNumeratorIndex")]
-        ratio_numerator_index: usize,
-        signed: bool,
-        #[serde(rename = "clampToUnit")]
-        clamp_to_unit: bool,
     },
     #[serde(rename = "marked-angle-translation")]
     MarkedAngleTranslation {
@@ -326,6 +309,20 @@ enum PointTransformJson {
         )]
         factor_parameter_end_index: Option<usize>,
     },
+    #[serde(rename = "scale-by-ratio")]
+    ScaleByRatio {
+        #[serde(rename = "centerIndex")]
+        center_index: usize,
+        #[serde(rename = "ratioOriginIndex")]
+        ratio_origin_index: usize,
+        #[serde(rename = "ratioDenominatorIndex")]
+        ratio_denominator_index: usize,
+        #[serde(rename = "ratioNumeratorIndex")]
+        ratio_numerator_index: usize,
+        signed: bool,
+        #[serde(rename = "clampToUnit")]
+        clamp_to_unit: bool,
+    },
 }
 
 #[derive(Serialize, TS)]
@@ -395,7 +392,7 @@ impl PointBindingJson {
                 source_index,
                 vector_start_index,
                 vector_end_index,
-            } => Self::Derived {
+            } => Self::MatrixApply {
                 source_index: *source_index,
                 matrix_apply: vec![PointTransformJson::Translate {
                     vector_start_index: *vector_start_index,
@@ -421,14 +418,14 @@ impl PointBindingJson {
                 source_index,
                 line_start_index,
                 line_end_index,
-            } => Self::Derived {
+            } => Self::MatrixApply {
                 source_index: *source_index,
                 matrix_apply: vec![PointTransformJson::Reflect {
                     line_start_index: *line_start_index,
                     line_end_index: *line_end_index,
                 }],
             },
-            ScenePointBinding::ReflectLineConstraint { source_index, line } => Self::Derived {
+            ScenePointBinding::ReflectLineConstraint { source_index, line } => Self::MatrixApply {
                 source_index: *source_index,
                 matrix_apply: vec![PointTransformJson::ReflectLineConstraint {
                     line: LineConstraintJson::from_constraint(line),
@@ -448,7 +445,7 @@ impl PointBindingJson {
                 angle_parameter_end_index,
                 angle_parameter_scale,
                 ..
-            } => Self::Derived {
+            } => Self::MatrixApply {
                 source_index: *source_index,
                 matrix_apply: vec![PointTransformJson::Rotate {
                     center_index: *center_index,
@@ -472,14 +469,16 @@ impl PointBindingJson {
                 ratio_numerator_index,
                 signed,
                 clamp_to_unit,
-            } => Self::ScaleByRatio {
+            } => Self::MatrixApply {
                 source_index: *source_index,
-                center_index: *center_index,
-                ratio_origin_index: *ratio_origin_index,
-                ratio_denominator_index: *ratio_denominator_index,
-                ratio_numerator_index: *ratio_numerator_index,
-                signed: *signed,
-                clamp_to_unit: *clamp_to_unit,
+                matrix_apply: vec![PointTransformJson::ScaleByRatio {
+                    center_index: *center_index,
+                    ratio_origin_index: *ratio_origin_index,
+                    ratio_denominator_index: *ratio_denominator_index,
+                    ratio_numerator_index: *ratio_numerator_index,
+                    signed: *signed,
+                    clamp_to_unit: *clamp_to_unit,
+                }],
             },
             ScenePointBinding::Scale {
                 source_index,
@@ -491,7 +490,7 @@ impl PointBindingJson {
                 factor_parameter_start_index,
                 factor_parameter_end_index,
                 ..
-            } => Self::Derived {
+            } => Self::MatrixApply {
                 source_index: *source_index,
                 matrix_apply: vec![PointTransformJson::Scale {
                     center_index: *center_index,
@@ -1136,9 +1135,10 @@ enum ArcConstraintJson {
         #[serde(rename = "endIndex")]
         end_index: usize,
     },
-    Reflected {
-        arc: Box<ArcConstraintJson>,
-        axis: LineConstraintJson,
+    MatrixApply {
+        source: Box<ArcConstraintJson>,
+        #[serde(rename = "matrixApply")]
+        matrix_apply: Vec<TransformJson>,
     },
 }
 
@@ -1172,9 +1172,9 @@ impl ArcConstraintJson {
                 mid_index: *mid_index,
                 end_index: *end_index,
             },
-            ArcConstraint::Reflected { arc, axis } => Self::Reflected {
-                arc: Box::new(Self::from_constraint(arc)),
-                axis: LineConstraintJson::from_constraint(axis),
+            ArcConstraint::MatrixApply { source, matrices } => Self::MatrixApply {
+                source: Box::new(Self::from_constraint(source)),
+                matrix_apply: matrices.iter().map(TransformJson::from_transform).collect(),
             },
         }
     }
@@ -1237,9 +1237,10 @@ enum CircularConstraintJson {
         #[serde(rename = "initialValue")]
         initial_value: f64,
     },
-    Derived {
+    MatrixApply {
         source: Box<CircularConstraintJson>,
-        transform: TransformJson,
+        #[serde(rename = "matrixApply")]
+        matrix_apply: Vec<TransformJson>,
     },
     CircleArc {
         #[serde(rename = "centerIndex")]
@@ -1299,49 +1300,9 @@ impl CircularConstraintJson {
                 expr: FunctionExprJson::from_expr(expr),
                 initial_value: *initial_value,
             },
-            CircularConstraint::TranslateCircle { source, dx, dy } => Self::Derived {
+            CircularConstraint::MatrixApply { source, matrices } => Self::MatrixApply {
                 source: Box::new(Self::from_constraint(source)),
-                transform: TransformJson::translate_delta(*dx, *dy),
-            },
-            CircularConstraint::VectorTranslateCircle {
-                source,
-                vector_start_index,
-                vector_end_index,
-            } => Self::Derived {
-                source: Box::new(Self::from_constraint(source)),
-                transform: TransformJson::Translate {
-                    vector_start_index: *vector_start_index,
-                    vector_end_index: *vector_end_index,
-                },
-            },
-            CircularConstraint::ReflectCircle {
-                source,
-                line_start_index,
-                line_end_index,
-                line_index,
-            } => Self::Derived {
-                source: Box::new(Self::from_constraint(source)),
-                transform: TransformJson::reflect(&AxisBinding {
-                    line_start_index: *line_start_index,
-                    line_end_index: *line_end_index,
-                    line_index: *line_index,
-                }),
-            },
-            CircularConstraint::ScaleCircle {
-                source,
-                center_index,
-                factor,
-            } => Self::Derived {
-                source: Box::new(Self::from_constraint(source)),
-                transform: TransformJson::scale(*center_index, *factor),
-            },
-            CircularConstraint::RotateCircle {
-                source,
-                center_index,
-                angle_degrees,
-            } => Self::Derived {
-                source: Box::new(Self::from_constraint(source)),
-                transform: TransformJson::rotate(*center_index, *angle_degrees),
+                matrix_apply: matrices.iter().map(TransformJson::from_transform).collect(),
             },
             CircularConstraint::CircleArc {
                 center_index,
@@ -1385,36 +1346,6 @@ enum LineConstraintJson {
         start_index: usize,
         #[serde(rename = "endIndex")]
         end_index: usize,
-    },
-    #[serde(rename = "perpendicular-line")]
-    PerpendicularLine {
-        #[serde(rename = "throughIndex")]
-        through_index: usize,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
-    },
-    #[serde(rename = "parallel-line")]
-    ParallelLine {
-        #[serde(rename = "throughIndex")]
-        through_index: usize,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
-    },
-    #[serde(rename = "perpendicular-to")]
-    PerpendicularTo {
-        #[serde(rename = "throughIndex")]
-        through_index: usize,
-        line: Box<LineConstraintJson>,
-    },
-    #[serde(rename = "parallel-to")]
-    ParallelTo {
-        #[serde(rename = "throughIndex")]
-        through_index: usize,
-        line: Box<LineConstraintJson>,
     },
     #[serde(rename = "angle-bisector-ray")]
     AngleBisectorRay {
@@ -1464,6 +1395,18 @@ enum LineConstraintMatrixJson {
         #[serde(rename = "angleEndIndex", skip_serializing_if = "Option::is_none")]
         angle_end_index: Option<usize>,
     },
+    RotateSourcePoint {
+        #[serde(rename = "sourcePointIndex")]
+        source_point_index: usize,
+        #[serde(rename = "angleDegrees")]
+        angle_degrees: f64,
+    },
+    TranslateSourcePoint {
+        #[serde(rename = "sourcePointIndex")]
+        source_point_index: usize,
+        #[serde(rename = "targetIndex")]
+        target_index: usize,
+    },
 }
 
 impl LineConstraintJson {
@@ -1489,38 +1432,6 @@ impl LineConstraintJson {
             } => Self::Ray {
                 start_index: *start_index,
                 end_index: *end_index,
-            },
-            LineConstraint::PerpendicularLine {
-                through_index,
-                line_start_index,
-                line_end_index,
-            } => Self::PerpendicularLine {
-                through_index: *through_index,
-                line_start_index: *line_start_index,
-                line_end_index: *line_end_index,
-            },
-            LineConstraint::ParallelLine {
-                through_index,
-                line_start_index,
-                line_end_index,
-            } => Self::ParallelLine {
-                through_index: *through_index,
-                line_start_index: *line_start_index,
-                line_end_index: *line_end_index,
-            },
-            LineConstraint::PerpendicularTo {
-                through_index,
-                line,
-            } => Self::PerpendicularTo {
-                through_index: *through_index,
-                line: Box::new(Self::from_constraint(line)),
-            },
-            LineConstraint::ParallelTo {
-                through_index,
-                line,
-            } => Self::ParallelTo {
-                through_index: *through_index,
-                line: Box::new(Self::from_constraint(line)),
             },
             LineConstraint::AngleBisectorRay {
                 start_index,
@@ -1569,6 +1480,20 @@ impl LineConstraintMatrixJson {
                 angle_start_index: rotation.angle_start_index,
                 angle_vertex_index: rotation.angle_vertex_index,
                 angle_end_index: rotation.angle_end_index,
+            },
+            crate::runtime::scene::LineConstraintMatrix::RotateAroundSourcePoint {
+                source_point_index,
+                angle_degrees,
+            } => Self::RotateSourcePoint {
+                source_point_index: *source_point_index,
+                angle_degrees: *angle_degrees,
+            },
+            crate::runtime::scene::LineConstraintMatrix::TranslateSourcePointToPoint {
+                source_point_index,
+                target_index,
+            } => Self::TranslateSourcePoint {
+                source_point_index: *source_point_index,
+                target_index: *target_index,
             },
         }
     }

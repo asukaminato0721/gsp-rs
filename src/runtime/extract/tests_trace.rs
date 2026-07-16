@@ -1,5 +1,7 @@
 use super::test_support::{fixture_bytes, fixture_scene};
-use crate::runtime::scene::{LineBinding, ScenePointBinding, ScenePointConstraint};
+use crate::runtime::scene::{
+    GeometryTransformBinding, LineBinding, ScenePointBinding, ScenePointConstraint,
+};
 use std::collections::BTreeMap;
 
 #[test]
@@ -508,7 +510,19 @@ fn preserves_two_circle_intersection_inrm_fixture_interactivity() {
         scene
             .lines
             .iter()
-            .filter(|line| matches!(line.binding, Some(LineBinding::PerpendicularLine { .. })))
+            .filter(|line| {
+                matches!(
+                    &line.binding,
+                    Some(LineBinding::MatrixApply { matrices, .. })
+                        if matches!(
+                            matrices.as_slice(),
+                            [
+                                GeometryTransformBinding::RotateAroundSourcePoint { .. },
+                                GeometryTransformBinding::TranslateSourcePointToPoint { .. },
+                            ]
+                        )
+                )
+            })
             .count(),
         2,
         "expected both payload perpendicular helpers to stay interactive"

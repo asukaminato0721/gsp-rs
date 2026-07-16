@@ -150,6 +150,15 @@ fn remap_geometry_transform(
         GeometryTransformBinding::Reflect(axis) => {
             remap_axis_binding(axis, group_to_point_index, group_to_line_index)
         }
+        GeometryTransformBinding::RotateAroundSourcePoint { .. } => true,
+        GeometryTransformBinding::TranslateSourcePointToPoint { target_index, .. } => {
+            let Some(mapped_target_index) = mapped_index(group_to_point_index, *target_index)
+            else {
+                return false;
+            };
+            *target_index = mapped_target_index;
+            true
+        }
     }
 }
 
@@ -657,78 +666,24 @@ pub(crate) fn remap_line_bindings(
                 *vertex_index = mapped_vertex_index;
                 *end_index = mapped_end_index;
             }
-            LineBinding::PerpendicularLine {
-                through_index,
-                line_start_index,
-                line_end_index,
-                line_index,
-            } => {
-                let Some(mapped_through_index) = mapped_index(group_to_point_index, *through_index)
-                else {
-                    line.binding = None;
-                    continue;
-                };
-
-                let mapped_line_start_index =
-                    mapped_optional_index(group_to_point_index, *line_start_index).unwrap_or(None);
-                let mapped_line_end_index =
-                    mapped_optional_index(group_to_point_index, *line_end_index).unwrap_or(None);
-                let mapped_line_index =
-                    mapped_optional_index(group_to_line_index, *line_index).unwrap_or(None);
-
-                if mapped_line_index.is_none()
-                    && (mapped_line_start_index.is_none() || mapped_line_end_index.is_none())
-                {
-                    line.binding = None;
-                    continue;
-                }
-
-                *through_index = mapped_through_index;
-                *line_start_index = mapped_line_start_index;
-                *line_end_index = mapped_line_end_index;
-                *line_index = mapped_line_index;
-            }
-            LineBinding::ParallelLine {
-                through_index,
-                line_start_index,
-                line_end_index,
-                line_index,
-            } => {
-                let Some(mapped_through_index) = mapped_index(group_to_point_index, *through_index)
-                else {
-                    line.binding = None;
-                    continue;
-                };
-
-                let mapped_line_start_index =
-                    mapped_optional_index(group_to_point_index, *line_start_index).unwrap_or(None);
-                let mapped_line_end_index =
-                    mapped_optional_index(group_to_point_index, *line_end_index).unwrap_or(None);
-                let mapped_line_index =
-                    mapped_optional_index(group_to_line_index, *line_index).unwrap_or(None);
-
-                if mapped_line_index.is_none()
-                    && (mapped_line_start_index.is_none() || mapped_line_end_index.is_none())
-                {
-                    line.binding = None;
-                    continue;
-                }
-
-                *through_index = mapped_through_index;
-                *line_start_index = mapped_line_start_index;
-                *line_end_index = mapped_line_end_index;
-                *line_index = mapped_line_index;
-            }
             LineBinding::MatrixApply {
                 source_index,
+                source_start_index,
+                source_end_index,
                 matrices,
             } => {
-                let Some(mapped_source_index) = mapped_index(group_to_line_index, *source_index)
-                else {
+                *source_index =
+                    source_index.and_then(|index| mapped_index(group_to_line_index, index));
+                *source_start_index =
+                    source_start_index.and_then(|index| mapped_index(group_to_point_index, index));
+                *source_end_index =
+                    source_end_index.and_then(|index| mapped_index(group_to_point_index, index));
+                if source_index.is_none()
+                    && !(source_start_index.is_some() && source_end_index.is_some())
+                {
                     line.binding = None;
                     continue;
-                };
-                *source_index = mapped_source_index;
+                }
                 if !matrices.iter_mut().all(|matrix| {
                     remap_geometry_transform(matrix, group_to_point_index, group_to_line_index)
                 }) {

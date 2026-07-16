@@ -61,6 +61,20 @@ pub(super) enum TransformJson {
         #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
         line_index: Option<usize>,
     },
+    #[serde(rename = "rotate-source-point")]
+    RotateSourcePoint {
+        #[serde(rename = "sourcePointIndex")]
+        source_point_index: usize,
+        #[serde(rename = "angleDegrees")]
+        angle_degrees: f64,
+    },
+    #[serde(rename = "translate-source-point")]
+    TranslateSourcePoint {
+        #[serde(rename = "sourcePointIndex")]
+        source_point_index: usize,
+        #[serde(rename = "targetIndex")]
+        target_index: usize,
+    },
 }
 
 impl TransformJson {
@@ -98,34 +112,21 @@ impl TransformJson {
                 clamp_to_unit: binding.clamp_to_unit,
             },
             GeometryTransformBinding::Reflect(axis) => Self::from_axis(axis),
+            GeometryTransformBinding::RotateAroundSourcePoint {
+                source_point_index,
+                angle_degrees,
+            } => Self::RotateSourcePoint {
+                source_point_index: *source_point_index,
+                angle_degrees: *angle_degrees,
+            },
+            GeometryTransformBinding::TranslateSourcePointToPoint {
+                source_point_index,
+                target_index,
+            } => Self::TranslateSourcePoint {
+                source_point_index: *source_point_index,
+                target_index: *target_index,
+            },
         }
-    }
-
-    pub(super) fn translate_delta(dx: f64, dy: f64) -> Self {
-        Self::TranslateDelta { dx, dy }
-    }
-
-    pub(super) fn scale(center_index: usize, factor: f64) -> Self {
-        Self::Scale {
-            center_index,
-            factor,
-        }
-    }
-
-    pub(super) fn rotate(center_index: usize, angle_degrees: f64) -> Self {
-        Self::Rotate {
-            center_index,
-            angle_degrees,
-            parameter_name: None,
-            angle_expr: None,
-            angle_start_index: None,
-            angle_vertex_index: None,
-            angle_end_index: None,
-        }
-    }
-
-    pub(super) fn reflect(axis: &AxisBinding) -> Self {
-        Self::from_axis(axis)
     }
 
     fn from_axis(axis: &AxisBinding) -> Self {

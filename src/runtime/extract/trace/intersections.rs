@@ -28,76 +28,6 @@ fn resolve_trace_line_constraint(
             resolve_trace_point(points, *end_index, visiting)?,
             LineLikeKind::Ray,
         )),
-        LineConstraint::PerpendicularLine {
-            through_index,
-            line_start_index,
-            line_end_index,
-        } => {
-            let through = resolve_trace_point(points, *through_index, visiting)?;
-            let host_start = resolve_trace_point(points, *line_start_index, visiting)?;
-            let host_end = resolve_trace_point(points, *line_end_index, visiting)?;
-            let dx = host_end.x - host_start.x;
-            let dy = host_end.y - host_start.y;
-            let len = (dx * dx + dy * dy).sqrt();
-            (len > 1e-9).then_some((
-                through.clone(),
-                PointRecord {
-                    x: through.x - dy,
-                    y: through.y + dx,
-                },
-                LineLikeKind::Line,
-            ))
-        }
-        LineConstraint::ParallelLine {
-            through_index,
-            line_start_index,
-            line_end_index,
-        } => {
-            let through = resolve_trace_point(points, *through_index, visiting)?;
-            let host_start = resolve_trace_point(points, *line_start_index, visiting)?;
-            let host_end = resolve_trace_point(points, *line_end_index, visiting)?;
-            let dx = host_end.x - host_start.x;
-            let dy = host_end.y - host_start.y;
-            let len = (dx * dx + dy * dy).sqrt();
-            (len > 1e-9).then_some((
-                through.clone(),
-                PointRecord {
-                    x: through.x + dx,
-                    y: through.y + dy,
-                },
-                LineLikeKind::Line,
-            ))
-        }
-        LineConstraint::PerpendicularTo {
-            through_index,
-            line,
-        }
-        | LineConstraint::ParallelTo {
-            through_index,
-            line,
-        } => {
-            let through = resolve_trace_point(points, *through_index, visiting)?;
-            let (host_start, host_end, _) =
-                resolve_trace_line_constraint(points, line, visiting)?;
-            let dx = host_end.x - host_start.x;
-            let dy = host_end.y - host_start.y;
-            let len = (dx * dx + dy * dy).sqrt();
-            (len > 1e-9).then_some((
-                through.clone(),
-                if matches!(constraint, LineConstraint::PerpendicularTo { .. }) {
-                    PointRecord {
-                        x: through.x - dy,
-                        y: through.y + dx,
-                    }
-                } else {
-                    PointRecord {
-                        x: through.x + dx,
-                        y: through.y + dy,
-                    }
-                },
-                LineLikeKind::Line,
-            ))
-        }
         LineConstraint::AngleBisectorRay {
             start_index,
             vertex_index,
@@ -121,7 +51,7 @@ fn resolve_trace_line_constraint(
             ))
         }
         LineConstraint::MatrixApply { source, matrices } => {
-            let (start, end, kind) = resolve_trace_line_constraint(points, source, visiting)?;
+            let (start, end, mut kind) = resolve_trace_line_constraint(points, source, visiting)?;
             let mut start = to_core_point(&start);
             let mut end = to_core_point(&end);
             for matrix in matrices {
@@ -177,6 +107,29 @@ fn resolve_trace_line_constraint(
                         gsp_runtime_core::AffineMatrix::rotation(
                             to_core_point(&center),
                             angle_degrees.to_radians(),
+                        )
+                    }
+                    crate::runtime::scene::LineConstraintMatrix::RotateAroundSourcePoint {
+                        source_point_index,
+                        angle_degrees,
+                    } => {
+                        kind = LineLikeKind::Line;
+                        let center = [start, end].get(*source_point_index).copied()?;
+                        gsp_runtime_core::AffineMatrix::rotation(
+                            center,
+                            angle_degrees.to_radians(),
+                        )
+                    }
+                    crate::runtime::scene::LineConstraintMatrix::TranslateSourcePointToPoint {
+                        source_point_index,
+                        target_index,
+                    } => {
+                        kind = LineLikeKind::Line;
+                        let source = [start, end].get(*source_point_index).copied()?;
+                        let target = resolve_trace_point(points, *target_index, visiting)?;
+                        gsp_runtime_core::AffineMatrix::translation(
+                            target.x - source.x,
+                            target.y - source.y,
                         )
                     }
                 };
@@ -354,248 +307,13 @@ fn resolve_trace_circular_constraint(
             let radius = initial_value.abs();
             (radius > 1e-9).then_some(TraceCircularConstraint::Circle { center, radius })
         }
-        CircularConstraint::TranslateCircle { source, dx, dy } => {
-            let source = resolve_trace_circular_constraint(points, source, visiting)?;
-            match source {
-                TraceCircularConstraint::Circle { center, radius } => {
-                    Some(TraceCircularConstraint::Circle {
-                        center: PointRecord {
-                            x: center.x + dx,
-                            y: center.y + dy,
-                        },
-                        radius,
-                    })
-                }
-                TraceCircularConstraint::ThreePointArc {
-                    start,
-                    end,
-                    center,
-                    radius,
-                    start_angle,
-                    end_angle,
-                    ccw_span,
-                    ccw_mid,
-                } => Some(TraceCircularConstraint::ThreePointArc {
-                    start: PointRecord {
-                        x: start.x + dx,
-                        y: start.y + dy,
-                    },
-                    end: PointRecord {
-                        x: end.x + dx,
-                        y: end.y + dy,
-                    },
-                    center: PointRecord {
-                        x: center.x + dx,
-                        y: center.y + dy,
-                    },
-                    radius,
-                    start_angle,
-                    end_angle,
-                    ccw_span,
-                    ccw_mid,
-                }),
+        CircularConstraint::MatrixApply { source, matrices } => {
+            let mut resolved = resolve_trace_circular_constraint(points, source, visiting)?;
+            for matrix in matrices {
+                let matrix = trace_geometry_matrix(points, matrix, visiting)?;
+                resolved = transform_trace_circular_constraint(resolved, matrix)?;
             }
-        }
-        CircularConstraint::VectorTranslateCircle {
-            source,
-            vector_start_index,
-            vector_end_index,
-        } => {
-            let start = resolve_trace_point(points, *vector_start_index, visiting)?;
-            let end = resolve_trace_point(points, *vector_end_index, visiting)?;
-            let dx = end.x - start.x;
-            let dy = end.y - start.y;
-            let source = resolve_trace_circular_constraint(points, source, visiting)?;
-            match source {
-                TraceCircularConstraint::Circle { center, radius } => {
-                    Some(TraceCircularConstraint::Circle {
-                        center: PointRecord {
-                            x: center.x + dx,
-                            y: center.y + dy,
-                        },
-                        radius,
-                    })
-                }
-                TraceCircularConstraint::ThreePointArc {
-                    start,
-                    end,
-                    center,
-                    radius,
-                    start_angle,
-                    end_angle,
-                    ccw_span,
-                    ccw_mid,
-                } => Some(TraceCircularConstraint::ThreePointArc {
-                    start: PointRecord {
-                        x: start.x + dx,
-                        y: start.y + dy,
-                    },
-                    end: PointRecord {
-                        x: end.x + dx,
-                        y: end.y + dy,
-                    },
-                    center: PointRecord {
-                        x: center.x + dx,
-                        y: center.y + dy,
-                    },
-                    radius,
-                    start_angle,
-                    end_angle,
-                    ccw_span,
-                    ccw_mid,
-                }),
-            }
-        }
-        CircularConstraint::ReflectCircle {
-            source,
-            line_start_index,
-            line_end_index,
-            line_index: _,
-        } => {
-            let source = resolve_trace_circular_constraint(points, source, visiting)?;
-            let line_start =
-                line_start_index.and_then(|index| resolve_trace_point(points, index, visiting));
-            let line_end =
-                line_end_index.and_then(|index| resolve_trace_point(points, index, visiting));
-            let (line_start, line_end) = match (line_start, line_end) {
-                (Some(line_start), Some(line_end)) => (line_start, line_end),
-                _ => return None,
-            };
-            match source {
-                TraceCircularConstraint::Circle { center, radius } => {
-                    let reflected_center = reflect_across_line(&center, &line_start, &line_end)?;
-                    Some(TraceCircularConstraint::Circle {
-                        center: reflected_center,
-                        radius,
-                    })
-                }
-                TraceCircularConstraint::ThreePointArc { .. } => None,
-            }
-        }
-        CircularConstraint::RotateCircle {
-            source,
-            center_index,
-            angle_degrees,
-        } => {
-            let source = resolve_trace_circular_constraint(points, source, visiting)?;
-            let center = resolve_trace_point(points, *center_index, visiting)?;
-            let angle = angle_degrees.to_radians();
-            match source {
-                TraceCircularConstraint::Circle {
-                    center: source_center,
-                    radius,
-                } => Some(TraceCircularConstraint::Circle {
-                    center: rotate_around(&source_center, &center, angle),
-                    radius,
-                }),
-                TraceCircularConstraint::ThreePointArc {
-                    start,
-                    end,
-                    center: source_center,
-                    radius,
-                    start_angle,
-                    ccw_mid,
-                    ..
-                } => {
-                    let mid = PointRecord {
-                        x: source_center.x + radius * (start_angle + ccw_mid).cos(),
-                        y: source_center.y + radius * (start_angle + ccw_mid).sin(),
-                    };
-                    let rotated_start = rotate_around(&start, &center, angle);
-                    let rotated_mid = rotate_around(&mid, &center, angle);
-                    let rotated_end = rotate_around(&end, &center, angle);
-                    let geometry = crate::runtime::geometry::three_point_arc_geometry(
-                        &rotated_start,
-                        &rotated_mid,
-                        &rotated_end,
-                    )?;
-                    Some(TraceCircularConstraint::ThreePointArc {
-                        start: rotated_start,
-                        end: rotated_end,
-                        center: geometry.center.clone(),
-                        radius: geometry.radius,
-                        start_angle: geometry.start_angle,
-                        end_angle: geometry.end_angle,
-                        ccw_span: trace_normalized_angle_delta(
-                            geometry.start_angle,
-                            geometry.end_angle,
-                        ),
-                        ccw_mid: trace_normalized_angle_delta(
-                            geometry.start_angle,
-                            (rotated_mid.y - geometry.center.y)
-                                .atan2(rotated_mid.x - geometry.center.x),
-                        ),
-                    })
-                }
-            }
-        }
-        CircularConstraint::ScaleCircle {
-            source,
-            center_index,
-            factor,
-        } => {
-            let source = resolve_trace_circular_constraint(points, source, visiting)?;
-            let center = resolve_trace_point(points, *center_index, visiting)?;
-            match source {
-                TraceCircularConstraint::Circle {
-                    center: source_center,
-                    radius,
-                } => Some(TraceCircularConstraint::Circle {
-                    center: PointRecord {
-                        x: center.x + (source_center.x - center.x) * factor,
-                        y: center.y + (source_center.y - center.y) * factor,
-                    },
-                    radius: radius * factor.abs(),
-                }),
-                TraceCircularConstraint::ThreePointArc {
-                    start,
-                    end,
-                    center: source_center,
-                    radius,
-                    start_angle,
-                    ccw_mid,
-                    ..
-                } => {
-                    let mid = PointRecord {
-                        x: source_center.x + radius * (start_angle + ccw_mid).cos(),
-                        y: source_center.y + radius * (start_angle + ccw_mid).sin(),
-                    };
-                    let scaled_start = PointRecord {
-                        x: center.x + (start.x - center.x) * factor,
-                        y: center.y + (start.y - center.y) * factor,
-                    };
-                    let scaled_mid = PointRecord {
-                        x: center.x + (mid.x - center.x) * factor,
-                        y: center.y + (mid.y - center.y) * factor,
-                    };
-                    let scaled_end = PointRecord {
-                        x: center.x + (end.x - center.x) * factor,
-                        y: center.y + (end.y - center.y) * factor,
-                    };
-                    let geometry = crate::runtime::geometry::three_point_arc_geometry(
-                        &scaled_start,
-                        &scaled_mid,
-                        &scaled_end,
-                    )?;
-                    let scaled_center = geometry.center.clone();
-                    Some(TraceCircularConstraint::ThreePointArc {
-                        start: scaled_start,
-                        end: scaled_end,
-                        center: scaled_center.clone(),
-                        radius: geometry.radius,
-                        start_angle: geometry.start_angle,
-                        end_angle: geometry.end_angle,
-                        ccw_span: trace_normalized_angle_delta(
-                            geometry.start_angle,
-                            geometry.end_angle,
-                        ),
-                        ccw_mid: trace_normalized_angle_delta(
-                            geometry.start_angle,
-                            (scaled_mid.y - scaled_center.y).atan2(scaled_mid.x - scaled_center.x),
-                        ),
-                    })
-                }
-            }
+            Some(resolved)
         }
         CircularConstraint::CircleArc {
             center_index,
@@ -646,6 +364,144 @@ fn resolve_trace_circular_constraint(
                 start_angle: geometry.start_angle,
                 end_angle: geometry.end_angle,
                 ccw_span: trace_normalized_angle_delta(geometry.start_angle, geometry.end_angle),
+                ccw_mid: trace_normalized_angle_delta(
+                    geometry.start_angle,
+                    (mid.y - center.y).atan2(mid.x - center.x),
+                ),
+            })
+        }
+    }
+}
+
+fn trace_geometry_matrix(
+    points: &mut [ScenePoint],
+    transform: &crate::runtime::scene::GeometryTransformBinding,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<gsp_runtime_core::AffineMatrix> {
+    use crate::runtime::scene::GeometryTransformBinding;
+    Some(match transform {
+        GeometryTransformBinding::TranslateDelta { dx, dy } => {
+            gsp_runtime_core::AffineMatrix::translation(*dx, *dy)
+        }
+        GeometryTransformBinding::TranslateVector {
+            vector_start_index,
+            vector_end_index,
+        } => {
+            let start = resolve_trace_point(points, *vector_start_index, visiting)?;
+            let end = resolve_trace_point(points, *vector_end_index, visiting)?;
+            gsp_runtime_core::AffineMatrix::translation(end.x - start.x, end.y - start.y)
+        }
+        GeometryTransformBinding::Rotate(rotation) => {
+            let center = resolve_trace_point(points, rotation.center_index, visiting)?;
+            let angle_degrees = if let (Some(start), Some(vertex), Some(end)) = (
+                rotation.angle_start_index,
+                rotation.angle_vertex_index,
+                rotation.angle_end_index,
+            ) {
+                crate::runtime::geometry::angle_degrees_from_points(
+                    &resolve_trace_point(points, start, visiting)?,
+                    &resolve_trace_point(points, vertex, visiting)?,
+                    &resolve_trace_point(points, end, visiting)?,
+                )?
+            } else {
+                rotation.angle_degrees
+            };
+            gsp_runtime_core::AffineMatrix::rotation(
+                to_core_point(&center),
+                angle_degrees.to_radians(),
+            )
+        }
+        GeometryTransformBinding::Scale(scale) => gsp_runtime_core::AffineMatrix::scale(
+            to_core_point(&resolve_trace_point(points, scale.center_index, visiting)?),
+            scale.factor,
+        ),
+        GeometryTransformBinding::ScaleByRatio(scale) => {
+            let center = resolve_trace_point(points, scale.center_index, visiting)?;
+            let center = to_core_point(&center);
+            let probe = gsp_runtime_core::Point {
+                x: center.x + 1.0,
+                y: center.y,
+            };
+            let scaled = gsp_runtime_core::scale_by_three_point_ratio(
+                probe,
+                center,
+                to_core_point(&resolve_trace_point(points, scale.ratio_origin_index, visiting)?),
+                to_core_point(&resolve_trace_point(
+                    points,
+                    scale.ratio_denominator_index,
+                    visiting,
+                )?),
+                to_core_point(&resolve_trace_point(
+                    points,
+                    scale.ratio_numerator_index,
+                    visiting,
+                )?),
+                scale.signed,
+                scale.clamp_to_unit,
+            )?;
+            gsp_runtime_core::AffineMatrix::scale(center, scaled.x - center.x)
+        }
+        GeometryTransformBinding::Reflect(axis) => {
+            let start = resolve_trace_point(points, axis.line_start_index?, visiting)?;
+            let end = resolve_trace_point(points, axis.line_end_index?, visiting)?;
+            gsp_runtime_core::AffineMatrix::reflection(
+                to_core_point(&start),
+                to_core_point(&end),
+            )?
+        }
+        GeometryTransformBinding::RotateAroundSourcePoint { .. }
+        | GeometryTransformBinding::TranslateSourcePointToPoint { .. } => return None,
+    })
+}
+
+fn transform_trace_circular_constraint(
+    source: TraceCircularConstraint,
+    matrix: gsp_runtime_core::AffineMatrix,
+) -> Option<TraceCircularConstraint> {
+    match source {
+        TraceCircularConstraint::Circle { center, radius } => {
+            let center = to_core_point(&center);
+            let radius_point = gsp_runtime_core::Point {
+                x: center.x + radius,
+                y: center.y,
+            };
+            let transformed_center = matrix.apply(center);
+            let transformed_radius = matrix.apply(radius_point);
+            Some(TraceCircularConstraint::Circle {
+                center: from_core_point(transformed_center),
+                radius: (transformed_radius.x - transformed_center.x)
+                    .hypot(transformed_radius.y - transformed_center.y),
+            })
+        }
+        TraceCircularConstraint::ThreePointArc {
+            start,
+            end,
+            center,
+            radius,
+            start_angle,
+            ccw_mid,
+            ..
+        } => {
+            let mid = PointRecord {
+                x: center.x + radius * (start_angle + ccw_mid).cos(),
+                y: center.y + radius * (start_angle + ccw_mid).sin(),
+            };
+            let start = from_core_point(matrix.apply(to_core_point(&start)));
+            let mid = from_core_point(matrix.apply(to_core_point(&mid)));
+            let end = from_core_point(matrix.apply(to_core_point(&end)));
+            let geometry = crate::runtime::geometry::three_point_arc_geometry(&start, &mid, &end)?;
+            let center = geometry.center.clone();
+            Some(TraceCircularConstraint::ThreePointArc {
+                start,
+                end,
+                center: center.clone(),
+                radius: geometry.radius,
+                start_angle: geometry.start_angle,
+                end_angle: geometry.end_angle,
+                ccw_span: trace_normalized_angle_delta(
+                    geometry.start_angle,
+                    geometry.end_angle,
+                ),
                 ccw_mid: trace_normalized_angle_delta(
                     geometry.start_angle,
                     (mid.y - center.y).atan2(mid.x - center.x),

@@ -22,16 +22,20 @@ fn scene_point_from_legacy_coordinate_construct(
         visible,
         true,
         ScenePointConstraint::LineIntersection {
-            left: LineConstraint::ParallelLine {
-                through_index: first_source_index,
-                line_start_index: first_axis_start_index,
-                line_end_index: first_axis_end_index,
-            },
-            right: LineConstraint::ParallelLine {
-                through_index: second_source_index,
-                line_start_index: second_axis_start_index,
-                line_end_index: second_axis_end_index,
-            },
+            left: LineConstraint::parallel_through(
+                LineConstraint::Line {
+                    start_index: first_axis_start_index,
+                    end_index: first_axis_end_index,
+                },
+                first_source_index,
+            ),
+            right: LineConstraint::parallel_through(
+                LineConstraint::Line {
+                    start_index: second_axis_start_index,
+                    end_index: second_axis_end_index,
+                },
+                second_source_index,
+            ),
         },
         None,
     ))
@@ -510,38 +514,10 @@ fn resolve_line_constraint(
             let host_group = groups.get(host_group_index)?;
             let host =
                 resolve_line_constraint(file, groups, host_group, anchors, group_to_point_index)?;
-            let Some((line_start_index, line_end_index, host_is_perpendicular)) =
-                line_direction_reference(&host)
-            else {
-                return Some(if group.header.kind()
-                    == crate::format::GroupKind::PerpendicularLine
-                {
-                    LineConstraint::PerpendicularTo {
-                        through_index,
-                        line: Box::new(host),
-                    }
-                } else {
-                    LineConstraint::ParallelTo {
-                        through_index,
-                        line: Box::new(host),
-                    }
-                });
-            };
-            let result_is_perpendicular = (group.header.kind()
-                == crate::format::GroupKind::PerpendicularLine)
-                ^ host_is_perpendicular;
-            Some(if result_is_perpendicular {
-                LineConstraint::PerpendicularLine {
-                    through_index,
-                    line_start_index,
-                    line_end_index,
-                }
+            Some(if group.header.kind() == crate::format::GroupKind::PerpendicularLine {
+                LineConstraint::perpendicular_through(host, through_index)
             } else {
-                LineConstraint::ParallelLine {
-                    through_index,
-                    line_start_index,
-                    line_end_index,
-                }
+                LineConstraint::parallel_through(host, through_index)
             })
         }
         crate::format::GroupKind::AngleBisectorRay => {
@@ -756,43 +732,6 @@ fn resolve_line_constraint(
     }
 }
 
-fn line_direction_reference(constraint: &LineConstraint) -> Option<(usize, usize, bool)> {
-    match constraint {
-        LineConstraint::Segment {
-            start_index,
-            end_index,
-        }
-        | LineConstraint::Line {
-            start_index,
-            end_index,
-        }
-        | LineConstraint::Ray {
-            start_index,
-            end_index,
-        } => Some((*start_index, *end_index, false)),
-        LineConstraint::PerpendicularLine {
-            line_start_index,
-            line_end_index,
-            ..
-        } => Some((*line_start_index, *line_end_index, true)),
-        LineConstraint::ParallelLine {
-            line_start_index,
-            line_end_index,
-            ..
-        } => Some((*line_start_index, *line_end_index, false)),
-        LineConstraint::MatrixApply { source, matrices }
-            if matrices.iter().all(|matrix| {
-                matches!(
-                    matrix,
-                    crate::runtime::scene::LineConstraintMatrix::TranslateVector { .. }
-                        | crate::runtime::scene::LineConstraintMatrix::TranslateDelta { .. }
-                )
-            }) => line_direction_reference(source),
-        LineConstraint::PerpendicularTo { .. } | LineConstraint::ParallelTo { .. } => None,
-        LineConstraint::AngleBisectorRay { .. } | LineConstraint::MatrixApply { .. } => None,
-    }
-}
-
 fn decode_trace_constraint(
     file: &GspFile,
     _groups: &[ObjectGroup],
@@ -1003,10 +942,12 @@ fn resolve_circular_constraint(
             let source_group = groups.get(constraint.origin_group_index)?;
             let source =
                 resolve_circular_constraint(file, groups, source_group, group_to_point_index)?;
-            Some(CircularConstraint::TranslateCircle {
+            Some(CircularConstraint::MatrixApply {
                 source: Box::new(source),
-                dx: constraint.dx,
-                dy: constraint.dy,
+                matrices: vec![GeometryTransformBinding::TranslateDelta {
+                    dx: constraint.dx,
+                    dy: constraint.dy,
+                }],
             })
         }
         crate::format::GroupKind::Translation => {
@@ -1016,16 +957,18 @@ fn resolve_circular_constraint(
             let source_group = groups.get(path.refs[0].checked_sub(1)?)?;
             let source =
                 resolve_circular_constraint(file, groups, source_group, group_to_point_index)?;
-            Some(CircularConstraint::VectorTranslateCircle {
+            Some(CircularConstraint::MatrixApply {
                 source: Box::new(source),
-                vector_start_index: mapped_point_index(
-                    group_to_point_index,
-                    path.refs[1].checked_sub(1)?,
-                )?,
-                vector_end_index: mapped_point_index(
-                    group_to_point_index,
-                    path.refs[2].checked_sub(1)?,
-                )?,
+                matrices: vec![GeometryTransformBinding::TranslateVector {
+                    vector_start_index: mapped_point_index(
+                        group_to_point_index,
+                        path.refs[1].checked_sub(1)?,
+                    )?,
+                    vector_end_index: mapped_point_index(
+                        group_to_point_index,
+                        path.refs[2].checked_sub(1)?,
+                    )?,
+                }],
             })
         }
         crate::format::GroupKind::Reflection => {
@@ -1034,11 +977,13 @@ fn resolve_circular_constraint(
                 resolve_circular_constraint(file, groups, source_group, group_to_point_index)?;
             let line_group_index = path.refs.get(1)?.checked_sub(1)?;
             let group_to_line_index = build_group_to_line_index(groups);
-            Some(CircularConstraint::ReflectCircle {
+            Some(CircularConstraint::MatrixApply {
                 source: Box::new(source),
-                line_start_index: None,
-                line_end_index: None,
-                line_index: group_to_line_index.get(line_group_index).copied().flatten(),
+                matrices: vec![GeometryTransformBinding::Reflect(AxisBinding {
+                    line_start_index: None,
+                    line_end_index: None,
+                    line_index: group_to_line_index.get(line_group_index).copied().flatten(),
+                })],
             })
         }
         crate::format::GroupKind::Rotation => {
@@ -1051,10 +996,18 @@ fn resolve_circular_constraint(
                 resolve_circular_constraint(file, groups, source_group, group_to_point_index)?;
             let center_index =
                 mapped_point_index(group_to_point_index, binding.center_group_index)?;
-            Some(CircularConstraint::RotateCircle {
+            Some(CircularConstraint::MatrixApply {
                 source: Box::new(source),
-                center_index,
-                angle_degrees,
+                matrices: vec![GeometryTransformBinding::Rotate(RotationBinding {
+                    center_index,
+                    angle_degrees,
+                    parameter_name: None,
+                    angle_expr: None,
+                    angle_parameter_group_ordinals: std::collections::BTreeMap::new(),
+                    angle_start_index: None,
+                    angle_vertex_index: None,
+                    angle_end_index: None,
+                })],
             })
         }
         crate::format::GroupKind::Scale => {
@@ -1067,10 +1020,12 @@ fn resolve_circular_constraint(
                 resolve_circular_constraint(file, groups, source_group, group_to_point_index)?;
             let center_index =
                 mapped_point_index(group_to_point_index, binding.center_group_index)?;
-            Some(CircularConstraint::ScaleCircle {
+            Some(CircularConstraint::MatrixApply {
                 source: Box::new(source),
-                center_index,
-                factor,
+                matrices: vec![GeometryTransformBinding::Scale(ScaleBinding {
+                    center_index,
+                    factor,
+                })],
             })
         }
         crate::format::GroupKind::CenterArc => {

@@ -87,28 +87,6 @@ enum LineBindingJson {
         #[serde(rename = "endIndex")]
         end_index: usize,
     },
-    #[serde(rename = "perpendicular-line")]
-    PerpendicularLine {
-        #[serde(rename = "throughIndex")]
-        through_index: usize,
-        #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
-        line_start_index: Option<usize>,
-        #[serde(rename = "lineEndIndex", skip_serializing_if = "Option::is_none")]
-        line_end_index: Option<usize>,
-        #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
-        line_index: Option<usize>,
-    },
-    #[serde(rename = "parallel-line")]
-    ParallelLine {
-        #[serde(rename = "throughIndex")]
-        through_index: usize,
-        #[serde(rename = "lineStartIndex", skip_serializing_if = "Option::is_none")]
-        line_start_index: Option<usize>,
-        #[serde(rename = "lineEndIndex", skip_serializing_if = "Option::is_none")]
-        line_end_index: Option<usize>,
-        #[serde(rename = "lineIndex", skip_serializing_if = "Option::is_none")]
-        line_index: Option<usize>,
-    },
     #[serde(rename = "line")]
     Line {
         #[serde(rename = "startIndex")]
@@ -126,7 +104,14 @@ enum LineBindingJson {
     #[serde(rename = "matrix-apply")]
     MatrixApply {
         #[serde(rename = "sourceIndex")]
-        source_index: usize,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        source_index: Option<usize>,
+        #[serde(rename = "sourceStartIndex")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        source_start_index: Option<usize>,
+        #[serde(rename = "sourceEndIndex")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        source_end_index: Option<usize>,
         #[serde(rename = "matrixApply")]
         matrix_apply: Vec<TransformJson>,
     },
@@ -301,28 +286,6 @@ impl LineBindingJson {
                 vertex_index: *vertex_index,
                 end_index: *end_index,
             },
-            LineBinding::PerpendicularLine {
-                through_index,
-                line_start_index,
-                line_end_index,
-                line_index,
-            } => Self::PerpendicularLine {
-                through_index: *through_index,
-                line_start_index: *line_start_index,
-                line_end_index: *line_end_index,
-                line_index: *line_index,
-            },
-            LineBinding::ParallelLine {
-                through_index,
-                line_start_index,
-                line_end_index,
-                line_index,
-            } => Self::ParallelLine {
-                through_index: *through_index,
-                line_start_index: *line_start_index,
-                line_end_index: *line_end_index,
-                line_index: *line_index,
-            },
             LineBinding::Line {
                 start_index,
                 end_index,
@@ -339,9 +302,13 @@ impl LineBindingJson {
             },
             LineBinding::MatrixApply {
                 source_index,
+                source_start_index,
+                source_end_index,
                 matrices,
             } => Self::MatrixApply {
                 source_index: *source_index,
+                source_start_index: *source_start_index,
+                source_end_index: *source_end_index,
                 matrix_apply: matrices.iter().map(TransformJson::from_transform).collect(),
             },
             LineBinding::CustomTransformTrace {

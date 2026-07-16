@@ -1377,7 +1377,7 @@ fn polygon_boundary_intersection_drives_the_sphere_construction() {
     let perpendicular_id = object_id_for_group(&scene, "lines", "line", 74);
     assert_eq!(
         operation_kind(&scene, &perpendicular_id),
-        Some("perpendicular-line")
+        Some("apply-matrices")
     );
     for ordinal in [75, 76] {
         let intersection_id = object_id_for_group(&scene, "points", "point", ordinal);
@@ -1420,7 +1420,7 @@ fn non_graph_coordinate_trace_drives_points_lines_and_intersections() {
     );
 
     let parallel_id = object_id_for_group(scene, "lines", "line", 91);
-    assert_eq!(operation_kind(scene, &parallel_id), Some("parallel-line"));
+    assert_eq!(operation_kind(scene, &parallel_id), Some("apply-matrices"));
 
     let intersection_id = object_id_for_group(scene, "points", "point", 92);
     assert_eq!(
@@ -2440,7 +2440,7 @@ fn initially_degenerate_constructed_lines_remain_typed_and_live() {
     let perpendicular_id = object_id_for_group(&overlap, "lines", "line", 39);
     assert_eq!(
         operation_kind(&overlap, &perpendicular_id),
-        Some("perpendicular-line")
+        Some("apply-matrices")
     );
 
     let rolling = compile_fixture("tests/Samples/个人专栏/高峻清作品/两正多边形(内互滚)(gjq).gsp");
@@ -3131,11 +3131,11 @@ fn ellipse_polygon_rolling_is_an_exact_table_driven_program() {
 
     for (ordinal, op) in [
         (85, "apply-matrices"),
-        (87, "perpendicular-line"),
+        (87, "apply-matrices"),
         (101, "apply-matrices"),
         (102, "apply-matrices"),
         (110, "apply-matrices"),
-        (118, "perpendicular-line"),
+        (118, "apply-matrices"),
     ] {
         assert_eq!(operation_kind(&scene, &line(ordinal)), Some(op));
     }

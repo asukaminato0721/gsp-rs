@@ -62,7 +62,7 @@ test('moving equilateral triangle follows E through its payload parameter chain'
   expect(result.canvasBackground).toBe('rgb(255, 255, 255)');
   expect(result.indices.every((index) => index >= 0)).toBe(true);
   expect(result.visible).toEqual([true, true, true]);
-  expect(result.bindings).toEqual(['constraint-parameter-from-point-expr', 'derived']);
+  expect(result.bindings).toEqual(['constraint-parameter-from-point-expr', 'matrix-apply']);
   expect(result.edgeBindings).toEqual(['segment', 'segment', 'segment']);
   expect(result.traceBinding).toBe('point-trace');
   expect(result.tracePointCount).toBeGreaterThan(20);

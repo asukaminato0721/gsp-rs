@@ -66,7 +66,7 @@ test('payload-defined rotate expressions stay live in the browser runtime', asyn
   const result = await page.evaluate(() => {
     const scene = window.gspDebug.runtime.scene;
     const pointIndex = scene.points.findIndex((point: any) =>
-      point.binding?.kind === 'derived'
+      point.binding?.kind === 'matrix-apply'
       && point.binding?.matrixApply?.[0]?.kind === 'rotate'
       && point.binding.matrixApply[0].angleExpr?.kind === 'parsed',
     );
@@ -220,7 +220,7 @@ test('triangle angle sum measured-angle rotation updates dependent geometry', as
       Math.hypot(left.x - right.x, left.y - right.y);
     return {
       hasMeasuredAngleRotate:
-        before.rotatedBinding?.kind === 'derived'
+        before.rotatedBinding?.kind === 'matrix-apply'
         && before.rotatedBinding?.matrixApply?.[0]?.kind === 'rotate'
         && typeof before.rotatedBinding.matrixApply[0].angleStartIndex === 'number'
         && typeof before.rotatedBinding.matrixApply[0].angleVertexIndex === 'number'

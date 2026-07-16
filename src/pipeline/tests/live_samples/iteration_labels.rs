@@ -48,7 +48,10 @@ fn exports_ant_fixture_with_two_axis_line_iterations() {
     assert!(
         visible_points.iter().all(|point| {
             point["constraint"].is_null()
-                && matches!(point["binding"]["kind"].as_str(), None | Some("derived"))
+                && matches!(
+                    point["binding"]["kind"].as_str(),
+                    None | Some("matrix-apply")
+                )
         }),
         "expected visible ant helper points to be source or derived geometry"
     );

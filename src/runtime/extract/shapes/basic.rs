@@ -20,7 +20,7 @@ use crate::runtime::geometry::{
     arc_on_circle_control_points, from_core_point, sample_three_point_arc,
     sample_three_point_arc_complement, to_core_point,
 };
-use crate::runtime::scene::{ArcBinding, ArcBoundaryKind};
+use crate::runtime::scene::{ArcBinding, ArcBoundaryKind, GeometryTransformBinding};
 
 const ARC_BOUNDARY_SUBDIVISIONS: usize = 48;
 
@@ -593,11 +593,20 @@ fn resolve_perpendicular_line_shape(
         dashed: line_is_dashed(group.header.style_a),
         stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
         visible: !group.header.is_hidden(),
-        binding: Some(LineBinding::PerpendicularLine {
-            through_index,
-            line_start_index,
-            line_end_index,
-            line_index: Some(host_index),
+        binding: Some(LineBinding::MatrixApply {
+            source_index: Some(host_index),
+            source_start_index: line_start_index,
+            source_end_index: line_end_index,
+            matrices: vec![
+                GeometryTransformBinding::RotateAroundSourcePoint {
+                    source_point_index: 0,
+                    angle_degrees: -90.0,
+                },
+                GeometryTransformBinding::TranslateSourcePointToPoint {
+                    source_point_index: 0,
+                    target_index: through_index,
+                },
+            ],
         }),
         debug: Some(payload_debug_source(group)),
     })
@@ -633,11 +642,14 @@ fn resolve_parallel_line_shape(
         dashed: line_is_dashed(group.header.style_a),
         stroke_width: Some(line_stroke_width_from_style(group.header.style_a)),
         visible: !group.header.is_hidden(),
-        binding: Some(LineBinding::ParallelLine {
-            through_index,
-            line_start_index,
-            line_end_index,
-            line_index: Some(host_index),
+        binding: Some(LineBinding::MatrixApply {
+            source_index: Some(host_index),
+            source_start_index: line_start_index,
+            source_end_index: line_end_index,
+            matrices: vec![GeometryTransformBinding::TranslateSourcePointToPoint {
+                source_point_index: 0,
+                target_index: through_index,
+            }],
         }),
         debug: Some(payload_debug_source(group)),
     })

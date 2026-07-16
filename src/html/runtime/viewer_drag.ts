@@ -38,7 +38,7 @@
       if (isOffsetConstraint(constraint)) {
         addPointRoots(constraint.originIndex);
       }
-      if (currentPoint?.binding?.kind === "derived") {
+      if (currentPoint?.binding?.kind === "matrix-apply") {
         addPointRoots(currentPoint.binding.sourceIndex);
       }
     };
@@ -449,7 +449,7 @@
     if (visited.has(pointIndex)) return;
     visited.add(pointIndex);
     const point = draft.points[pointIndex];
-    if (point?.binding?.kind !== "derived") {
+    if (point?.binding?.kind !== "matrix-apply") {
       updatePointToWorld(env, draft, pointIndex, world);
       return;
     }

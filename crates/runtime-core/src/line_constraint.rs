@@ -31,36 +31,6 @@ pub(crate) enum LineConstraint {
         #[serde(rename = "endIndex")]
         end_index: usize,
     },
-    #[serde(rename = "perpendicular-line")]
-    Perpendicular {
-        #[serde(rename = "throughIndex")]
-        through_index: usize,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
-    },
-    #[serde(rename = "parallel-line")]
-    Parallel {
-        #[serde(rename = "throughIndex")]
-        through_index: usize,
-        #[serde(rename = "lineStartIndex")]
-        line_start_index: usize,
-        #[serde(rename = "lineEndIndex")]
-        line_end_index: usize,
-    },
-    #[serde(rename = "perpendicular-to")]
-    PerpendicularTo {
-        #[serde(rename = "throughIndex")]
-        through_index: usize,
-        line: Box<LineConstraint>,
-    },
-    #[serde(rename = "parallel-to")]
-    ParallelTo {
-        #[serde(rename = "throughIndex")]
-        through_index: usize,
-        line: Box<LineConstraint>,
-    },
     #[serde(rename = "angle-bisector-ray")]
     AngleBisector {
         #[serde(rename = "startIndex")]
@@ -108,6 +78,20 @@ pub(crate) enum LineConstraintMatrix {
         angle_vertex_index: Option<usize>,
         #[serde(rename = "angleEndIndex")]
         angle_end_index: Option<usize>,
+    },
+    #[serde(rename = "rotate-source-point")]
+    RotateSourcePoint {
+        #[serde(rename = "sourcePointIndex")]
+        source_point_index: usize,
+        #[serde(rename = "angleDegrees")]
+        angle_degrees: f64,
+    },
+    #[serde(rename = "translate-source-point")]
+    TranslateSourcePoint {
+        #[serde(rename = "sourcePointIndex")]
+        source_point_index: usize,
+        #[serde(rename = "targetIndex")]
+        target_index: usize,
     },
 }
 
@@ -165,27 +149,6 @@ impl LineConstraint {
                 start_index,
                 end_index,
             } => indices.extend([*start_index, *end_index]),
-            Self::Perpendicular {
-                through_index,
-                line_start_index,
-                line_end_index,
-            }
-            | Self::Parallel {
-                through_index,
-                line_start_index,
-                line_end_index,
-            } => indices.extend([*through_index, *line_start_index, *line_end_index]),
-            Self::PerpendicularTo {
-                through_index,
-                line,
-            }
-            | Self::ParallelTo {
-                through_index,
-                line,
-            } => {
-                indices.insert(*through_index);
-                line.collect_point_indices(indices);
-            }
             Self::AngleBisector {
                 start_index,
                 vertex_index,
@@ -227,6 +190,10 @@ impl LineConstraintMatrix {
                         .flatten(),
                 );
             }
+            Self::RotateSourcePoint { .. } => {}
+            Self::TranslateSourcePoint { target_index, .. } => {
+                indices.insert(*target_index);
+            }
         }
     }
 }
@@ -258,38 +225,6 @@ impl LineConstraintResolver<'_> {
                 end: self.point(*end_index)?,
                 kind: LineKind::Ray,
             },
-            LineConstraint::Perpendicular {
-                through_index,
-                line_start_index,
-                line_end_index,
-            } => self.perpendicular(
-                self.point(*through_index)?,
-                self.point(*line_start_index)?,
-                self.point(*line_end_index)?,
-            )?,
-            LineConstraint::Parallel {
-                through_index,
-                line_start_index,
-                line_end_index,
-            } => self.parallel(
-                self.point(*through_index)?,
-                self.point(*line_start_index)?,
-                self.point(*line_end_index)?,
-            )?,
-            LineConstraint::PerpendicularTo {
-                through_index,
-                line,
-            } => {
-                let base = self.resolve(line)?;
-                self.perpendicular(self.point(*through_index)?, base.start, base.end)?
-            }
-            LineConstraint::ParallelTo {
-                through_index,
-                line,
-            } => {
-                let base = self.resolve(line)?;
-                self.parallel(self.point(*through_index)?, base.start, base.end)?
-            }
             LineConstraint::AngleBisector {
                 start_index,
                 vertex_index,
@@ -316,9 +251,16 @@ impl LineConstraintResolver<'_> {
             } => {
                 let mut resolved = self.resolve(source)?;
                 for transform in matrix_apply {
-                    let matrix = self.matrix(transform)?;
+                    let matrix = self.matrix(transform, resolved)?;
                     resolved.start = matrix.apply(resolved.start);
                     resolved.end = matrix.apply(resolved.end);
+                    if matches!(
+                        transform,
+                        LineConstraintMatrix::RotateSourcePoint { .. }
+                            | LineConstraintMatrix::TranslateSourcePoint { .. }
+                    ) {
+                        resolved.kind = LineKind::Line;
+                    }
                 }
                 resolved
             }
@@ -331,38 +273,11 @@ impl LineConstraintResolver<'_> {
         (self.point)(index)
     }
 
-    fn perpendicular(
+    fn matrix(
         &self,
-        through: Point,
-        start: Point,
-        end: Point,
-    ) -> Option<ResolvedLineConstraint> {
-        let dx = end.x - start.x;
-        let dy = end.y - start.y;
-        (dx.hypot(dy) > 1e-9).then_some(ResolvedLineConstraint {
-            start: through,
-            end: Point {
-                x: through.x - dy,
-                y: through.y + dx,
-            },
-            kind: LineKind::Line,
-        })
-    }
-
-    fn parallel(&self, through: Point, start: Point, end: Point) -> Option<ResolvedLineConstraint> {
-        let dx = end.x - start.x;
-        let dy = end.y - start.y;
-        (dx.hypot(dy) > 1e-9).then_some(ResolvedLineConstraint {
-            start: through,
-            end: Point {
-                x: through.x + dx,
-                y: through.y + dy,
-            },
-            kind: LineKind::Line,
-        })
-    }
-
-    fn matrix(&self, transform: &LineConstraintMatrix) -> Option<AffineMatrix> {
+        transform: &LineConstraintMatrix,
+        source: ResolvedLineConstraint,
+    ) -> Option<AffineMatrix> {
         Some(match transform {
             LineConstraintMatrix::TranslateVector {
                 vector_start_index,
@@ -397,6 +312,25 @@ impl LineConstraintResolver<'_> {
                 )?
                 .to_radians(),
             ),
+            LineConstraintMatrix::RotateSourcePoint {
+                source_point_index,
+                angle_degrees,
+            } => AffineMatrix::rotation(
+                [source.start, source.end]
+                    .get(*source_point_index)
+                    .copied()?,
+                angle_degrees.to_radians(),
+            ),
+            LineConstraintMatrix::TranslateSourcePoint {
+                source_point_index,
+                target_index,
+            } => {
+                let source = [source.start, source.end]
+                    .get(*source_point_index)
+                    .copied()?;
+                let target = self.point(*target_index)?;
+                AffineMatrix::translation(target.x - source.x, target.y - source.y)
+            }
         })
     }
 
@@ -470,9 +404,13 @@ mod tests {
           "matrixApply":[{
             "kind":"reflect",
             "axis":{
-              "kind":"parallel-to",
-              "throughIndex":5,
-              "line":{"kind":"line","startIndex":1,"endIndex":3}
+              "kind":"matrix-apply",
+              "source":{"kind":"line","startIndex":1,"endIndex":3},
+              "matrixApply":[{
+                "kind":"translate-source-point",
+                "sourcePointIndex":0,
+                "targetIndex":5
+              }]
             }
           }]
         }"#;

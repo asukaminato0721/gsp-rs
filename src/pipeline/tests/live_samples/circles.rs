@@ -54,7 +54,11 @@ fn exports_two_circle_intersection_inrm_fixture_with_live_bindings() {
     assert_eq!(
         lines
             .iter()
-            .filter(|line| line["binding"]["kind"].as_str() == Some("perpendicular-line"))
+            .filter(|line| {
+                line["binding"]["kind"].as_str() == Some("matrix-apply")
+                    && line["binding"]["matrixApply"][0]["kind"].as_str()
+                        == Some("rotate-source-point")
+            })
             .count(),
         2,
         "expected both perpendicular helpers to remain interactive"
@@ -164,7 +168,7 @@ fn exports_cans_in_container_inrm_fixture_with_live_bindings() {
         points
             .iter()
             .filter(|point| {
-                point["binding"]["kind"].as_str() == Some("derived")
+                point["binding"]["kind"].as_str() == Some("matrix-apply")
                     && point["binding"]["matrixApply"][0]["kind"].as_str() == Some("scale")
             })
             .count(),
@@ -175,7 +179,7 @@ fn exports_cans_in_container_inrm_fixture_with_live_bindings() {
         points
             .iter()
             .filter(|point| {
-                point["binding"]["kind"].as_str() == Some("derived")
+                point["binding"]["kind"].as_str() == Some("matrix-apply")
                     && point["binding"]["matrixApply"][0]["kind"].as_str() == Some("rotate")
             })
             .count(),
@@ -186,7 +190,7 @@ fn exports_cans_in_container_inrm_fixture_with_live_bindings() {
         points
             .iter()
             .filter(|point| {
-                point["binding"]["kind"].as_str() == Some("derived")
+                point["binding"]["kind"].as_str() == Some("matrix-apply")
                     && point["binding"]["matrixApply"][0]["kind"].as_str() == Some("translate")
             })
             .count(),
