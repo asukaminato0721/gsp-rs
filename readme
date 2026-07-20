@@ -6,11 +6,11 @@ cargo run ./path/to/one.gsp ./path/to/two.gsp
 cargo run -- --upload ./path/to/your.gsp
 cargo run -- --html ./path/to/your.gsp
 
+cargo run -- --inspect ./path/to/your.gsp to see a interactive gsp binary analysis html.
+
 Open the generated html and click `Debug` to inspect the extracted hierarchy as a graph or raw JSON.
 
 Each compile also writes `*.debug.json` with the payload-derived scene/debug data.
-
-Upload is disabled by default. Pass `--upload` to upload each successfully compiled `.gsp` file.
 
 `cargo run -- --html ./path/to/your.gsp` only writes the bundled html file. It does not upload and does not emit `*.debug.json` or `.log`.
 

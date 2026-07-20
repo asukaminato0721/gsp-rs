@@ -23,6 +23,7 @@ pub struct RenderJob {
 pub enum CompileMode {
     Standard,
     HtmlOnly,
+    Inspect,
 }
 
 impl Config {
@@ -53,6 +54,9 @@ impl Config {
                 "--html" => {
                     mode = CompileMode::HtmlOnly;
                 }
+                "--inspect" => {
+                    mode = CompileMode::Inspect;
+                }
                 "--output-dir" => {
                     index += 1;
                     let Some(value) = raw_args.get(index) else {
@@ -77,12 +81,12 @@ impl Config {
         let jobs = inputs
             .into_iter()
             .map(|gsp_path| RenderJob {
-                html_path: output_path(&gsp_path, output_dir.as_deref()),
+                html_path: output_path(&gsp_path, output_dir.as_deref(), mode),
                 gsp_path,
             })
             .collect();
 
-        if mode == CompileMode::HtmlOnly {
+        if mode != CompileMode::Standard {
             upload_url = None;
         }
 
@@ -98,10 +102,11 @@ impl Config {
 
     pub fn usage() -> String {
         [
-            "usage: gsp-rs [--upload] [--html] [--output-dir DIR] <file1.gsp> [file2.gsp ...]",
+            "usage: gsp-rs [--upload] [--html | --inspect] [--output-dir DIR] <file1.gsp> [file2.gsp ...]",
             "",
             "--upload uploads each successfully compiled .gsp file.",
             "--html only writes the bundled .html output.",
+            "--inspect writes a standalone interactive .inspect.html binary analysis.",
             "--output-dir mirrors output artifacts below DIR.",
             "GSP_RS_WORKER_TIMEOUT_MS optionally sets a per-file compiler timeout; unset means no timeout.",
         ]
@@ -109,9 +114,17 @@ impl Config {
     }
 }
 
-fn output_path(gsp_path: &std::path::Path, output_dir: Option<&std::path::Path>) -> PathBuf {
+fn output_path(
+    gsp_path: &std::path::Path,
+    output_dir: Option<&std::path::Path>,
+    mode: CompileMode,
+) -> PathBuf {
+    let extension = match mode {
+        CompileMode::Standard | CompileMode::HtmlOnly => "html",
+        CompileMode::Inspect => "inspect.html",
+    };
     let Some(output_dir) = output_dir else {
-        return gsp_path.with_extension("html");
+        return gsp_path.with_extension(extension);
     };
     let relative = if gsp_path.is_absolute() {
         std::env::current_dir()
@@ -122,7 +135,7 @@ fn output_path(gsp_path: &std::path::Path, output_dir: Option<&std::path::Path>)
     } else {
         gsp_path.to_path_buf()
     };
-    output_dir.join(relative).with_extension("html")
+    output_dir.join(relative).with_extension(extension)
 }
 
 #[cfg(test)]
@@ -195,6 +208,39 @@ mod tests {
                     html_path: PathBuf::from("nested/b.html"),
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn parses_inspect_flag_and_uses_distinct_output_name() {
+        let config = Config::parse(["--upload", "--inspect", "nested/a.gsp"].into_iter())
+            .expect("inspect config parses");
+        assert_eq!(config.mode, CompileMode::Inspect);
+        assert_eq!(config.upload_url, None);
+        assert_eq!(
+            config.jobs,
+            vec![RenderJob {
+                gsp_path: PathBuf::from("nested/a.gsp"),
+                html_path: PathBuf::from("nested/a.inspect.html"),
+            }]
+        );
+    }
+
+    #[test]
+    fn mirrors_inspector_outputs_below_the_requested_directory() {
+        let config = Config::parse(
+            [
+                "--inspect",
+                "--output-dir",
+                "target/inspect",
+                "tests/nested/a.gsp",
+            ]
+            .into_iter(),
+        )
+        .expect("inspect config parses");
+        assert_eq!(
+            config.jobs[0].html_path,
+            PathBuf::from("target/inspect/tests/nested/a.inspect.html")
         );
     }
 

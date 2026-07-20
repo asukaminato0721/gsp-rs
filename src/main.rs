@@ -9,7 +9,7 @@ use std::time::Duration;
 use gsp_rs::upload::upload_gsp_file;
 use gsp_rs::{
     CompileMode, Config, RenderJob,
-    pipeline::{compile_file_to_html, compile_file_to_html_only},
+    pipeline::{compile_file_to_html, compile_file_to_html_only, compile_file_to_inspector},
 };
 use miette::{Result, miette};
 
@@ -45,6 +45,7 @@ fn compile_job(config: &Config, job: &RenderJob) -> Result<()> {
             config.render_width,
             config.render_height,
         ),
+        CompileMode::Inspect => compile_file_to_inspector(&job.gsp_path, &job.html_path),
     }
 }
 
@@ -285,6 +286,8 @@ fn worker_args_for_jobs(config: &Config, jobs: &[RenderJob]) -> Vec<OsString> {
     let mut args = Vec::with_capacity(jobs.len() + 3);
     if config.mode == CompileMode::HtmlOnly {
         args.push(OsString::from("--html"));
+    } else if config.mode == CompileMode::Inspect {
+        args.push(OsString::from("--inspect"));
     }
     if let Some(output_dir) = &config.output_dir {
         args.push(OsString::from("--output-dir"));
@@ -457,6 +460,32 @@ mod tests {
         assert_eq!(
             worker_args_for_jobs(&config, &jobs),
             vec![OsString::from("sample.gsp")]
+        );
+    }
+
+    #[test]
+    fn inspector_worker_batch_preserves_inspect_mode() {
+        let config = Config {
+            jobs: vec![],
+            render_width: 800,
+            render_height: 600,
+            upload_url: None,
+            mode: CompileMode::Inspect,
+            output_dir: Some(PathBuf::from("target/inspect")),
+        };
+        let jobs = [RenderJob {
+            gsp_path: PathBuf::from("sample.gsp"),
+            html_path: PathBuf::from("target/inspect/sample.inspect.html"),
+        }];
+
+        assert_eq!(
+            worker_args_for_jobs(&config, &jobs),
+            vec![
+                OsString::from("--inspect"),
+                OsString::from("--output-dir"),
+                OsString::from("target/inspect"),
+                OsString::from("sample.gsp")
+            ]
         );
     }
 }
